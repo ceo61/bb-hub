@@ -512,11 +512,12 @@ async function ficha(r){
      <div class="abtn"><span><b>Reprecificar / promocionar</b><br>grava no ERP pelo fluxo homologado</span><span class="tag">Fase 3</span></div></div></div>`;
   panel.querySelector('.close').onclick=fechaFicha;
   panel.classList.add('open'); scrim.classList.add('open'); panel.scrollTop=0;
-  const [{data:pr},{data:cp},{data:ct},{data:idd}] = await Promise.all([
+  const [{data:pr},{data:cp},{data:ct},{data:idd},{data:fs}] = await Promise.all([
     sb.from('fato_precos').select('codtab,filial,preco_por,preco_real').eq('snapshot',st.snap).eq('cod',r.cod),
     sb.from('dim_compatibilidade').select('modelo').eq('cod',r.cod).neq('modelo','').limit(40),
     sb.from('fato_custo').select('custo,origem').eq('snapshot',st.snap).eq('cod',r.cod),
     sb.from('dim_idade').select('*').eq('cod',r.cod),
+    sb.from('dim_fase').select('*').eq('cod',r.cod),
   ]);
   // pares canônicos: atacado=001/01, site=002/10, marketplace=401/10 (demais linhas são lixo histórico)
   const CANON={'001':'01','002':'10','401':'10'};
@@ -526,7 +527,7 @@ async function ficha(r){
   const id0=idd?.[0];
   const mmYY=d8=>d8?d8.slice(4,6)+'/'+d8.slice(0,4):'—';
   $('#fPrecos').innerHTML = `
-    ${id0?`<div class="prow"><span class="pl">Geração</span><span class="pv">${GERLB[gerDe(id0.primeira_imp)]||'—'} <small>· ${esc(id0.origem||'importação')} · 1ª entrada ${mmYY(id0.primeira_imp)} · última ${mmYY(id0.ultima_imp)}</small></span></div>`:''}
+    ${(fs?.[0]||id0)?`<div class="prow"><span class="pl">Geração</span><span class="pv">${GERLB[fs?.[0]?.fase]||'Morto'} <small>${fs?.[0]?`· 12m ${nf.format(fs[0].u12||0)} un · pico ${nf.format(fs[0].pico12||0)}`:''}${id0?` · na casa desde ${mmYY(id0.primeira_imp)} (${esc(id0.origem||'importação')})`:''}</small></span></div>`:''}
     ${custo?`<div class="prow"><span class="pl"><b>Custo médio (importadora)</b></span><span class="pv">${rf2.format(custo)} <small>${esc(ct[0].origem||'')}</small></span></div>`:''}
     <div class="prow"><span class="pl">Site BB Baterias (002)</span><span class="pv">${mp['002']?rf2.format(mp['002'].preco_real)+mkTxt(mp['002'].preco_real)+' <small>· POR '+rf2.format(mp['002'].preco_por)+'</small>':'—'}</span></div>
     <div class="prow"><span class="pl">Marketplace (401)</span><span class="pv">${mp['401']?rf2.format(mp['401'].preco_por)+(()=>{const lq=mp['401'].preco_por*0.84-20;return ` <small>· líq. ${rf2.format(lq)}${custo?` · ${nf1.format(lq/custo)}×`:''}</small>`;})():'—'}</span></div>
@@ -580,7 +581,7 @@ function gerDe(d8){
   const m=(new Date().getFullYear()-+d8.slice(0,4))*12 + (new Date().getMonth()+1-+d8.slice(4,6));
   return m<12?'lançamento':m<24?'crescimento':m<48?'maturidade':m<84?'veterano':m<144?'legado':'arquivo';
 }
-const GERLB={'lançamento':'Lanç. <1a','crescimento':'Cresc. 1-2a','maturidade':'Matur. 2-4a','veterano':'Veter. 4-7a','legado':'Legado 7-12a','arquivo':'Arquivo >12a','fóssil':'Fóssil'};
+const GERLB={'rampa':'Rampa','novo parado':'Novo parado','crescendo':'Crescendo','no pico':'No pico','declínio':'Declínio','cauda':'Cauda','morto':'Morto'};
 function flagsDe(m, med){
   const f=[];
   if([m.mk_atacado,m.mk_site,m.mk_marketplace].some(x=>x&&x<1)) f.push('abaixo');
@@ -605,14 +606,14 @@ async function renderPrecos(){
     st.mkMed={};
     for(const g in porG){ const v=porG[g].sort((a,b)=>a-b); if(v.length>=8) st.mkMed[g]=v[Math.floor(v.length/2)]; }
     const estq={}; (await tudo('fato_estoque',{select:'cod,estoque_util',eq:[['snapshot',st.snap]]})).forEach(e=>estq[e.cod]=e.estoque_util);
-    for(const m of st.markup){ const rr=st.radar.find(r=>r.cod===m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._meses=m.meses_casa; m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); }
+    for(const m of st.markup){ const rr=st.radar.find(r=>r.cod===m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._meses=GERORD.indexOf(m.geracao); m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); }
   }
   const cont={}; for(const m of st.markup) for(const f of m._flags) cont[f]=(cont[f]||0)+1;
   const grupos={}; st.markup.forEach(m=>{const g=m.grupo||'—'; grupos[g]=(grupos[g]||0)+1;});
   const gers={}; st.markup.forEach(m=>{gers[m.geracao]=(gers[m.geracao]||0)+1;});
-  const GERORD=['lançamento','crescimento','maturidade','veterano','legado','arquivo','fóssil'];
+  const GERORD=['rampa','crescendo','no pico','declínio','cauda','novo parado','morto'];
   $('#conteudo').innerHTML = `
-    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Markup = preço ÷ custo médio da importadora (0101) · site à vista (−5%) · <b>ML sobre o líquido</b> (preço −16% comissão −R$ 20 frete). Geração = idade desde a 1ª importação. O alerta "fora da curva" compara com a mediana do <b>grupo × geração</b> (lançamento aguenta markup maior; acessório legado tem prêmio de escassez).</p>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Markup = preço ÷ custo médio da importadora (0101) · site à vista (−5%) · <b>ML sobre o líquido</b> (preço −16% comissão −R$ 20 frete). Geração única pela TRAJETÓRIA de venda (rampa · crescendo · no pico · declínio · cauda · novo parado · morto), com a idade desempatando os parados. "Fora da curva" compara com a mediana do <b>grupo × geração</b>.</p>
     <div class="kpis">${Object.entries(MKFLAGS).map(([id,f])=>`<button class="kpi ${st.mkFlag===id?'active':''}" data-f="${id}" title="${f.hint}"><span class="lab"><span class="dot" style="background:${id==='abaixo'?'var(--crit)':id==='curva'?'var(--warn)':id==='custo'?'var(--muted)':'var(--ser)'}"></span>${f.lb}</span><span class="val">${nf.format(cont[id]||0)}</span><span class="sub">${f.hint}</span></button>`).join('')}</div>
     <div class="toolbar">
       <input type="search" id="mq" placeholder="Buscar ref ou descrição…" value="${esc(st.mkQ||'')}">
@@ -683,7 +684,7 @@ function linhasMk(){
   for(const m of rows.slice(0,st.shown)){
     const tr=document.createElement('tr'); tr.className='clicavel'; tr.tabIndex=0;
     tr.innerHTML=`<td><span class="cod" title="${esc(m.descricao||'')}">${esc(m.cod)}</span></td>
-      <td><span class="gr" title="${m.primeira_imp?('origem: '+(m.origem_idade||'importação')+' · 1ª entrada '+m.primeira_imp.slice(4,6)+'/'+m.primeira_imp.slice(0,4)+' · última '+m.ultima_imp.slice(4,6)+'/'+m.ultima_imp.slice(0,4)):'fóssil — sem entrada registrada (importado antes de 2012 ou cadastro morto)'}">${GERLB[m.geracao]||'—'}</span></td>
+      <td><span class="gr" title="últimos 12m: ${nf.format(m.u12||0)} un · pico histórico: ${nf.format(m.pico12||0)} un${m.primeira_venda?' · vende desde '+m.primeira_venda.slice(5,7)+'/'+m.primeira_venda.slice(0,4):''}${m.primeira_imp?' · na casa desde '+m.primeira_imp.slice(4,6)+'/'+m.primeira_imp.slice(0,4)+' ('+(m.origem_idade||'importação')+')':''}">${GERLB[m.geracao]||'—'}</span></td>
       <td>${nf.format(m._saldo)}</td>
       <td>${rf2.format(m.custo)}</td>
       <td>${mk(m.mk_atacado)}</td><td>${mk(m.mk_site)}</td><td>${mk(m.mk_marketplace)}</td>
