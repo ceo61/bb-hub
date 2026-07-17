@@ -107,6 +107,9 @@ tbody tr:last-child td{border-bottom:none}
 .more{width:100%;padding:12px;color:var(--accent);font-weight:600;border-top:1px solid var(--hair)}
 .more:hover{background:var(--surface2)}
 .carregando{padding:60px 20px;text-align:center;color:var(--muted)}
+th.ord{cursor:pointer;user-select:none}
+th.ord:hover{color:var(--ink)}
+th.ord .seta{font-size:9px;margin-left:3px}
 
 /* ---------- ficha ---------- */
 .scrim{position:fixed;inset:0;background:rgba(8,10,14,.45);opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
@@ -597,20 +600,31 @@ async function renderPrecos(){
     <div class="toolbar">
       <input type="search" id="mq" placeholder="Buscar ref ou descrição…" value="${esc(st.mkQ||'')}">
       <select id="mg"><option value="">Todos os grupos</option>${Object.keys(grupos).sort((a,b)=>grupos[b]-grupos[a]).map(g=>`<option ${st.mkG===g?'selected':''} value="${esc(g)}">${esc(g)} (${grupos[g]})</option>`).join('')}</select>
-      <select id="ms">
-        <option value="giro">Ordenar: giro (média/mês)</option>
-        <option value="mkmax" ${st.mkS==='mkmax'?'selected':''}>Ordenar: maior markup site</option>
-        <option value="mkmin" ${st.mkS==='mkmin'?'selected':''}>Ordenar: menor markup site</option>
-      </select>
       <span class="count" id="mcount"></span>
     </div>
     <div class="tablecard"><div class="tscroll"><table>
-      <thead><tr><th>Produto</th><th>Custo</th><th>Mk Atac.</th><th>Mk Site</th><th>Mk ML</th><th>Atacado</th><th>Site (à vista)</th><th>Marketpl.</th><th>Giro/mês</th><th>Alertas</th></tr></thead>
+      <thead><tr>
+        <th class="ord" data-c="cod">Produto<span class="seta"></span></th>
+        <th class="ord" data-c="custo">Custo<span class="seta"></span></th>
+        <th class="ord" data-c="mk_atacado">Mk Atac.<span class="seta"></span></th>
+        <th class="ord" data-c="mk_site">Mk Site<span class="seta"></span></th>
+        <th class="ord" data-c="mk_marketplace">Mk ML<span class="seta"></span></th>
+        <th class="ord" data-c="p_atacado">Atacado<span class="seta"></span></th>
+        <th class="ord" data-c="p_site">Site (à vista)<span class="seta"></span></th>
+        <th class="ord" data-c="p_marketplace">Marketpl.<span class="seta"></span></th>
+        <th class="ord" data-c="_giro">Giro/mês<span class="seta"></span></th>
+        <th class="ord" data-c="_nflags">Alertas<span class="seta"></span></th>
+      </tr></thead>
       <tbody id="mrows"></tbody></table></div><button class="more hide" id="mmore"></button></div>`;
   document.querySelectorAll('.kpi[data-f]').forEach(b=>b.onclick=()=>{ st.mkFlag = st.mkFlag===b.dataset.f?null:b.dataset.f; st.shown=120; renderPrecos(); });
   let qt; $('#mq').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{st.mkQ=e.target.value.trim().toUpperCase();st.shown=120;linhasMk();},200);};
   $('#mg').onchange=e=>{st.mkG=e.target.value;st.shown=120;linhasMk();};
-  $('#ms').onchange=e=>{st.mkS=e.target.value;linhasMk();};
+  document.querySelectorAll('th.ord').forEach(th=>th.onclick=()=>{
+    const c=th.dataset.c;
+    if(st.mkCol===c) st.mkDir=-st.mkDir;               // 2º clique inverte
+    else { st.mkCol=c; st.mkDir = c==='cod' ? 1 : -1; } // texto asc, números desc
+    st.shown=120; linhasMk();
+  });
   linhasMk();
 }
 function linhasMk(){
@@ -622,9 +636,18 @@ function linhasMk(){
     if(st.mkQ && !(m.cod+' '+(m.descricao||'')).toUpperCase().includes(st.mkQ)) return false;
     return true;
   });
-  rows.sort((a,b)=> st.mkS==='mkmax' ? (b.mk_site||0)-(a.mk_site||0)
-                 : st.mkS==='mkmin' ? (a.mk_site??999)-(b.mk_site??999)
-                 : b._giro-a._giro);
+  const col=st.mkCol||'_giro', dir=st.mkDir||-1;
+  for(const m of rows) m._nflags=m._flags.length;
+  rows.sort((a,b)=>{
+    const va=a[col], vb=b[col];
+    if(va==null && vb==null) return 0;
+    if(va==null) return 1;               // nulos sempre no fim
+    if(vb==null) return -1;
+    return (typeof va==='string' ? va.localeCompare(vb) : va-vb) * dir;
+  });
+  document.querySelectorAll('th.ord').forEach(th=>{
+    th.querySelector('.seta').textContent = th.dataset.c===col ? (dir===1?'▲':'▼') : '';
+  });
   $('#mcount').textContent = nf.format(rows.length)+' produtos';
   const tb=$('#mrows'); tb.innerHTML='';
   for(const m of rows.slice(0,st.shown)){
