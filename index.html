@@ -205,10 +205,10 @@ tbody tr:last-child td{border-bottom:none}
       </svg>
       <div class="name">BB HUB<small>BestBattery</small></div>
     </div>
+    <a href="#precos" data-pg="precos">🏷️ Preços — Markup</a>
     <a href="#radar" data-pg="radar">📡 Radar</a>
     <a href="#produtos" data-pg="produtos">📦 Produtos</a>
     <a href="#compras" data-pg="compras">🚢 Compras &amp; Trânsito</a>
-    <a href="#precos" data-pg="precos">🏷️ Preços — Markup</a>
     <a href="#importacoes" data-pg="importacoes">🛬 Importações <span class="soon">breve</span></a>
     <a href="#anuncios" data-pg="anuncios">📈 Anúncios &amp; Conversão <span class="soon">breve</span></a>
     <a href="#decisoes" data-pg="decisoes">💬 Decisões — Chat IA <span class="soon">breve</span></a>
@@ -605,7 +605,7 @@ async function renderPrecos(){
       <span class="count" id="mcount"></span>
     </div>
     <div class="tablecard"><div class="tscroll"><table>
-      <thead><tr><th>Produto</th><th>Custo</th><th>Atacado</th><th>Site (à vista)</th><th>Marketplace</th><th>Giro/mês</th><th>Alertas</th></tr></thead>
+      <thead><tr><th>Produto</th><th>Custo</th><th>Mk Atac.</th><th>Mk Site</th><th>Mk ML</th><th>Atacado</th><th>Site (à vista)</th><th>Marketpl.</th><th>Giro/mês</th><th>Alertas</th></tr></thead>
       <tbody id="mrows"></tbody></table></div><button class="more hide" id="mmore"></button></div>`;
   document.querySelectorAll('.kpi[data-f]').forEach(b=>b.onclick=()=>{ st.mkFlag = st.mkFlag===b.dataset.f?null:b.dataset.f; st.shown=120; renderPrecos(); });
   let qt; $('#mq').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{st.mkQ=e.target.value.trim().toUpperCase();st.shown=120;linhasMk();},200);};
@@ -614,7 +614,8 @@ async function renderPrecos(){
   linhasMk();
 }
 function linhasMk(){
-  const pmk=(p,m)=>p?`${rf2.format(p)}<br><span class="gr">${m?nf1.format(m)+'×':'—'}</span>`:'—';
+  const mk=m=>m?`<b>${nf1.format(m)}×</b>`:'—';
+  const pr=p=>p?rf2.format(p):'—';
   let rows=st.markup.filter(m=>{
     if(st.mkFlag && !m._flags.includes(st.mkFlag)) return false;
     if(st.mkG && (m.grupo||'—')!==st.mkG) return false;
@@ -628,10 +629,11 @@ function linhasMk(){
   const tb=$('#mrows'); tb.innerHTML='';
   for(const m of rows.slice(0,st.shown)){
     const tr=document.createElement('tr'); tr.className='clicavel'; tr.tabIndex=0;
-    tr.innerHTML=`<td><span class="cod">${esc(m.cod)}</span><br><span class="gr">${esc((m.descricao||'').slice(0,40))}</span></td>
-      <td>${rf2.format(m.custo)}<br><span class="gr">${esc(m.origem||'')}</span></td>
-      <td>${pmk(m.p_atacado,m.mk_atacado)}</td><td>${pmk(m.p_site,m.mk_site)}</td><td>${pmk(m.p_marketplace,m.mk_marketplace)}</td>
-      <td><b>${nf1.format(m._giro)}</b></td>
+    tr.innerHTML=`<td><span class="cod" title="${esc(m.descricao||'')}">${esc(m.cod)}</span></td>
+      <td>${rf2.format(m.custo)}</td>
+      <td>${mk(m.mk_atacado)}</td><td>${mk(m.mk_site)}</td><td>${mk(m.mk_marketplace)}</td>
+      <td>${pr(m.p_atacado)}</td><td>${pr(m.p_site)}</td><td>${pr(m.p_marketplace)}</td>
+      <td>${nf1.format(m._giro)}</td>
       <td style="text-align:left">${m._flags.map(f=>`<span class="pill ${MKFLAGS[f].cl}" title="${MKFLAGS[f].hint}"><i></i>${MKFLAGS[f].lb}</span>`).join(' ')||'—'}</td>`;
     const abrir=()=>{ const r=st.radar.find(x=>x.cod===m.cod); if(r) ficha(r); };
     tr.onclick=abrir; tr.onkeydown=e=>{if(e.key==='Enter')abrir();};
