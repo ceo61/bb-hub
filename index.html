@@ -526,7 +526,7 @@ async function ficha(r){
   const id0=idd?.[0];
   const mmYY=d8=>d8?d8.slice(4,6)+'/'+d8.slice(0,4):'—';
   $('#fPrecos').innerHTML = `
-    ${id0?`<div class="prow"><span class="pl">Geração</span><span class="pv">${GERLB[gerDe(id0.primeira_imp)]||'—'} <small>· 1ª importação ${mmYY(id0.primeira_imp)} · última ${mmYY(id0.ultima_imp)}</small></span></div>`:''}
+    ${id0?`<div class="prow"><span class="pl">Geração</span><span class="pv">${GERLB[gerDe(id0.primeira_imp)]||'—'} <small>· ${esc(id0.origem||'importação')} · 1ª entrada ${mmYY(id0.primeira_imp)} · última ${mmYY(id0.ultima_imp)}</small></span></div>`:''}
     ${custo?`<div class="prow"><span class="pl"><b>Custo médio (importadora)</b></span><span class="pv">${rf2.format(custo)} <small>${esc(ct[0].origem||'')}</small></span></div>`:''}
     <div class="prow"><span class="pl">Site BB Baterias (002)</span><span class="pv">${mp['002']?rf2.format(mp['002'].preco_real)+mkTxt(mp['002'].preco_real)+' <small>· POR '+rf2.format(mp['002'].preco_por)+'</small>':'—'}</span></div>
     <div class="prow"><span class="pl">Marketplace (401)</span><span class="pv">${mp['401']?rf2.format(mp['401'].preco_por)+(()=>{const lq=mp['401'].preco_por*0.84-20;return ` <small>· líq. ${rf2.format(lq)}${custo?` · ${nf1.format(lq/custo)}×`:''}</small>`;})():'—'}</span></div>
@@ -576,11 +576,11 @@ const MKFLAGS = {
   custo:   {lb:'Custo suspeito',  cl:'p-dado',  hint:'markup do site > 8× — custo possivelmente desatualizado'},
 };
 function gerDe(d8){
-  if(!d8) return 'sem histórico';
+  if(!d8) return 'fóssil';
   const m=(new Date().getFullYear()-+d8.slice(0,4))*12 + (new Date().getMonth()+1-+d8.slice(4,6));
   return m<12?'lançamento':m<24?'crescimento':m<48?'maturidade':m<84?'veterano':'legado';
 }
-const GERLB={'lançamento':'Lanç. <1a','crescimento':'Cresc. 1-2a','maturidade':'Matur. 2-4a','veterano':'Veter. 4-7a','legado':'Legado >7a','sem histórico':'s/ hist.'};
+const GERLB={'lançamento':'Lanç. <1a','crescimento':'Cresc. 1-2a','maturidade':'Matur. 2-4a','veterano':'Veter. 4-7a','legado':'Legado >7a','fóssil':'Fóssil'};
 function flagsDe(m, med){
   const f=[];
   if([m.mk_atacado,m.mk_site,m.mk_marketplace].some(x=>x&&x<1)) f.push('abaixo');
@@ -610,7 +610,7 @@ async function renderPrecos(){
   const cont={}; for(const m of st.markup) for(const f of m._flags) cont[f]=(cont[f]||0)+1;
   const grupos={}; st.markup.forEach(m=>{const g=m.grupo||'—'; grupos[g]=(grupos[g]||0)+1;});
   const gers={}; st.markup.forEach(m=>{gers[m.geracao]=(gers[m.geracao]||0)+1;});
-  const GERORD=['lançamento','crescimento','maturidade','veterano','legado','sem histórico'];
+  const GERORD=['lançamento','crescimento','maturidade','veterano','legado','fóssil'];
   $('#conteudo').innerHTML = `
     <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Markup = preço ÷ custo médio da importadora (0101) · site à vista (−5%) · <b>ML sobre o líquido</b> (preço −16% comissão −R$ 20 frete). Geração = idade desde a 1ª importação. O alerta "fora da curva" compara com a mediana do <b>grupo × geração</b> (lançamento aguenta markup maior; acessório legado tem prêmio de escassez).</p>
     <div class="kpis">${Object.entries(MKFLAGS).map(([id,f])=>`<button class="kpi ${st.mkFlag===id?'active':''}" data-f="${id}" title="${f.hint}"><span class="lab"><span class="dot" style="background:${id==='abaixo'?'var(--crit)':id==='curva'?'var(--warn)':id==='custo'?'var(--muted)':'var(--ser)'}"></span>${f.lb}</span><span class="val">${nf.format(cont[id]||0)}</span><span class="sub">${f.hint}</span></button>`).join('')}</div>
@@ -675,7 +675,7 @@ function linhasMk(){
   for(const m of rows.slice(0,st.shown)){
     const tr=document.createElement('tr'); tr.className='clicavel'; tr.tabIndex=0;
     tr.innerHTML=`<td><span class="cod" title="${esc(m.descricao||'')}">${esc(m.cod)}</span></td>
-      <td><span class="gr" title="${m.primeira_imp?('1ª importação '+m.primeira_imp.slice(4,6)+'/'+m.primeira_imp.slice(0,4)+' · última '+m.ultima_imp.slice(4,6)+'/'+m.ultima_imp.slice(0,4)):'sem importação registrada'}">${GERLB[m.geracao]||'—'}</span></td>
+      <td><span class="gr" title="${m.primeira_imp?('origem: '+(m.origem_idade||'importação')+' · 1ª entrada '+m.primeira_imp.slice(4,6)+'/'+m.primeira_imp.slice(0,4)+' · última '+m.ultima_imp.slice(4,6)+'/'+m.ultima_imp.slice(0,4)):'fóssil — sem entrada registrada (importado antes de 2012 ou cadastro morto)'}">${GERLB[m.geracao]||'—'}</span></td>
       <td>${nf.format(m._saldo)}</td>
       <td>${rf2.format(m.custo)}</td>
       <td>${mk(m.mk_atacado)}</td><td>${mk(m.mk_site)}</td><td>${mk(m.mk_marketplace)}</td>
