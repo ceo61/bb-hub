@@ -512,17 +512,21 @@ async function ficha(r){
      <div class="abtn"><span><b>Reprecificar / promocionar</b><br>grava no ERP pelo fluxo homologado</span><span class="tag">Fase 3</span></div></div></div>`;
   panel.querySelector('.close').onclick=fechaFicha;
   panel.classList.add('open'); scrim.classList.add('open'); panel.scrollTop=0;
-  const [{data:pr},{data:cp},{data:ct}] = await Promise.all([
+  const [{data:pr},{data:cp},{data:ct},{data:idd}] = await Promise.all([
     sb.from('fato_precos').select('codtab,filial,preco_por,preco_real').eq('snapshot',st.snap).eq('cod',r.cod),
     sb.from('dim_compatibilidade').select('modelo').eq('cod',r.cod).neq('modelo','').limit(40),
     sb.from('fato_custo').select('custo,origem').eq('snapshot',st.snap).eq('cod',r.cod),
+    sb.from('dim_idade').select('*').eq('cod',r.cod),
   ]);
   // pares canônicos: atacado=001/01, site=002/10, marketplace=401/10 (demais linhas são lixo histórico)
   const CANON={'001':'01','002':'10','401':'10'};
   const mp={}; (pr||[]).forEach(x=>{ if(CANON[x.codtab]===x.filial) mp[x.codtab]=x; });
   const custo = ct?.[0]?.custo || 0;
   const mkTxt = p => (custo&&p) ? ` <small>· ${nf1.format(p/custo)}×</small>` : '';
+  const id0=idd?.[0];
+  const mmYY=d8=>d8?d8.slice(4,6)+'/'+d8.slice(0,4):'—';
   $('#fPrecos').innerHTML = `
+    ${id0?`<div class="prow"><span class="pl">Geração</span><span class="pv">${GERLB[gerDe(id0.primeira_imp)]||'—'} <small>· 1ª importação ${mmYY(id0.primeira_imp)} · última ${mmYY(id0.ultima_imp)}</small></span></div>`:''}
     ${custo?`<div class="prow"><span class="pl"><b>Custo médio (importadora)</b></span><span class="pv">${rf2.format(custo)} <small>${esc(ct[0].origem||'')}</small></span></div>`:''}
     <div class="prow"><span class="pl">Site BB Baterias (002)</span><span class="pv">${mp['002']?rf2.format(mp['002'].preco_real)+mkTxt(mp['002'].preco_real)+' <small>· POR '+rf2.format(mp['002'].preco_por)+'</small>':'—'}</span></div>
     <div class="prow"><span class="pl">Marketplace (401)</span><span class="pv">${mp['401']?rf2.format(mp['401'].preco_por)+mkTxt(mp['401'].preco_por):'—'}</span></div>
@@ -571,13 +575,20 @@ const MKFLAGS = {
   curva:   {lb:'Fora da curva',   cl:'p-promo', hint:'markup do site muito distante da mediana do grupo'},
   custo:   {lb:'Custo suspeito',  cl:'p-dado',  hint:'markup do site > 8× — custo possivelmente desatualizado'},
 };
+function gerDe(d8){
+  if(!d8) return 'sem histórico';
+  const m=(new Date().getFullYear()-+d8.slice(0,4))*12 + (new Date().getMonth()+1-+d8.slice(4,6));
+  return m<12?'lançamento':m<24?'crescimento':m<48?'maturidade':m<84?'veterano':'legado';
+}
+const GERLB={'lançamento':'Lanç. <1a','crescimento':'Cresc. 1-2a','maturidade':'Matur. 2-4a','veterano':'Veter. 4-7a','legado':'Legado >7a','sem histórico':'s/ hist.'};
 function flagsDe(m, med){
   const f=[];
   if([m.mk_atacado,m.mk_site,m.mk_marketplace].some(x=>x&&x<1)) f.push('abaixo');
   if(m.mk_atacado&&m.mk_site&&m.mk_atacado>=m.mk_site) f.push('atacado');
   if(m.p_marketplace&&m.p_site&&m.p_marketplace<m.p_site) f.push('mlmenor');
   if(m.mk_site&&m.mk_site>8) f.push('custo');
-  const md=med[m.grupo];
+  // fora da curva: mediana do grupo×geração; sem amostra suficiente, cai p/ mediana do grupo
+  const md = med[m.grupo+'|'+m.geracao] ?? med[m.grupo];
   if(m.mk_site&&md&&(m.mk_site>md*1.6||m.mk_site<md*0.55)) f.push('curva');
   return f;
 }
@@ -587,25 +598,32 @@ async function renderPrecos(){
     st.markup = await tudo('precos_markup', {eq:[['snapshot',st.snap]]});
     st.markup = st.markup.filter(m=>m.custo>0 && !m.cod.startsWith('SP-') && !m.cod.includes('DEVOLUCAO'));
     const porG={};
-    for(const m of st.markup) if(m.mk_site&&m.mk_site>1&&m.mk_site<15)(porG[m.grupo]=porG[m.grupo]||[]).push(m.mk_site);
+    for(const m of st.markup) if(m.mk_site&&m.mk_site>1&&m.mk_site<15){
+      (porG[m.grupo]=porG[m.grupo]||[]).push(m.mk_site);
+      (porG[m.grupo+'|'+m.geracao]=porG[m.grupo+'|'+m.geracao]||[]).push(m.mk_site);
+    }
     st.mkMed={};
     for(const g in porG){ const v=porG[g].sort((a,b)=>a-b); if(v.length>=8) st.mkMed[g]=v[Math.floor(v.length/2)]; }
     const estq={}; (await tudo('fato_estoque',{select:'cod,estoque_util',eq:[['snapshot',st.snap]]})).forEach(e=>estq[e.cod]=e.estoque_util);
-    for(const m of st.markup){ m._flags=flagsDe(m,st.mkMed); m._giro=(st.radar.find(r=>r.cod===m.cod)||{}).media_mes||0; m._saldo=estq[m.cod]??0; }
+    for(const m of st.markup){ m._flags=flagsDe(m,st.mkMed); m._giro=(st.radar.find(r=>r.cod===m.cod)||{}).media_mes||0; m._saldo=estq[m.cod]??0; m._meses=m.meses_casa; }
   }
   const cont={}; for(const m of st.markup) for(const f of m._flags) cont[f]=(cont[f]||0)+1;
   const grupos={}; st.markup.forEach(m=>{const g=m.grupo||'—'; grupos[g]=(grupos[g]||0)+1;});
+  const gers={}; st.markup.forEach(m=>{gers[m.geracao]=(gers[m.geracao]||0)+1;});
+  const GERORD=['lançamento','crescimento','maturidade','veterano','legado','sem histórico'];
   $('#conteudo').innerHTML = `
-    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Markup = preço ÷ custo médio da importadora (0101). Site já considerado à vista (−5%). Grupos: mediana do markup site ${Object.entries(st.mkMed).slice(0,6).map(([g,v])=>`${esc(g)} ${nf1.format(v)}×`).join(' · ')}</p>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Markup = preço ÷ custo médio da importadora (0101) · site já à vista (−5%). Geração = idade desde a 1ª importação. O alerta "fora da curva" compara com a mediana do <b>grupo × geração</b> (lançamento aguenta markup maior; acessório legado tem prêmio de escassez).</p>
     <div class="kpis">${Object.entries(MKFLAGS).map(([id,f])=>`<button class="kpi ${st.mkFlag===id?'active':''}" data-f="${id}" title="${f.hint}"><span class="lab"><span class="dot" style="background:${id==='abaixo'?'var(--crit)':id==='curva'?'var(--warn)':id==='custo'?'var(--muted)':'var(--ser)'}"></span>${f.lb}</span><span class="val">${nf.format(cont[id]||0)}</span><span class="sub">${f.hint}</span></button>`).join('')}</div>
     <div class="toolbar">
       <input type="search" id="mq" placeholder="Buscar ref ou descrição…" value="${esc(st.mkQ||'')}">
       <select id="mg"><option value="">Todos os grupos</option>${Object.keys(grupos).sort((a,b)=>grupos[b]-grupos[a]).map(g=>`<option ${st.mkG===g?'selected':''} value="${esc(g)}">${esc(g)} (${grupos[g]})</option>`).join('')}</select>
+      <select id="mger"><option value="">Todas as gerações</option>${GERORD.filter(g=>gers[g]).map(g=>`<option ${st.mkGer===g?'selected':''} value="${esc(g)}">${GERLB[g]||g} (${gers[g]})</option>`).join('')}</select>
       <span class="count" id="mcount"></span>
     </div>
     <div class="tablecard"><div class="tscroll"><table>
       <thead><tr>
         <th class="ord" data-c="cod">Produto<span class="seta"></span></th>
+        <th class="ord" data-c="_meses">Geração<span class="seta"></span></th>
         <th class="ord" data-c="_saldo">Saldo<span class="seta"></span></th>
         <th class="ord" data-c="custo">Custo<span class="seta"></span></th>
         <th class="ord" data-c="mk_atacado">Mk Atac.<span class="seta"></span></th>
@@ -621,6 +639,7 @@ async function renderPrecos(){
   document.querySelectorAll('.kpi[data-f]').forEach(b=>b.onclick=()=>{ st.mkFlag = st.mkFlag===b.dataset.f?null:b.dataset.f; st.shown=120; renderPrecos(); });
   let qt; $('#mq').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{st.mkQ=e.target.value.trim().toUpperCase();st.shown=120;linhasMk();},200);};
   $('#mg').onchange=e=>{st.mkG=e.target.value;st.shown=120;linhasMk();};
+  $('#mger').onchange=e=>{st.mkGer=e.target.value;st.shown=120;linhasMk();};
   document.querySelectorAll('th.ord').forEach(th=>th.onclick=()=>{
     const c=th.dataset.c;
     if(st.mkCol===c) st.mkDir=-st.mkDir;               // 2º clique inverte
@@ -635,6 +654,7 @@ function linhasMk(){
   let rows=st.markup.filter(m=>{
     if(st.mkFlag && !m._flags.includes(st.mkFlag)) return false;
     if(st.mkG && (m.grupo||'—')!==st.mkG) return false;
+    if(st.mkGer && m.geracao!==st.mkGer) return false;
     if(st.mkQ && !(m.cod+' '+(m.descricao||'')).toUpperCase().includes(st.mkQ)) return false;
     return true;
   });
@@ -655,6 +675,7 @@ function linhasMk(){
   for(const m of rows.slice(0,st.shown)){
     const tr=document.createElement('tr'); tr.className='clicavel'; tr.tabIndex=0;
     tr.innerHTML=`<td><span class="cod" title="${esc(m.descricao||'')}">${esc(m.cod)}</span></td>
+      <td><span class="gr" title="${m.primeira_imp?('1ª importação '+m.primeira_imp.slice(4,6)+'/'+m.primeira_imp.slice(0,4)+' · última '+m.ultima_imp.slice(4,6)+'/'+m.ultima_imp.slice(0,4)):'sem importação registrada'}">${GERLB[m.geracao]||'—'}</span></td>
       <td>${nf.format(m._saldo)}</td>
       <td>${rf2.format(m.custo)}</td>
       <td>${mk(m.mk_atacado)}</td><td>${mk(m.mk_site)}</td><td>${mk(m.mk_marketplace)}</td>
