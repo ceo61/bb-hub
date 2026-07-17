@@ -590,7 +590,8 @@ async function renderPrecos(){
     for(const m of st.markup) if(m.mk_site&&m.mk_site>1&&m.mk_site<15)(porG[m.grupo]=porG[m.grupo]||[]).push(m.mk_site);
     st.mkMed={};
     for(const g in porG){ const v=porG[g].sort((a,b)=>a-b); if(v.length>=8) st.mkMed[g]=v[Math.floor(v.length/2)]; }
-    for(const m of st.markup){ m._flags=flagsDe(m,st.mkMed); m._giro=(st.radar.find(r=>r.cod===m.cod)||{}).media_mes||0; }
+    const estq={}; (await tudo('fato_estoque',{select:'cod,estoque_util',eq:[['snapshot',st.snap]]})).forEach(e=>estq[e.cod]=e.estoque_util);
+    for(const m of st.markup){ m._flags=flagsDe(m,st.mkMed); m._giro=(st.radar.find(r=>r.cod===m.cod)||{}).media_mes||0; m._saldo=estq[m.cod]??0; }
   }
   const cont={}; for(const m of st.markup) for(const f of m._flags) cont[f]=(cont[f]||0)+1;
   const grupos={}; st.markup.forEach(m=>{const g=m.grupo||'—'; grupos[g]=(grupos[g]||0)+1;});
@@ -605,6 +606,7 @@ async function renderPrecos(){
     <div class="tablecard"><div class="tscroll"><table>
       <thead><tr>
         <th class="ord" data-c="cod">Produto<span class="seta"></span></th>
+        <th class="ord" data-c="_saldo">Saldo<span class="seta"></span></th>
         <th class="ord" data-c="custo">Custo<span class="seta"></span></th>
         <th class="ord" data-c="mk_atacado">Mk Atac.<span class="seta"></span></th>
         <th class="ord" data-c="mk_site">Mk Site<span class="seta"></span></th>
@@ -653,6 +655,7 @@ function linhasMk(){
   for(const m of rows.slice(0,st.shown)){
     const tr=document.createElement('tr'); tr.className='clicavel'; tr.tabIndex=0;
     tr.innerHTML=`<td><span class="cod" title="${esc(m.descricao||'')}">${esc(m.cod)}</span></td>
+      <td>${nf.format(m._saldo)}</td>
       <td>${rf2.format(m.custo)}</td>
       <td>${mk(m.mk_atacado)}</td><td>${mk(m.mk_site)}</td><td>${mk(m.mk_marketplace)}</td>
       <td>${pr(m.p_atacado)}</td><td>${pr(m.p_site)}</td><td>${pr(m.p_marketplace)}</td>
