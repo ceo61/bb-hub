@@ -510,11 +510,13 @@ async function ficha(r){
   panel.querySelector('.close').onclick=fechaFicha;
   panel.classList.add('open'); scrim.classList.add('open'); panel.scrollTop=0;
   const [{data:pr},{data:cp},{data:ct}] = await Promise.all([
-    sb.from('fato_precos').select('codtab,preco_por,preco_real').eq('snapshot',st.snap).eq('cod',r.cod),
+    sb.from('fato_precos').select('codtab,filial,preco_por,preco_real').eq('snapshot',st.snap).eq('cod',r.cod),
     sb.from('dim_compatibilidade').select('modelo').eq('cod',r.cod).neq('modelo','').limit(40),
     sb.from('fato_custo').select('custo,origem').eq('snapshot',st.snap).eq('cod',r.cod),
   ]);
-  const mp={}; (pr||[]).forEach(x=>mp[x.codtab]=x);
+  // pares canônicos: atacado=001/01, site=002/10, marketplace=401/10 (demais linhas são lixo histórico)
+  const CANON={'001':'01','002':'10','401':'10'};
+  const mp={}; (pr||[]).forEach(x=>{ if(CANON[x.codtab]===x.filial) mp[x.codtab]=x; });
   const custo = ct?.[0]?.custo || 0;
   const mkTxt = p => (custo&&p) ? ` <small>· ${nf1.format(p/custo)}×</small>` : '';
   $('#fPrecos').innerHTML = `
