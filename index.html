@@ -605,7 +605,7 @@ async function renderPrecos(){
     st.mkMed={};
     for(const g in porG){ const v=porG[g].sort((a,b)=>a-b); if(v.length>=8) st.mkMed[g]=v[Math.floor(v.length/2)]; }
     const estq={}; (await tudo('fato_estoque',{select:'cod,estoque_util',eq:[['snapshot',st.snap]]})).forEach(e=>estq[e.cod]=e.estoque_util);
-    for(const m of st.markup){ m._flags=flagsDe(m,st.mkMed); m._giro=(st.radar.find(r=>r.cod===m.cod)||{}).media_mes||0; m._saldo=estq[m.cod]??0; m._meses=m.meses_casa; }
+    for(const m of st.markup){ const rr=st.radar.find(r=>r.cod===m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._meses=m.meses_casa; m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); }
   }
   const cont={}; for(const m of st.markup) for(const f of m._flags) cont[f]=(cont[f]||0)+1;
   const grupos={}; st.markup.forEach(m=>{const g=m.grupo||'—'; grupos[g]=(grupos[g]||0)+1;});
@@ -617,6 +617,11 @@ async function renderPrecos(){
     <div class="toolbar">
       <input type="search" id="mq" placeholder="Buscar ref ou descrição…" value="${esc(st.mkQ||'')}">
       <select id="mg"><option value="">Todos os grupos</option>${Object.keys(grupos).sort((a,b)=>grupos[b]-grupos[a]).map(g=>`<option ${st.mkG===g?'selected':''} value="${esc(g)}">${esc(g)} (${grupos[g]})</option>`).join('')}</select>
+      <select id="mat">
+        <option value="">Atividade: todos</option>
+        <option ${st.mkAt==='1'?'selected':''} value="1">Com venda 90d</option>
+        <option ${st.mkAt==='0'?'selected':''} value="0">Sem venda 90d</option>
+      </select>
       <select id="mger"><option value="">Todas as gerações</option>${GERORD.filter(g=>gers[g]).map(g=>`<option ${st.mkGer===g?'selected':''} value="${esc(g)}">${GERLB[g]||g} (${gers[g]})</option>`).join('')}</select>
       <span class="count" id="mcount"></span>
     </div>
@@ -640,6 +645,7 @@ async function renderPrecos(){
   let qt; $('#mq').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{st.mkQ=e.target.value.trim().toUpperCase();st.shown=120;linhasMk();},200);};
   $('#mg').onchange=e=>{st.mkG=e.target.value;st.shown=120;linhasMk();};
   $('#mger').onchange=e=>{st.mkGer=e.target.value;st.shown=120;linhasMk();};
+  $('#mat').onchange=e=>{st.mkAt=e.target.value;st.shown=120;linhasMk();};
   document.querySelectorAll('th.ord').forEach(th=>th.onclick=()=>{
     const c=th.dataset.c;
     if(st.mkCol===c) st.mkDir=-st.mkDir;               // 2º clique inverte
@@ -655,6 +661,8 @@ function linhasMk(){
     if(st.mkFlag && !m._flags.includes(st.mkFlag)) return false;
     if(st.mkG && (m.grupo||'—')!==st.mkG) return false;
     if(st.mkGer && m.geracao!==st.mkGer) return false;
+    if(st.mkAt==='1' && !m._ativo) return false;
+    if(st.mkAt==='0' && m._ativo) return false;
     if(st.mkQ && !(m.cod+' '+(m.descricao||'')).toUpperCase().includes(st.mkQ)) return false;
     return true;
   });
