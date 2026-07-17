@@ -208,7 +208,7 @@ tbody tr:last-child td{border-bottom:none}
     <a href="#radar" data-pg="radar">📡 Radar</a>
     <a href="#produtos" data-pg="produtos">📦 Produtos</a>
     <a href="#compras" data-pg="compras">🚢 Compras &amp; Trânsito</a>
-    <a href="#precos" data-pg="precos">🏷️ Preços &amp; Promoções <span class="soon">breve</span></a>
+    <a href="#precos" data-pg="precos">🏷️ Preços — Markup</a>
     <a href="#importacoes" data-pg="importacoes">🛬 Importações <span class="soon">breve</span></a>
     <a href="#anuncios" data-pg="anuncios">📈 Anúncios &amp; Conversão <span class="soon">breve</span></a>
     <a href="#decisoes" data-pg="decisoes">💬 Decisões — Chat IA <span class="soon">breve</span></a>
@@ -344,7 +344,7 @@ $('#semaforo').onclick = ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços & Promoções', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   if(!TITULOS[pg]) pg='radar';
   st.pg=pg; st.shown=120;
@@ -353,6 +353,7 @@ function navega(pg){
   $('#nav').classList.remove('aberta');
   if(pg==='radar'||pg==='produtos') renderRadar(pg==='produtos');
   else if(pg==='compras') renderCompras();
+  else if(pg==='precos') renderPrecos();
   else if(pg==='config') renderConfig();
   else renderEmBreve(pg);
 }
@@ -508,15 +509,19 @@ async function ficha(r){
      <div class="abtn"><span><b>Reprecificar / promocionar</b><br>grava no ERP pelo fluxo homologado</span><span class="tag">Fase 3</span></div></div></div>`;
   panel.querySelector('.close').onclick=fechaFicha;
   panel.classList.add('open'); scrim.classList.add('open'); panel.scrollTop=0;
-  const [{data:pr},{data:cp}] = await Promise.all([
+  const [{data:pr},{data:cp},{data:ct}] = await Promise.all([
     sb.from('fato_precos').select('codtab,preco_por,preco_real').eq('snapshot',st.snap).eq('cod',r.cod),
     sb.from('dim_compatibilidade').select('modelo').eq('cod',r.cod).neq('modelo','').limit(40),
+    sb.from('fato_custo').select('custo,origem').eq('snapshot',st.snap).eq('cod',r.cod),
   ]);
   const mp={}; (pr||[]).forEach(x=>mp[x.codtab]=x);
+  const custo = ct?.[0]?.custo || 0;
+  const mkTxt = p => (custo&&p) ? ` <small>· ${nf1.format(p/custo)}×</small>` : '';
   $('#fPrecos').innerHTML = `
-    <div class="prow"><span class="pl">Site BB Baterias (002)</span><span class="pv">${mp['002']?rf2.format(mp['002'].preco_real)+' <small>à vista · POR '+rf2.format(mp['002'].preco_por)+'</small>':'—'}</span></div>
-    <div class="prow"><span class="pl">Marketplace (401)</span><span class="pv">${mp['401']?rf2.format(mp['401'].preco_por):'—'}</span></div>
-    <div class="prow"><span class="pl">Atacado B2B (001)</span><span class="pv">${mp['001']?rf2.format(mp['001'].preco_por):'—'}</span></div>`;
+    ${custo?`<div class="prow"><span class="pl"><b>Custo médio (importadora)</b></span><span class="pv">${rf2.format(custo)} <small>${esc(ct[0].origem||'')}</small></span></div>`:''}
+    <div class="prow"><span class="pl">Site BB Baterias (002)</span><span class="pv">${mp['002']?rf2.format(mp['002'].preco_real)+mkTxt(mp['002'].preco_real)+' <small>· POR '+rf2.format(mp['002'].preco_por)+'</small>':'—'}</span></div>
+    <div class="prow"><span class="pl">Marketplace (401)</span><span class="pv">${mp['401']?rf2.format(mp['401'].preco_por)+mkTxt(mp['401'].preco_por):'—'}</span></div>
+    <div class="prow"><span class="pl">Atacado B2B (001)</span><span class="pv">${mp['001']?rf2.format(mp['001'].preco_por)+mkTxt(mp['001'].preco_por):'—'}</span></div>`;
   const mods=[...new Set((cp||[]).map(x=>x.modelo.trim()).filter(m=>m&&m!==r.cod))].slice(0,12);
   $('#fCompat').innerHTML = mods.length? mods.map(m=>`<span class="chip">${esc(m)}</span>`).join('') : '<span style="color:var(--muted);font-size:12px">sem registros</span>';
 }
@@ -551,6 +556,88 @@ function renderCompras(){
   };
   $('#soVenc').onchange = e=>desenha(e.target.checked);
   desenha(false);
+}
+
+/* ---------- página preços — markup ---------- */
+const MKFLAGS = {
+  abaixo:  {lb:'Abaixo do custo', cl:'p-rupt',  hint:'algum canal com preço menor que o custo'},
+  atacado: {lb:'Atacado ≥ Site',  cl:'p-imp',   hint:'markup do atacado igual ou maior que o do site'},
+  mlmenor: {lb:'ML < Site',       cl:'p-imp',   hint:'preço do marketplace abaixo do site'},
+  curva:   {lb:'Fora da curva',   cl:'p-promo', hint:'markup do site muito distante da mediana do grupo'},
+  custo:   {lb:'Custo suspeito',  cl:'p-dado',  hint:'markup do site > 8× — custo possivelmente desatualizado'},
+};
+function flagsDe(m, med){
+  const f=[];
+  if([m.mk_atacado,m.mk_site,m.mk_marketplace].some(x=>x&&x<1)) f.push('abaixo');
+  if(m.mk_atacado&&m.mk_site&&m.mk_atacado>=m.mk_site) f.push('atacado');
+  if(m.p_marketplace&&m.p_site&&m.p_marketplace<m.p_site) f.push('mlmenor');
+  if(m.mk_site&&m.mk_site>8) f.push('custo');
+  const md=med[m.grupo];
+  if(m.mk_site&&md&&(m.mk_site>md*1.6||m.mk_site<md*0.55)) f.push('curva');
+  return f;
+}
+async function renderPrecos(){
+  if(!st.markup){
+    $('#conteudo').innerHTML='<div class="carregando">Calculando markups…</div>';
+    st.markup = await tudo('precos_markup', {eq:[['snapshot',st.snap]]});
+    st.markup = st.markup.filter(m=>m.custo>0 && !m.cod.startsWith('SP-') && !m.cod.includes('DEVOLUCAO'));
+    const porG={};
+    for(const m of st.markup) if(m.mk_site&&m.mk_site>1&&m.mk_site<15)(porG[m.grupo]=porG[m.grupo]||[]).push(m.mk_site);
+    st.mkMed={};
+    for(const g in porG){ const v=porG[g].sort((a,b)=>a-b); if(v.length>=8) st.mkMed[g]=v[Math.floor(v.length/2)]; }
+    for(const m of st.markup){ m._flags=flagsDe(m,st.mkMed); m._giro=(st.radar.find(r=>r.cod===m.cod)||{}).media_mes||0; }
+  }
+  const cont={}; for(const m of st.markup) for(const f of m._flags) cont[f]=(cont[f]||0)+1;
+  const grupos={}; st.markup.forEach(m=>{const g=m.grupo||'—'; grupos[g]=(grupos[g]||0)+1;});
+  $('#conteudo').innerHTML = `
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Markup = preço ÷ custo médio da importadora (0101). Site já considerado à vista (−5%). Grupos: mediana do markup site ${Object.entries(st.mkMed).slice(0,6).map(([g,v])=>`${esc(g)} ${nf1.format(v)}×`).join(' · ')}</p>
+    <div class="kpis">${Object.entries(MKFLAGS).map(([id,f])=>`<button class="kpi ${st.mkFlag===id?'active':''}" data-f="${id}" title="${f.hint}"><span class="lab"><span class="dot" style="background:${id==='abaixo'?'var(--crit)':id==='curva'?'var(--warn)':id==='custo'?'var(--muted)':'var(--ser)'}"></span>${f.lb}</span><span class="val">${nf.format(cont[id]||0)}</span><span class="sub">${f.hint}</span></button>`).join('')}</div>
+    <div class="toolbar">
+      <input type="search" id="mq" placeholder="Buscar ref ou descrição…" value="${esc(st.mkQ||'')}">
+      <select id="mg"><option value="">Todos os grupos</option>${Object.keys(grupos).sort((a,b)=>grupos[b]-grupos[a]).map(g=>`<option ${st.mkG===g?'selected':''} value="${esc(g)}">${esc(g)} (${grupos[g]})</option>`).join('')}</select>
+      <select id="ms">
+        <option value="giro">Ordenar: giro (média/mês)</option>
+        <option value="mkmax" ${st.mkS==='mkmax'?'selected':''}>Ordenar: maior markup site</option>
+        <option value="mkmin" ${st.mkS==='mkmin'?'selected':''}>Ordenar: menor markup site</option>
+      </select>
+      <span class="count" id="mcount"></span>
+    </div>
+    <div class="tablecard"><div class="tscroll"><table>
+      <thead><tr><th>Produto</th><th>Custo</th><th>Atacado</th><th>Site (à vista)</th><th>Marketplace</th><th>Giro/mês</th><th>Alertas</th></tr></thead>
+      <tbody id="mrows"></tbody></table></div><button class="more hide" id="mmore"></button></div>`;
+  document.querySelectorAll('.kpi[data-f]').forEach(b=>b.onclick=()=>{ st.mkFlag = st.mkFlag===b.dataset.f?null:b.dataset.f; st.shown=120; renderPrecos(); });
+  let qt; $('#mq').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{st.mkQ=e.target.value.trim().toUpperCase();st.shown=120;linhasMk();},200);};
+  $('#mg').onchange=e=>{st.mkG=e.target.value;st.shown=120;linhasMk();};
+  $('#ms').onchange=e=>{st.mkS=e.target.value;linhasMk();};
+  linhasMk();
+}
+function linhasMk(){
+  const pmk=(p,m)=>p?`${rf2.format(p)}<br><span class="gr">${m?nf1.format(m)+'×':'—'}</span>`:'—';
+  let rows=st.markup.filter(m=>{
+    if(st.mkFlag && !m._flags.includes(st.mkFlag)) return false;
+    if(st.mkG && (m.grupo||'—')!==st.mkG) return false;
+    if(st.mkQ && !(m.cod+' '+(m.descricao||'')).toUpperCase().includes(st.mkQ)) return false;
+    return true;
+  });
+  rows.sort((a,b)=> st.mkS==='mkmax' ? (b.mk_site||0)-(a.mk_site||0)
+                 : st.mkS==='mkmin' ? (a.mk_site??999)-(b.mk_site??999)
+                 : b._giro-a._giro);
+  $('#mcount').textContent = nf.format(rows.length)+' produtos';
+  const tb=$('#mrows'); tb.innerHTML='';
+  for(const m of rows.slice(0,st.shown)){
+    const tr=document.createElement('tr'); tr.className='clicavel'; tr.tabIndex=0;
+    tr.innerHTML=`<td><span class="cod">${esc(m.cod)}</span><br><span class="gr">${esc((m.descricao||'').slice(0,40))}</span></td>
+      <td>${rf2.format(m.custo)}<br><span class="gr">${esc(m.origem||'')}</span></td>
+      <td>${pmk(m.p_atacado,m.mk_atacado)}</td><td>${pmk(m.p_site,m.mk_site)}</td><td>${pmk(m.p_marketplace,m.mk_marketplace)}</td>
+      <td><b>${nf1.format(m._giro)}</b></td>
+      <td style="text-align:left">${m._flags.map(f=>`<span class="pill ${MKFLAGS[f].cl}" title="${MKFLAGS[f].hint}"><i></i>${MKFLAGS[f].lb}</span>`).join(' ')||'—'}</td>`;
+    const abrir=()=>{ const r=st.radar.find(x=>x.cod===m.cod); if(r) ficha(r); };
+    tr.onclick=abrir; tr.onkeydown=e=>{if(e.key==='Enter')abrir();};
+    tb.appendChild(tr);
+  }
+  const more=$('#mmore');
+  if(rows.length>st.shown){ more.classList.remove('hide'); more.textContent=`Mostrar mais (${nf.format(rows.length-st.shown)} restantes)`; more.onclick=()=>{st.shown+=200;linhasMk();}; }
+  else more.classList.add('hide');
 }
 
 /* ---------- em construção / config ---------- */
