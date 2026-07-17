@@ -529,7 +529,7 @@ async function ficha(r){
     ${id0?`<div class="prow"><span class="pl">Geração</span><span class="pv">${GERLB[gerDe(id0.primeira_imp)]||'—'} <small>· 1ª importação ${mmYY(id0.primeira_imp)} · última ${mmYY(id0.ultima_imp)}</small></span></div>`:''}
     ${custo?`<div class="prow"><span class="pl"><b>Custo médio (importadora)</b></span><span class="pv">${rf2.format(custo)} <small>${esc(ct[0].origem||'')}</small></span></div>`:''}
     <div class="prow"><span class="pl">Site BB Baterias (002)</span><span class="pv">${mp['002']?rf2.format(mp['002'].preco_real)+mkTxt(mp['002'].preco_real)+' <small>· POR '+rf2.format(mp['002'].preco_por)+'</small>':'—'}</span></div>
-    <div class="prow"><span class="pl">Marketplace (401)</span><span class="pv">${mp['401']?rf2.format(mp['401'].preco_por)+mkTxt(mp['401'].preco_por):'—'}</span></div>
+    <div class="prow"><span class="pl">Marketplace (401)</span><span class="pv">${mp['401']?rf2.format(mp['401'].preco_por)+(()=>{const lq=mp['401'].preco_por*0.84-20;return ` <small>· líq. ${rf2.format(lq)}${custo?` · ${nf1.format(lq/custo)}×`:''}</small>`;})():'—'}</span></div>
     <div class="prow"><span class="pl">Atacado B2B (001)</span><span class="pv">${mp['001']?rf2.format(mp['001'].preco_por)+mkTxt(mp['001'].preco_por):'—'}</span></div>`;
   const mods=[...new Set((cp||[]).map(x=>x.modelo.trim()).filter(m=>m&&m!==r.cod))].slice(0,12);
   $('#fCompat').innerHTML = mods.length? mods.map(m=>`<span class="chip">${esc(m)}</span>`).join('') : '<span style="color:var(--muted);font-size:12px">sem registros</span>';
@@ -612,7 +612,7 @@ async function renderPrecos(){
   const gers={}; st.markup.forEach(m=>{gers[m.geracao]=(gers[m.geracao]||0)+1;});
   const GERORD=['lançamento','crescimento','maturidade','veterano','legado','sem histórico'];
   $('#conteudo').innerHTML = `
-    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Markup = preço ÷ custo médio da importadora (0101) · site já à vista (−5%). Geração = idade desde a 1ª importação. O alerta "fora da curva" compara com a mediana do <b>grupo × geração</b> (lançamento aguenta markup maior; acessório legado tem prêmio de escassez).</p>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Markup = preço ÷ custo médio da importadora (0101) · site à vista (−5%) · <b>ML sobre o líquido</b> (preço −16% comissão −R$ 20 frete). Geração = idade desde a 1ª importação. O alerta "fora da curva" compara com a mediana do <b>grupo × geração</b> (lançamento aguenta markup maior; acessório legado tem prêmio de escassez).</p>
     <div class="kpis">${Object.entries(MKFLAGS).map(([id,f])=>`<button class="kpi ${st.mkFlag===id?'active':''}" data-f="${id}" title="${f.hint}"><span class="lab"><span class="dot" style="background:${id==='abaixo'?'var(--crit)':id==='curva'?'var(--warn)':id==='custo'?'var(--muted)':'var(--ser)'}"></span>${f.lb}</span><span class="val">${nf.format(cont[id]||0)}</span><span class="sub">${f.hint}</span></button>`).join('')}</div>
     <div class="toolbar">
       <input type="search" id="mq" placeholder="Buscar ref ou descrição…" value="${esc(st.mkQ||'')}">
@@ -679,7 +679,7 @@ function linhasMk(){
       <td>${nf.format(m._saldo)}</td>
       <td>${rf2.format(m.custo)}</td>
       <td>${mk(m.mk_atacado)}</td><td>${mk(m.mk_site)}</td><td>${mk(m.mk_marketplace)}</td>
-      <td>${pr(m.p_atacado)}</td><td>${pr(m.p_site)}</td><td>${pr(m.p_marketplace)}</td>
+      <td>${pr(m.p_atacado)}</td><td>${pr(m.p_site)}</td><td>${m.p_marketplace?`<span title="líquido ${m.p_ml_liquido!=null?rf2.format(m.p_ml_liquido):'—'} (−16% −R$20)">${rf2.format(m.p_marketplace)}</span>`:'—'}</td>
       <td>${nf1.format(m._giro)}</td>
       <td style="text-align:left">${m._flags.map(f=>`<span class="pill ${MKFLAGS[f].cl}" title="${MKFLAGS[f].hint}"><i></i>${MKFLAGS[f].lb}</span>`).join(' ')||'—'}</td>`;
     const abrir=()=>{ const r=st.radar.find(x=>x.cod===m.cod); if(r) ficha(r); };
