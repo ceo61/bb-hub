@@ -582,6 +582,7 @@ function gerDe(d8){
   return m<12?'lançamento':m<24?'crescimento':m<48?'maturidade':m<84?'veterano':m<144?'legado':'arquivo';
 }
 const GERLB={'rampa':'Rampa','novo parado':'Novo parado','crescendo':'Crescendo','no pico':'No pico','declínio':'Declínio','cauda':'Cauda','morto':'Morto'};
+const GERORD=['rampa','crescendo','no pico','declínio','cauda','novo parado','morto'];
 function flagsDe(m, med){
   const f=[];
   if([m.mk_atacado,m.mk_site,m.mk_marketplace].some(x=>x&&x<1)) f.push('abaixo');
@@ -606,12 +607,12 @@ async function renderPrecos(){
     st.mkMed={};
     for(const g in porG){ const v=porG[g].sort((a,b)=>a-b); if(v.length>=8) st.mkMed[g]=v[Math.floor(v.length/2)]; }
     const estq={}; (await tudo('fato_estoque',{select:'cod,estoque_util',eq:[['snapshot',st.snap]]})).forEach(e=>estq[e.cod]=e.estoque_util);
-    for(const m of st.markup){ const rr=st.radar.find(r=>r.cod===m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._meses=GERORD.indexOf(m.geracao); m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); }
+    const radarMap=new Map(st.radar.map(r=>[r.cod,r]));
+    for(const m of st.markup){ const rr=radarMap.get(m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._meses=GERORD.indexOf(m.geracao); m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); }
   }
   const cont={}; for(const m of st.markup) for(const f of m._flags) cont[f]=(cont[f]||0)+1;
   const grupos={}; st.markup.forEach(m=>{const g=m.grupo||'—'; grupos[g]=(grupos[g]||0)+1;});
   const gers={}; st.markup.forEach(m=>{gers[m.geracao]=(gers[m.geracao]||0)+1;});
-  const GERORD=['rampa','crescendo','no pico','declínio','cauda','novo parado','morto'];
   $('#conteudo').innerHTML = `
     <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Markup = preço ÷ custo médio da importadora (0101) · site à vista (−5%) · <b>ML sobre o líquido</b> (preço −16% comissão −R$ 20 frete). Geração única pela TRAJETÓRIA de venda (rampa · crescendo · no pico · declínio · cauda · novo parado · morto), com a idade desempatando os parados. "Fora da curva" compara com a mediana do <b>grupo × geração</b>.</p>
     <div class="kpis">${Object.entries(MKFLAGS).map(([id,f])=>`<button class="kpi ${st.mkFlag===id?'active':''}" data-f="${id}" title="${f.hint}"><span class="lab"><span class="dot" style="background:${id==='abaixo'?'var(--crit)':id==='curva'?'var(--warn)':id==='custo'?'var(--muted)':'var(--ser)'}"></span>${f.lb}</span><span class="val">${nf.format(cont[id]||0)}</span><span class="sub">${f.hint}</span></button>`).join('')}</div>
