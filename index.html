@@ -719,6 +719,7 @@ const DIAG={
   'subir':{lb:'Barato — subir',cl:'p-promo',pre:true},
   'caro mas converte':{lb:'Caro mas converte — não mexer',cl:'p-ok',pre:false},
   'sem trafego':{lb:'Sem tráfego — anúncio, não preço',cl:'p-dado',pre:false},
+  'ok':{lb:'Dentro do padrão — manter',cl:'p-ok',pre:false},
 };
 function porArred(avista){ // POR = à vista ÷ 0,95, arredondado p/ terminar em ,90
   const bruto=avista/0.95;
@@ -734,14 +735,15 @@ function montaSugestoes(){
     const alvo=st.mkMed[m.grupo+'|'+m.geracao] ?? st.mkMed[m.grupo];
     if(!alvo) continue;
     const ratio=m.mk_site/alvo;
-    let diag=null;
+    let diag='ok';
     if(m.mk_site<1) diag='subir urgente';
     else if(ratio>1.6) diag=(m._conv!=null&&m._conv>=medConv&&m._views>=50)?'caro mas converte':(m._views>=50?'reduzir':'sem trafego');
     else if(ratio<0.55) diag='subir';
-    if(!diag) continue;
-    const {por,avista}=porArred(alvo*m.custo);
+    let por, avista;
+    if(diag==='ok'||diag==='caro mas converte'){ avista=m.p_site; por=+(m.p_site/0.95).toFixed(2); }  // manter
+    else ({por,avista}=porArred(alvo*m.custo));
     out.push({...m,_diag:diag,_alvo:alvo,_porSug:por,_avistaSug:avista,
-      _impacto:m._giro*Math.abs(avista-m.p_site)});
+      _impacto:diag==='ok'?0:m._giro*Math.abs(avista-m.p_site)});
   }
   out.sort((a,b)=>b._impacto-a._impacto);
   return {out,medConv};
@@ -756,7 +758,7 @@ async function renderSugestoes(){
   const cont={}; lista.forEach(m=>cont[m._diag]=(cont[m._diag]||0)+1);
   st.sgSel=st.sgSel||new Set();
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um valor "POR" e o cliente que paga no PIX leva <b>−5%</b> — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Alvo = mediana do markup do grupo×geração · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um valor "POR" e o cliente que paga no PIX leva <b>−5%</b> — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Alvo = mediana do markup do grupo×geração · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — o diagnóstico é minha sugestão; a decisão é do analista (o campo de preço é editável em qualquer linha). Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
     ${(pend||[]).length?`<div class="banner ambar">⏳ ${pend.length} ação(ões) aprovadas aguardando execução — <b>me diga "roda as aprovadas"</b> no chat para eu aplicar no ERP.</div>`:''}
     <div class="kpis">${Object.entries(DIAG).map(([id,d])=>`<button class="kpi ${st.sgDiag===id?'active':''}" data-d="${id}"><span class="lab"><span class="dot" style="background:${id==='subir urgente'?'var(--crit)':id==='reduzir'?'var(--ser)':id==='subir'?'var(--warn)':'var(--muted)'}"></span>${d.lb}</span><span class="val">${nf.format(cont[id]||0)}</span></button>`).join('')}</div>
     <div class="toolbar">
