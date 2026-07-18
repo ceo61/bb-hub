@@ -209,6 +209,7 @@ th.ord .seta{font-size:9px;margin-left:3px}
       <div class="name">BB HUB<small>BestBattery</small></div>
     </div>
     <a href="#precos" data-pg="precos">🏷️ Preços — Markup</a>
+    <a href="#sugestoes" data-pg="sugestoes">✅ Sugestões de preço</a>
     <a href="#radar" data-pg="radar">📡 Radar</a>
     <a href="#produtos" data-pg="produtos">📦 Produtos</a>
     <a href="#compras" data-pg="compras">🚢 Compras &amp; Trânsito</a>
@@ -347,7 +348,7 @@ $('#semaforo').onclick = ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'Sugestões de preço', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   if(!TITULOS[pg]) pg='radar';
   st.pg=pg; st.shown=120;
@@ -357,6 +358,7 @@ function navega(pg){
   if(pg==='radar'||pg==='produtos') renderRadar(pg==='produtos');
   else if(pg==='compras') renderCompras();
   else if(pg==='precos') renderPrecos();
+  else if(pg==='sugestoes') renderSugestoes();
   else if(pg==='config') renderConfig();
   else renderEmBreve(pg);
 }
@@ -596,9 +598,8 @@ function flagsDe(m, med){
   if(m.mk_site&&md&&(m.mk_site>md*1.6||m.mk_site<md*0.55)) f.push('curva');
   return f;
 }
-async function renderPrecos(){
-  if(!st.markup){
-    $('#conteudo').innerHTML='<div class="carregando">Calculando markups…</div>';
+async function carregaMarkup(){
+  if(st.markup) return;
     st.markup = await tudo('precos_markup', {eq:[['snapshot',st.snap]]});
     st.markup = st.markup.filter(m=>m.custo>0 && !m.cod.startsWith('SP-') && !m.cod.includes('DEVOLUCAO'));
     const porG={};
@@ -612,7 +613,10 @@ async function renderPrecos(){
     const conv={}; (await tudo('conversao_28d',{select:'cod,views,compras,taxa_conv',eq:[]})).forEach(x=>conv[x.cod]=x);
     const radarMap=new Map(st.radar.map(r=>[r.cod,r]));
     for(const m of st.markup){ const rr=radarMap.get(m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._meses=GERORD.indexOf(m.geracao); m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); const cv=conv[m.cod]; m._views=cv?.views||0; m._conv=cv?.taxa_conv??null; }
-  }
+}
+async function renderPrecos(){
+  $('#conteudo').innerHTML='<div class="carregando">Calculando markups…</div>';
+  await carregaMarkup();
   const cont={}; for(const m of st.markup) for(const f of m._flags) cont[f]=(cont[f]||0)+1;
   const grupos={}; st.markup.forEach(m=>{const g=m.grupo||'—'; grupos[g]=(grupos[g]||0)+1;});
   const gers={}; st.markup.forEach(m=>{gers[m.geracao]=(gers[m.geracao]||0)+1;});
@@ -706,6 +710,98 @@ function linhasMk(){
   const more=$('#mmore');
   if(rows.length>st.shown){ more.classList.remove('hide'); more.textContent=`Mostrar mais (${nf.format(rows.length-st.shown)} restantes)`; more.onclick=()=>{st.shown+=200;linhasMk();}; }
   else more.classList.add('hide');
+}
+
+/* ---------- página sugestões de preço ---------- */
+const DIAG={
+  'subir urgente':{lb:'Abaixo do custo — subir',cl:'p-rupt',pre:true},
+  'reduzir':{lb:'Caro e travado — reduzir',cl:'p-imp',pre:true},
+  'subir':{lb:'Barato — subir',cl:'p-promo',pre:true},
+  'caro mas converte':{lb:'Caro mas converte — não mexer',cl:'p-ok',pre:false},
+  'sem trafego':{lb:'Sem tráfego — anúncio, não preço',cl:'p-dado',pre:false},
+};
+function porArred(avista){ // POR = à vista ÷ 0,95, arredondado p/ terminar em ,90
+  const bruto=avista/0.95;
+  let por=Math.round(bruto-0.90)+0.90;
+  if(por<1) por=bruto;
+  return {por:+por.toFixed(2), avista:+(por*0.95).toFixed(2)};
+}
+function montaSugestoes(){
+  const medConv=(arr=>{const v=arr.filter(x=>x!=null).sort((a,b)=>a-b);return v.length?v[Math.floor(v.length/2)]:1;})(st.markup.filter(m=>m._views>=50).map(m=>m._conv));
+  const out=[];
+  for(const m of st.markup){
+    if(!m.custo||!m.p_site||!m.mk_site) continue;
+    const alvo=st.mkMed[m.grupo+'|'+m.geracao] ?? st.mkMed[m.grupo];
+    if(!alvo) continue;
+    const ratio=m.mk_site/alvo;
+    let diag=null;
+    if(m.mk_site<1) diag='subir urgente';
+    else if(ratio>1.6) diag=(m._conv!=null&&m._conv>=medConv&&m._views>=50)?'caro mas converte':(m._views>=50?'reduzir':'sem trafego');
+    else if(ratio<0.55) diag='subir';
+    if(!diag) continue;
+    const {por,avista}=porArred(alvo*m.custo);
+    out.push({...m,_diag:diag,_alvo:alvo,_porSug:por,_avistaSug:avista,
+      _impacto:m._giro*Math.abs(avista-m.p_site)});
+  }
+  out.sort((a,b)=>b._impacto-a._impacto);
+  return {out,medConv};
+}
+async function renderSugestoes(){
+  $('#conteudo').innerHTML='<div class="carregando">Montando sugestões…</div>';
+  await carregaMarkup();
+  const {data:pend}=await sb.from('acoes_preco').select('*').eq('status','aprovado').order('criado_em',{ascending:false});
+  const jaTem=new Set((pend||[]).map(a=>a.cod));
+  const {out,medConv}=montaSugestoes();
+  const lista=out.filter(m=>!jaTem.has(m.cod));
+  const cont={}; lista.forEach(m=>cont[m._diag]=(cont[m._diag]||0)+1);
+  st.sgSel=st.sgSel||new Set();
+  $('#conteudo').innerHTML=`
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Alvo = mediana do markup do grupo×geração; preço sugerido já com −5% à vista e POR terminando em ,90. "Converte bem" = taxa ≥ ${nf1.format(medConv)}% (mediana dos produtos com tráfego). Aprovar aqui <b>não altera preço</b> — só entra na fila; a execução é um comando à parte.</p>
+    ${(pend||[]).length?`<div class="banner ambar">⏳ ${pend.length} ação(ões) aprovadas aguardando execução — <b>me diga "roda as aprovadas"</b> no chat para eu aplicar no ERP.</div>`:''}
+    <div class="kpis">${Object.entries(DIAG).map(([id,d])=>`<button class="kpi ${st.sgDiag===id?'active':''}" data-d="${id}"><span class="lab"><span class="dot" style="background:${id==='subir urgente'?'var(--crit)':id==='reduzir'?'var(--ser)':id==='subir'?'var(--warn)':'var(--muted)'}"></span>${d.lb}</span><span class="val">${nf.format(cont[id]||0)}</span></button>`).join('')}</div>
+    <div class="toolbar">
+      <button class="btn" id="sgAprovar">Aprovar selecionados (<span id="sgN">0</span>)</button>
+      <span class="count" id="sgCount"></span>
+    </div>
+    <div class="tablecard"><div class="tscroll"><table>
+      <thead><tr><th></th><th>Produto</th><th>Geração</th><th>Diagnóstico</th><th>Giro/mês</th><th>Views 28d</th><th>Conv.</th><th>Custo</th><th>Mk atual</th><th>Mk alvo</th><th>Preço atual</th><th>Preço sugerido</th></tr></thead>
+      <tbody id="sgRows"></tbody></table></div><button class="more hide" id="sgMore"></button></div>`;
+  document.querySelectorAll('.kpi[data-d]').forEach(b=>b.onclick=()=>{st.sgDiag=st.sgDiag===b.dataset.d?null:b.dataset.d;renderSugestoes();});
+  const desenha=()=>{
+    const rows=lista.filter(m=>!st.sgDiag||m._diag===st.sgDiag);
+    $('#sgCount').textContent=nf.format(rows.length)+' sugestões';
+    const tb=$('#sgRows'); tb.innerHTML='';
+    for(const m of rows.slice(0,150)){
+      const d=DIAG[m._diag];
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td style="text-align:center"><input type="checkbox" data-cod="${esc(m.cod)}" ${st.sgSel.has(m.cod)?'checked':''} style="width:16px;height:16px"></td>
+        <td style="text-align:left"><span class="cod" title="${esc(m.descricao||'')}">${esc(m.cod)}</span><br><span class="gr">${esc(m.grupo||'')}</span></td>
+        <td><span class="gr">${GERLB[m.geracao]||m.geracao}</span></td>
+        <td style="text-align:left"><span class="pill ${d.cl}"><i></i>${d.lb}</span></td>
+        <td>${nf1.format(m._giro)}</td><td>${m._views?nf.format(m._views):'—'}</td><td>${m._conv!=null?nf1.format(m._conv)+'%':'—'}</td>
+        <td>${rf2.format(m.custo)}</td><td><b>${nf1.format(m.mk_site)}×</b></td><td>${nf1.format(m._alvo)}×</td>
+        <td>${rf2.format(m.p_site)}</td><td><b>${rf2.format(m._avistaSug)}</b><br><span class="gr">POR ${rf2.format(m._porSug)}</span></td>`;
+      tb.appendChild(tr);
+    }
+    document.querySelectorAll('#sgRows input[type=checkbox]').forEach(cb=>cb.onchange=()=>{
+      cb.checked?st.sgSel.add(cb.dataset.cod):st.sgSel.delete(cb.dataset.cod);
+      $('#sgN').textContent=st.sgSel.size;
+    });
+    $('#sgN').textContent=st.sgSel.size;
+  };
+  desenha();
+  $('#sgAprovar').onclick=async ()=>{
+    if(!st.sgSel.size) return;
+    const {data:{user}}=await sb.auth.getUser();
+    const regs=lista.filter(m=>st.sgSel.has(m.cod)).map(m=>({
+      cod:m.cod, canal:'002', preco_atual:m.p_site, preco_sugerido:m._avistaSug,
+      markup_atual:m.mk_site, markup_alvo:m._alvo, diagnostico:m._diag,
+      aprovado_por:user?.email||'?', obs:'POR a gravar: '+m._porSug}));
+    const {error}=await sb.from('acoes_preco').insert(regs);
+    if(error){ alert('Erro ao aprovar: '+error.message); return; }
+    st.sgSel.clear();
+    renderSugestoes();
+  };
 }
 
 /* ---------- em construção / config ---------- */
