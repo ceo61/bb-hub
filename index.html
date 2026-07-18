@@ -512,12 +512,13 @@ async function ficha(r){
      <div class="abtn"><span><b>Reprecificar / promocionar</b><br>grava no ERP pelo fluxo homologado</span><span class="tag">Fase 3</span></div></div></div>`;
   panel.querySelector('.close').onclick=fechaFicha;
   panel.classList.add('open'); scrim.classList.add('open'); panel.scrollTop=0;
-  const [{data:pr},{data:cp},{data:ct},{data:idd},{data:fs}] = await Promise.all([
+  const [{data:pr},{data:cp},{data:ct},{data:idd},{data:fs},{data:cv}] = await Promise.all([
     sb.from('fato_precos').select('codtab,filial,preco_por,preco_real').eq('snapshot',st.snap).eq('cod',r.cod),
     sb.from('dim_compatibilidade').select('modelo').eq('cod',r.cod).neq('modelo','').limit(40),
     sb.from('fato_custo').select('custo,origem').eq('snapshot',st.snap).eq('cod',r.cod),
     sb.from('dim_idade').select('*').eq('cod',r.cod),
     sb.from('dim_fase').select('*').eq('cod',r.cod),
+    sb.from('conversao_28d').select('*').eq('cod',r.cod),
   ]);
   // pares canônicos: atacado=001/01, site=002/10, marketplace=401/10 (demais linhas são lixo histórico)
   const CANON={'001':'01','002':'10','401':'10'};
@@ -527,6 +528,7 @@ async function ficha(r){
   const id0=idd?.[0];
   const mmYY=d8=>d8?d8.slice(4,6)+'/'+d8.slice(0,4):'—';
   $('#fPrecos').innerHTML = `
+    ${cv?.[0]?`<div class="prow"><span class="pl">Site — 28 dias (GA4)</span><span class="pv">${nf.format(cv[0].views||0)} views · ${nf.format(cv[0].compras||0)} compras <small>· conv. ${cv[0].taxa_conv!=null?nf1.format(cv[0].taxa_conv)+'%':'—'}</small></span></div>`:''}
     ${(fs?.[0]||id0)?`<div class="prow"><span class="pl">Geração</span><span class="pv">${GERLB[fs?.[0]?.fase]||'Morto'} <small>${fs?.[0]?`· 12m ${nf.format(fs[0].u12||0)} un · pico ${nf.format(fs[0].pico12||0)}`:''}${id0?` · na casa desde ${mmYY(id0.primeira_imp)} (${esc(id0.origem||'importação')})`:''}</small></span></div>`:''}
     ${custo?`<div class="prow"><span class="pl"><b>Custo médio (importadora)</b></span><span class="pv">${rf2.format(custo)} <small>${esc(ct[0].origem||'')}</small></span></div>`:''}
     <div class="prow"><span class="pl">Site BB Baterias (002)</span><span class="pv">${mp['002']?rf2.format(mp['002'].preco_real)+mkTxt(mp['002'].preco_real)+' <small>· POR '+rf2.format(mp['002'].preco_por)+'</small>':'—'}</span></div>
@@ -607,8 +609,9 @@ async function renderPrecos(){
     st.mkMed={};
     for(const g in porG){ const v=porG[g].sort((a,b)=>a-b); if(v.length>=8) st.mkMed[g]=v[Math.floor(v.length/2)]; }
     const estq={}; (await tudo('fato_estoque',{select:'cod,estoque_util',eq:[['snapshot',st.snap]]})).forEach(e=>estq[e.cod]=e.estoque_util);
+    const conv={}; (await tudo('conversao_28d',{select:'cod,views,compras,taxa_conv',eq:[]})).forEach(x=>conv[x.cod]=x);
     const radarMap=new Map(st.radar.map(r=>[r.cod,r]));
-    for(const m of st.markup){ const rr=radarMap.get(m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._meses=GERORD.indexOf(m.geracao); m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); }
+    for(const m of st.markup){ const rr=radarMap.get(m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._meses=GERORD.indexOf(m.geracao); m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); const cv=conv[m.cod]; m._views=cv?.views||0; m._conv=cv?.taxa_conv??null; }
   }
   const cont={}; for(const m of st.markup) for(const f of m._flags) cont[f]=(cont[f]||0)+1;
   const grupos={}; st.markup.forEach(m=>{const g=m.grupo||'—'; grupos[g]=(grupos[g]||0)+1;});
@@ -640,6 +643,8 @@ async function renderPrecos(){
         <th class="ord" data-c="p_site">Site (à vista)<span class="seta"></span></th>
         <th class="ord" data-c="p_marketplace">Marketpl.<span class="seta"></span></th>
         <th class="ord" data-c="_giro">Giro/mês<span class="seta"></span></th>
+        <th class="ord" data-c="_views" title="Visualizações de produto no site (GA4, Brasil, 28 dias)">Views 28d<span class="seta"></span></th>
+        <th class="ord" data-c="_conv" title="Compras ÷ visualizações (GA4, 28 dias)">Conv.<span class="seta"></span></th>
         <th class="ord" data-c="_nflags">Alertas<span class="seta"></span></th>
       </tr></thead>
       <tbody id="mrows"></tbody></table></div><button class="more hide" id="mmore"></button></div>`;
@@ -691,6 +696,8 @@ function linhasMk(){
       <td>${mk(m.mk_atacado)}</td><td>${mk(m.mk_site)}</td><td>${mk(m.mk_marketplace)}</td>
       <td>${pr(m.p_atacado)}</td><td>${pr(m.p_site)}</td><td>${m.p_marketplace?`<span title="líquido ${m.p_ml_liquido!=null?rf2.format(m.p_ml_liquido):'—'} (−16% −R$20)">${rf2.format(m.p_marketplace)}</span>`:'—'}</td>
       <td>${nf1.format(m._giro)}</td>
+      <td>${m._views?nf.format(m._views):'—'}</td>
+      <td>${m._conv!=null?nf1.format(m._conv)+'%':'—'}</td>
       <td style="text-align:left">${m._flags.map(f=>`<span class="pill ${MKFLAGS[f].cl}" title="${MKFLAGS[f].hint}"><i></i>${MKFLAGS[f].lb}</span>`).join(' ')||'—'}</td>`;
     const abrir=()=>{ const r=st.radar.find(x=>x.cod===m.cod); if(r) ficha(r); };
     tr.onclick=abrir; tr.onkeydown=e=>{if(e.key==='Enter')abrir();};
