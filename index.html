@@ -706,6 +706,20 @@ async function carregaMarkup(){
     }
     st.mkMed={};
     for(const g in porG){ const v=porG[g].sort((a,b)=>a-b); if(v.length>=8) st.mkMed[g]=v[Math.floor(v.length/2)]; }
+    const porGA={}, porGM={};
+    for(const m of st.markup){
+      if(m.mk_atacado&&m.mk_atacado>1&&m.mk_atacado<15){
+        (porGA[m.grupo]=porGA[m.grupo]||[]).push(m.mk_atacado);
+        (porGA[m.grupo+'|'+m.geracao]=porGA[m.grupo+'|'+m.geracao]||[]).push(m.mk_atacado);
+      }
+      if(m.mk_marketplace&&m.mk_marketplace>1&&m.mk_marketplace<15){
+        (porGM[m.grupo]=porGM[m.grupo]||[]).push(m.mk_marketplace);
+        (porGM[m.grupo+'|'+m.geracao]=porGM[m.grupo+'|'+m.geracao]||[]).push(m.mk_marketplace);
+      }
+    }
+    st.mkMedA={}; st.mkMedM={};
+    for(const g in porGA){ const v=porGA[g].sort((a,b)=>a-b); if(v.length>=8) st.mkMedA[g]=v[Math.floor(v.length/2)]; }
+    for(const g in porGM){ const v=porGM[g].sort((a,b)=>a-b); if(v.length>=8) st.mkMedM[g]=v[Math.floor(v.length/2)]; }
     const estq={}; (await tudo('fato_estoque',{select:'cod,estoque_util',eq:[['snapshot',st.snap]]})).forEach(e=>estq[e.cod]=e.estoque_util);
     const conv={}; (await tudo('conversao_28d',{select:'cod,views,compras,taxa_conv',eq:[]})).forEach(x=>conv[x.cod]=x);
     const radarMap=new Map(st.radar.map(r=>[r.cod,r]));
@@ -839,7 +853,20 @@ function montaSugestoes(){
     let por, avista;
     if(diag==='ok'||diag==='caro mas converte'){ avista=m.p_site; por=+(m.p_site/0.95).toFixed(2); }  // manter
     else ({por,avista}=porArred(alvo*m.custo));
+    const alvoA=st.mkMedA[m.grupo+'|'+m.geracao] ?? st.mkMedA[m.grupo] ?? null;
+    const alvoM=st.mkMedM[m.grupo+'|'+m.geracao] ?? st.mkMedM[m.grupo] ?? null;
+    let atacSug=m.p_atacado??null;
+    if(alvoA&&m.p_atacado!=null&&m.mk_atacado){
+      const r=m.mk_atacado/alvoA;
+      if(m.mk_atacado<1||r>1.6||r<0.55) atacSug=+(alvoA*m.custo).toFixed(2);
+    }
+    let mlSug=m.p_marketplace??null;
+    if(alvoM&&m.p_marketplace!=null&&m.mk_marketplace){
+      const r=m.mk_marketplace/alvoM;
+      if(m.mk_marketplace<1||r>1.6||r<0.55) mlSug=Math.max(0,Math.floor((alvoM*m.custo+20)/0.84))+0.90;
+    }
     out.push({...m,_diag:diag,_alvo:alvo,_porSug:por,_avistaSug:avista,
+      _alvoA:alvoA,_alvoM:alvoM,_atacSug:atacSug,_mlSug:mlSug,
       _impacto:diag==='ok'?0:m._giro*Math.abs(avista-m.p_site)});
   }
   out.sort((a,b)=>b._impacto-a._impacto);
@@ -855,7 +882,7 @@ async function renderSugestoes(){
   const cont={}; lista.forEach(m=>cont[m._diag]=(cont[m._diag]||0)+1);
   st.sgSel=st.sgSel||new Set();
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>DE, Atacado e ML também são digitáveis</b>: o DE é sempre manual (eu não recalculo DE), e os três só entram na ação se você alterar o valor — sem mexer, ficam como estão. Alvo = mediana do markup do grupo×geração · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — o diagnóstico é minha sugestão; a decisão é do analista (o campo de preço é editável em qualquer linha). Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>As caixas de Atacado e ML vêm preenchidas com a sugestão do canal</b> (fora da banda → alvo×custo; dentro → preço atual) e mostram o markup efetivo enquanto você digita; <b>o DE é sempre manual</b> (eu não recalculo DE). Ao aprovar, entra na ação o que estiver nas caixas e for diferente do preço de hoje. Alvos = mediana do markup por canal (UN) × grupo × geração — site, atacado e ML têm alvos próprios · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — o diagnóstico é minha sugestão; a decisão é do analista (o campo de preço é editável em qualquer linha). Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
     ${(pend||[]).length?`<div class="banner ambar" style="display:grid;gap:6px">
       <div>⏳ ${pend.length} ação(ões) na fila — <b>me diga "roda as aprovadas"</b> no chat para aplicar no ERP, ou cancele abaixo:</div>
       ${pend.map(a=>`<div style="display:flex;align-items:center;gap:10px;font-weight:400;font-size:12.5px">
@@ -873,7 +900,7 @@ async function renderSugestoes(){
       <span class="count" id="sgCount"></span>
     </div>
     <div class="tablecard"><div class="tscroll"><table>
-      <thead><tr><th></th><th>Produto</th><th>Geração</th><th>Diagnóstico</th><th>Giro/mês</th><th>Views 28d</th><th>Conv.</th><th>Custo</th><th>Mk site</th><th>Mk atac</th><th>Mk ML líq</th><th>Mk alvo</th><th>DE (site) — editável</th><th>POR (site)</th><th>À vista hoje</th><th>Atacado — editável</th><th>ML anúncio — editável</th><th>Novo preço à vista — editável</th></tr></thead>
+      <thead><tr><th></th><th>Produto</th><th>Geração</th><th>Diagnóstico</th><th>Giro/mês</th><th>Views 28d</th><th>Conv.</th><th>Custo</th><th>Atacado hoje</th><th>Atacado novo — editável</th><th>DE hoje</th><th>POR / PIX hoje</th><th>DE novo — editável</th><th>À vista novo — editável</th><th>ML hoje</th><th>ML novo — editável</th></tr></thead>
       <tbody id="sgRows"></tbody></table></div><button class="more hide" id="sgMore"></button></div>`;
   document.querySelectorAll('.kpi[data-d]').forEach(b=>b.onclick=()=>{st.sgDiag=st.sgDiag===b.dataset.d?null:b.dataset.d;renderSugestoes();});
   const desenha=()=>{
@@ -886,9 +913,11 @@ async function renderSugestoes(){
     });
     $('#sgCount').textContent=nf.format(rows.length)+' sugestões';
     const tb=$('#sgRows'); tb.innerHTML='';
+    const MB={}; rows.forEach(x=>MB[x.cod]=x);
     for(const m of rows.slice(0,150)){
       const d=DIAG[m._diag];
-      const vDe=st.sgDe?.[m.cod]??m.p_site_de, vAt=st.sgAtac?.[m.cod]??m.p_atacado, vMl=st.sgMl?.[m.cod]??m.p_marketplace;
+      const vDe=st.sgDe?.[m.cod]??m.p_site_de, vAt=st.sgAtac?.[m.cod]??m._atacSug??m.p_atacado, vMl=st.sgMl?.[m.cod]??m._mlSug??m.p_marketplace;
+      const sid=esc(m.cod).replace(/[^A-Za-z0-9]/g,'_');
       const tr=document.createElement('tr');
       tr.innerHTML=`<td style="text-align:center"><input type="checkbox" data-cod="${esc(m.cod)}" ${st.sgSel.has(m.cod)?'checked':''} style="width:16px;height:16px"></td>
         <td style="text-align:left"><span class="cod" title="${esc(m.descricao||'')}">${esc(m.cod)}</span><br><span class="gr">${esc(m.grupo||'')}</span></td>
@@ -896,16 +925,14 @@ async function renderSugestoes(){
         <td style="text-align:left"><span class="pill ${d.cl}"><i></i>${d.lb}</span></td>
         <td>${nf1.format(m._giro)}</td><td>${m._views?nf.format(m._views):'—'}</td><td>${m._conv!=null?nf1.format(m._conv)+'%':'—'}</td>
         <td>${rf2.format(m.custo)}</td>
-        <td><b>${nf1.format(m.mk_site)}×</b></td>
-        <td>${m.mk_atacado?nf1.format(m.mk_atacado)+'×':'—'}</td>
-        <td>${m.mk_marketplace?nf1.format(m.mk_marketplace)+'×':'—'}</td>
-        <td>${nf1.format(m._alvo)}×</td>
-        <td><input type="number" step="0.01" min="0" data-de="${esc(m.cod)}" value="${vDe!=null?(+vDe).toFixed(2):''}" placeholder="—" style="width:100px;text-align:right"><br><span class="gr">hoje ${m.p_site_de?rf2.format(m.p_site_de):'sem DE'}</span></td>
-        <td>${m.p_site_por?rf2.format(m.p_site_por):'—'}</td>
-        <td><b>${rf2.format(m.p_site)}</b></td>
-        <td><input type="number" step="0.01" min="0" data-atac="${esc(m.cod)}" value="${vAt!=null?(+vAt).toFixed(2):''}" placeholder="—" style="width:100px;text-align:right"><br><span class="gr">hoje ${m.p_atacado?rf2.format(m.p_atacado):'sem preço'}</span></td>
-        <td><input type="number" step="0.01" min="0" data-ml="${esc(m.cod)}" value="${vMl!=null?(+vMl).toFixed(2):''}" placeholder="—" style="width:100px;text-align:right"><br><span class="gr">hoje ${m.p_marketplace?rf2.format(m.p_marketplace):'sem preço'}</span></td>
-        <td><input type="number" step="0.01" min="0" data-preco="${esc(m.cod)}" value="${(st.sgEdit?.[m.cod]??m._avistaSug).toFixed(2)}" style="width:110px;text-align:right;font-weight:600"><br><span class="gr" id="por-${esc(m.cod).replace(/[^A-Za-z0-9]/g,'_')}">publica POR ${rf2.format((st.sgEdit?.[m.cod]??m._avistaSug)/0.95)}</span></td>`;
+        <td>${m.p_atacado?rf2.format(m.p_atacado):'—'}<br><span class="gr">${m.mk_atacado?'mk '+nf1.format(m.mk_atacado)+'×':''}${m._alvoA?' · alvo '+nf1.format(m._alvoA)+'×':''}</span></td>
+        <td><input type="number" step="0.01" min="0" data-atac="${esc(m.cod)}" value="${vAt!=null?(+vAt).toFixed(2):''}" placeholder="—" style="width:100px;text-align:right"><br><span class="gr" id="mka-${sid}">${vAt?'fica mk '+nf1.format(vAt/m.custo)+'×':''}</span></td>
+        <td>${m.p_site_de?rf2.format(m.p_site_de):'—'}</td>
+        <td>${m.p_site_por?rf2.format(m.p_site_por):'—'}<br><b>${rf2.format(m.p_site)}</b> <span class="gr">PIX</span><br><span class="gr">mk ${nf1.format(m.mk_site)}× · alvo ${nf1.format(m._alvo)}×</span></td>
+        <td><input type="number" step="0.01" min="0" data-de="${esc(m.cod)}" value="${vDe!=null?(+vDe).toFixed(2):''}" placeholder="—" style="width:100px;text-align:right"><br><span class="gr">manual — nunca recalculo</span></td>
+        <td><input type="number" step="0.01" min="0" data-preco="${esc(m.cod)}" value="${(st.sgEdit?.[m.cod]??m._avistaSug).toFixed(2)}" style="width:110px;text-align:right;font-weight:600"><br><span class="gr" id="por-${sid}">publica POR ${rf2.format((st.sgEdit?.[m.cod]??m._avistaSug)/0.95)} · fica mk ${nf1.format((st.sgEdit?.[m.cod]??m._avistaSug)/m.custo)}×</span></td>
+        <td>${m.p_marketplace?rf2.format(m.p_marketplace):'—'}<br><span class="gr">${m.mk_marketplace?'mk líq '+nf1.format(m.mk_marketplace)+'×':''}${m._alvoM?' · alvo '+nf1.format(m._alvoM)+'×':''}</span></td>
+        <td><input type="number" step="0.01" min="0" data-ml="${esc(m.cod)}" value="${vMl!=null?(+vMl).toFixed(2):''}" placeholder="—" style="width:100px;text-align:right"><br><span class="gr" id="mkm-${sid}">${vMl?'fica mk líq '+nf1.format((vMl*0.84-20)/m.custo)+'×':''}</span></td>`;
       tb.appendChild(tr);
     }
     document.querySelectorAll('#sgRows input[data-preco]').forEach(inp=>inp.oninput=()=>{
@@ -913,7 +940,7 @@ async function renderSugestoes(){
       const v=parseFloat(inp.value);
       if(v>0){ st.sgEdit[inp.dataset.preco]=v;
         const el=document.getElementById('por-'+inp.dataset.preco.replace(/[^A-Za-z0-9]/g,'_'));
-        if(el) el.textContent='publica POR '+rf2.format(v/0.95);
+        if(el) el.textContent='publica POR '+rf2.format(v/0.95)+' · fica mk '+nf1.format(v/(MB[inp.dataset.preco]?.custo||1))+'×';
         st.sgSel.add(inp.dataset.preco);  // editar já seleciona
         const cb=document.querySelector(`#sgRows input[type=checkbox][data-cod="${CSS.escape(inp.dataset.preco)}"]`);
         if(cb) cb.checked=true;
@@ -923,12 +950,17 @@ async function renderSugestoes(){
     const marcaSel=cod=>{ st.sgSel.add(cod);
       const cb=document.querySelector(`#sgRows input[type=checkbox][data-cod="${CSS.escape(cod)}"]`);
       if(cb) cb.checked=true; $('#sgN').textContent=st.sgSel.size; };
-    [['de','sgDe'],['atac','sgAtac'],['ml','sgMl']].forEach(([k,key])=>{
+    const LIVE={atac:{key:'sgAtac',span:'mka-',fx:(v,m)=>'fica mk '+nf1.format(v/m.custo)+'×'},
+                ml:{key:'sgMl',span:'mkm-',fx:(v,m)=>'fica mk líq '+nf1.format((v*0.84-20)/m.custo)+'×'},
+                de:{key:'sgDe',span:null,fx:null}};
+    for(const k in LIVE){
       document.querySelectorAll(`#sgRows input[data-${k}]`).forEach(inp=>inp.oninput=()=>{
-        const v=parseFloat(inp.value);
-        if(v>0){ (st[key]=st[key]||{})[inp.dataset[k]]=v; marcaSel(inp.dataset[k]); }
+        const v=parseFloat(inp.value), cod=inp.dataset[k], cfg=LIVE[k];
+        if(v>0){ (st[cfg.key]=st[cfg.key]||{})[cod]=v; marcaSel(cod);
+          if(cfg.span){ const el=document.getElementById(cfg.span+cod.replace(/[^A-Za-z0-9]/g,'_'));
+            if(el&&MB[cod]) el.textContent=cfg.fx(v,MB[cod]); } }
       });
-    });
+    }
     document.querySelectorAll('#sgRows input[type=checkbox]').forEach(cb=>cb.onchange=()=>{
       cb.checked?st.sgSel.add(cb.dataset.cod):st.sgSel.delete(cb.dataset.cod);
       $('#sgN').textContent=st.sgSel.size;
@@ -949,7 +981,7 @@ async function renderSugestoes(){
     const dif=(a,b)=>a!=null&&(b==null||Math.abs(a-b)>0.005);
     const regs=lista.filter(m=>st.sgSel.has(m.cod)).map(m=>{
       const avista=st.sgEdit?.[m.cod]??m._avistaSug;
-      const de=st.sgDe?.[m.cod], at=st.sgAtac?.[m.cod], ml=st.sgMl?.[m.cod];
+      const de=st.sgDe?.[m.cod], at=st.sgAtac?.[m.cod]??m._atacSug, ml=st.sgMl?.[m.cod]??m._mlSug;
       const extras=[];
       if(dif(de,m.p_site_de)) extras.push('DE '+de.toFixed(2));
       if(dif(at,m.p_atacado)) extras.push('atacado '+at.toFixed(2));
