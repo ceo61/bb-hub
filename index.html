@@ -865,13 +865,14 @@ function mm7(pts){ // média móvel 7d sobre [x, num, den] -> taxa; ou [x, v] ->
   return out;
 }
 const PN_CH={};
-function svgSerie(pts,{h=210,tipo='area',cor='var(--ch1)',ref=null,fmt=v=>nf1.format(v),pct=false,id=null,zeroBase=true}={}){
+function svgSerie(pts,{h=210,tipo='area',cor='var(--ch1)',ref=null,fmt=v=>nf1.format(v),pct=false,id=null,zeroBase=true,dominio=null}={}){
   const W=640,P=42;
   const vs=pts.map(p=>p[1]).filter(v=>v!=null);
   if(!vs.length) return '<div class="carregando" style="padding:30px">sem dados na janela</div>';
   const lo=Math.min(...vs, ref!=null?ref:Infinity), hi=Math.max(...vs, ref!=null?ref:-Infinity);
-  const vmin=zeroBase?0:Math.max(0, lo-((hi-lo)||hi||1)*0.15);
-  const vmax=(hi+((hi-lo)||hi||1)*0.08)||1;
+  let vmin, vmax;
+  if(dominio){ [vmin,vmax]=dominio; }
+  else { vmin=zeroBase?0:Math.max(0, lo-((hi-lo)||hi||1)*0.15); vmax=(hi+((hi-lo)||hi||1)*0.08)||1; }
   const X=i=>P+(W-P-8)*(pts.length<2?0:i/(pts.length-1));
   const Y=v=>h-16-(h-26)*((v-vmin)/(vmax-vmin||1));
   const fmtV=v=>pct?nf1.format(v)+'%':fmt(v);
@@ -880,7 +881,7 @@ function svgSerie(pts,{h=210,tipo='area',cor='var(--ch1)',ref=null,fmt=v=>nf1.fo
   if(tipo==='area'&&path) area=`<path d="${path} L${X(pts.length-1).toFixed(1)},${(h-16)} L${X(0).toFixed(1)},${h-16} Z" fill="${cor}" opacity="0.18"/>`;
   const frs=zeroBase?[0.5,1]:[0,0.5,1];
   const grid=frs.map(f=>{const v=vmin+(vmax-vmin)*f;return `<line x1="${P}" x2="${W-8}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--hair)" stroke-width="1"/><text x="${P-4}" y="${Y(v)+3}" text-anchor="end" font-size="9" fill="var(--muted)">${fmtV(v)}</text>`;}).join('');
-  const refl=ref!=null?`<line x1="${P}" x2="${W-8}" y1="${Y(ref)}" y2="${Y(ref)}" stroke="var(--muted)" stroke-dasharray="4 3" stroke-width="1"/><text x="${W-10}" y="${Y(ref)-3}" text-anchor="end" font-size="9" fill="var(--muted)">mediana loja ${nf1.format(ref)}%</text>`:'';
+  const refl=(ref!=null&&ref>=vmin&&ref<=vmax)?`<line x1="${P}" x2="${W-8}" y1="${Y(ref)}" y2="${Y(ref)}" stroke="var(--muted)" stroke-dasharray="4 3" stroke-width="1"/><text x="${W-10}" y="${Y(ref)-3}" text-anchor="end" font-size="9" fill="var(--muted)">mediana loja ${nf1.format(ref)}%</text>`:'';
   const meses={}; pts.forEach((p,i)=>{const m=p[0].slice(0,7); if(!(m in meses)) meses[m]=i;});
   const eixo=Object.entries(meses).filter((_,i,a)=>a.length<=8||i%2===0).map(([m,i])=>`<text x="${X(i)}" y="${h-3}" font-size="9" fill="var(--muted)">${m.slice(5,7)}/${m.slice(2,4)}</text>`).join('');
   let extra='';
@@ -914,6 +915,24 @@ function bindHoverPainel(){
     };
     svg.onmouseleave=()=>{ tip.style.opacity='0'; ch.setAttribute('opacity','0'); mk.setAttribute('opacity','0'); };
   });
+}
+function pearson(a,b){
+  const xs=[],ys=[];
+  for(let i=0;i<a.length;i++){ if(a[i]!=null&&b[i]!=null){xs.push(a[i]);ys.push(b[i]);} }
+  const n=xs.length; if(n<6) return null;
+  const mx=xs.reduce((s,v)=>s+v,0)/n, my=ys.reduce((s,v)=>s+v,0)/n;
+  let sxy=0,sx=0,sy=0;
+  for(let i=0;i<n;i++){const dx=xs[i]-mx,dy=ys[i]-my; sxy+=dx*dy; sx+=dx*dx; sy+=dy*dy;}
+  return (sx>0&&sy>0)?sxy/Math.sqrt(sx*sy):null;
+}
+function domEqualizado(sa,sb){ // mesma amplitude RELATIVA nos dois gráficos
+  const va=sa.map(p=>p[1]).filter(v=>v!=null), vb=sb.map(p=>p[1]).filter(v=>v!=null);
+  if(va.length<2||vb.length<2) return {da:null,db:null,amp:null};
+  const ma=(Math.max(...va)+Math.min(...va))/2, mb=(Math.max(...vb)+Math.min(...vb))/2;
+  if(!ma||!mb) return {da:null,db:null,amp:null};
+  const ra=(Math.max(...va)-Math.min(...va))/ma, rb=(Math.max(...vb)-Math.min(...vb))/mb;
+  const A=Math.max(ra,rb,0.08)*1.15;
+  return {da:[Math.max(0,ma*(1-A/2)),ma*(1+A/2)], db:[Math.max(0,mb*(1-A/2)),mb*(1+A/2)], amp:A};
 }
 async function medianaLojaConv(){
   if(st.medLoja!=null) return st.medLoja;
@@ -1013,12 +1032,63 @@ async function renderPainel(){
       : dias.map(d=>{const v=mv[d]; return [d, (v&&v.qtd_b2c>0)?v.val_b2c/v.qtd_b2c:null];});
   }
   const unid = agreg ? (agreg==='mes'?'/mês':'/semana') : '/dia';
+  const eq=domEqualizado(sConv,sPreco);
   const tog=q=>`<span style="margin-left:auto;display:inline-flex;gap:4px">${[['mm7','média 7d'],['raw','diário puro']].map(([cm,lb])=>`<button data-q="${q}" data-cm="${cm}" style="font-size:10px;letter-spacing:.04em;padding:2px 9px;border-radius:99px;border:1px solid ${M[q]===cm?'var(--accent)':'var(--hair)'};color:${M[q]===cm?'var(--accent)':'var(--muted)'}">${lb}</button>`).join('')}</span>`;
   const cab=(t,q)=>`<div class="eyebrow" style="display:flex;align-items:center;gap:8px">${t}${semanal?`<span style="margin-left:auto;font-size:10px;color:var(--muted)">agregação ${agreg==='mes'?'mensal':'semanal'}</span>`:tog(q)}</div>`;
   const tViews=conv.reduce((s,x)=>s+x.views,0), tCompras=conv.reduce((s,x)=>s+x.compras,0),
         tCart=conv.reduce((s,x)=>s+x.carrinho,0),
         tQtd=vend.reduce((s,x)=>s+(x.qtd_b2c||0),0), tVal=vend.reduce((s,x)=>s+(x.val_b2c||0),0);
   const convMedia=tViews?tCompras/tViews*100:null;
+  // séries semanais p/ análise (independente do modo de exibição)
+  const _sem={};
+  for(const dd of dias){
+    const dt=new Date(dd+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7));
+    const w=dt.toISOString().slice(0,10);
+    const a=_sem[w]=_sem[w]||{vw:0,cp:0,qt:0,vl:0};
+    const c=mc[dd], v=mv[dd];
+    if(c){a.vw+=c.views;a.cp+=c.compras;}
+    if(v){a.qt+=v.qtd_b2c||0;a.vl+=v.val_b2c||0;}
+  }
+  const _ws=Object.keys(_sem).sort();
+  const wConv=_ws.map(w=>_sem[w].vw>0?_sem[w].cp/_sem[w].vw*100:null);
+  const wViews=_ws.map(w=>_sem[w].vw);
+  const wPreco=_ws.map(w=>_sem[w].qt>0?_sem[w].vl/_sem[w].qt:null);
+  let leitura='';
+  {
+    const bullets=[];
+    const rTraf=pearson(wConv,wViews), rPreco=pearson(wConv,wPreco);
+    if(rTraf!=null){
+      if(rTraf<=-0.3) bullets.push(`⚠️ <b>Conversão × tráfego: r=${nf1.format(rTraf)}</b> — quando o tráfego cai, a conversão tende a SUBIR neste produto (tráfego menor costuma ser mais qualificado). <b>Cuidado: isso imita efeito de preço.</b>`);
+      else if(rTraf>=0.3) bullets.push(`Conversão × tráfego: r=+${nf1.format(rTraf)} — andam juntos na janela (tráfego novo está convertendo).`);
+      else bullets.push(`Conversão × tráfego: r=${rTraf>=0?'+':''}${nf1.format(rTraf)} — sem relação forte na janela.`);
+    }
+    if(rPreco!=null){
+      if(rPreco<=-0.3) bullets.push(`Conversão × preço: r=${nf1.format(rPreco)} — sinais de sensibilidade a preço (preço sobe → conversão cai).`);
+      else bullets.push(`Conversão × preço: r=${rPreco>=0?'+':''}${nf1.format(rPreco)} — pouca sensibilidade a preço visível na janela.`);
+    }
+    // eventos de preço (degraus >=3% entre semanas) com antes/depois controlado por tráfego
+    const evs=[];
+    for(let i=1;i<_ws.length;i++){
+      const a=wPreco[i-1], b=wPreco[i];
+      if(a&&b&&Math.abs(b-a)/a>=0.03) evs.push({i,de:a,para:b,delta:(b-a)/a});
+    }
+    evs.sort((x,y)=>Math.abs(y.delta)-Math.abs(x.delta));
+    const mediaJ=(arr,ini,fim)=>{const v=arr.slice(Math.max(0,ini),fim).filter(x=>x!=null);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null;};
+    for(const ev of evs.slice(0,3)){
+      const cPre=mediaJ(wConv,ev.i-3,ev.i), cPos=mediaJ(wConv,ev.i,ev.i+3);
+      const vPre=mediaJ(wViews,ev.i-3,ev.i), vPos=mediaJ(wViews,ev.i,ev.i+3);
+      if(cPre==null||cPos==null) continue;
+      const dConv=cPos-cPre, dViews=(vPre&&vPos)?(vPos-vPre)/vPre:null;
+      let ver;
+      if(dViews!=null&&Math.abs(dViews)>=0.2) ver=`mas o tráfego variou ${dViews>0?'+':''}${nf.format(Math.round(dViews*100))}% no mesmo período — <b>atribuição incerta (tráfego contamina)</b>`;
+      else if(Math.sign(dConv)===-Math.sign(ev.delta)&&Math.abs(dConv)>=0.3) ver=`tráfego estável — <b>resposta consistente com efeito preço</b>`;
+      else ver=`tráfego estável e conversão pouco mudou — <b>preço não moveu a conversão</b>`;
+      const sem=_ws[ev.i];
+      bullets.push(`Preço ${ev.delta>0?'subiu':'caiu'} ${nf.format(Math.round(Math.abs(ev.delta)*100))}% na sem. de ${sem.slice(8,10)}/${sem.slice(5,7)} (${rf2.format(ev.de)}→${rf2.format(ev.para)}): conversão ${dConv>=0?'+':''}${nf1.format(dConv)} p.p. — ${ver}.`);
+    }
+    if(evs.length===0&&rPreco!=null) bullets.push(`Nenhum degrau de preço ≥3% na janela — variações de conversão aqui vêm de tráfego/mix, não de preço.`);
+    if(bullets.length) leitura=`<div class="tablecard" style="padding:12px 16px;margin:0 0 14px"><div class="eyebrow" style="margin-bottom:8px">🔍 Leitura automática — o que moveu a conversão? <span style="font-size:9px">(semanal; correlação ≠ causalidade)</span></div><div style="display:grid;gap:6px;font-size:13px">${bullets.map(b=>`<div>• ${b}</div>`).join('')}</div>${eq.amp?`<div class="gr" style="margin-top:8px">Escalas de Conversão e Preço equalizadas: ambos os gráficos exibem a mesma amplitude relativa (±${nf.format(Math.round(eq.amp*50))}%) — inclinação comparável a olho.</div>`:''}</div>`;
+  }
   const d=ehGrupo?{descricao:`agregado de ${st.radar.filter(r=>(r.grupo||'—')===st.pnCod.slice(1)).length} produtos com giro`}:st.radar.find(r=>r.cod===st.pnCod);
   const verdict=[];
   if(convMedia!=null) verdict.push(convMedia>=med?`converte ACIMA da mediana da loja (${nf1.format(convMedia)}% vs ${nf1.format(med)}%)`:`converte ABAIXO da mediana da loja (${nf1.format(convMedia)}% vs ${nf1.format(med)}%)`);
@@ -1035,11 +1105,12 @@ async function renderPainel(){
       <div class="kpi"><span class="lab">Add-to-cart</span><span class="val">${tViews?nf1.format(tCart/tViews*100)+'%':'—'}</span></div>
     </div>
     <div class="banner ambar" style="background:var(--accent-soft);color:var(--accent)">${verdict.join(' · ')}</div>
+    ${leitura}
     <div class="tablecard pn-grid">
       <div>${cab('Acessos — views'+unid+' (GA4, site)','views')}${svgSerie(sViews,{tipo:'area',cor:'var(--ch1)',fmt:v=>nf.format(Math.round(v)),id:'views'})}</div>
-      <div>${cab('Conversão — %','conv')}${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true,id:'conv'})}</div>
+      <div>${cab('Conversão — %','conv')}${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true,id:'conv',dominio:eq.da})}</div>
       <div>${cab('Venda no site — un'+unid+' (002)','venda')}${svgSerie(sVenda,{tipo:'area',cor:'var(--bar-strong)',fmt:v=>nf.format(Math.round(v)),id:'venda'})}</div>
-      <div>${cab(ehGrupo?'Preço médio do MIX — R$/un (mix de produtos influencia)':'Preço médio praticado — R$/un','preco')}${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf2.format(v),id:'preco',zeroBase:false})}</div>
+      <div>${cab(ehGrupo?'Preço médio do MIX — R$/un (mix de produtos influencia)':'Preço médio praticado — R$/un','preco')}${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf2.format(v),id:'preco',zeroBase:false,dominio:eq.db})}</div>
       <p class="gr" style="margin:0">Fontes: GA4 (Brasil) + BASE BBDI 2020, diárias, atualizadas às 6h${reconc}.</p>
     </div>`;
   document.querySelectorAll('button[data-q]').forEach(b=>b.onclick=()=>{st.pnModo[b.dataset.q]=b.dataset.cm;renderPainel();});
