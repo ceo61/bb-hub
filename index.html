@@ -923,10 +923,12 @@ async function medianaLojaConv(){
   return st.medLoja;
 }
 async function renderPainel(){
-  const cods=[...new Set(st.radar.map(r=>r.cod))].sort();
+  const grupos={}; st.radar.forEach(r=>{const g=r.grupo||'—'; grupos[g]=(grupos[g]||0)+1;});
+  const cods=[...new Set(st.radar.filter(r=>!st.pnGrupo||(r.grupo||'—')===st.pnGrupo).map(r=>r.cod))].sort();
   st.pnJan=st.pnJan||6;
   $('#conteudo').innerHTML=`
     <div class="toolbar">
+      <select id="pnGrupo"><option value="">Todos os grupos</option>${Object.keys(grupos).sort((a,b)=>grupos[b]-grupos[a]).map(g=>`<option ${st.pnGrupo===g?'selected':''} value="${esc(g)}">${esc(g)} (${grupos[g]})</option>`).join('')}</select>
       <input list="pnLista" id="pnCod" placeholder="Digite ou escolha o produto…" value="${esc(st.pnCod||'')}" style="min-width:240px">
       <datalist id="pnLista">${cods.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
       ${[2,3,6,12].map(m=>`<button class="kpi" data-j="${m}" style="padding:7px 14px;${st.pnJan===m?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${m}m</button>`).join('')}
@@ -934,6 +936,7 @@ async function renderPainel(){
     </div>
     <div id="pnCorpo"><div class="embreve"><div class="big">📈</div><h2>Escolha um produto</h2><p>Acessos, conversão, venda e preço médio — dia a dia.</p></div></div>`;
   document.querySelectorAll('button[data-j]').forEach(b=>b.onclick=()=>{st.pnJan=+b.dataset.j;renderPainel();});
+  $('#pnGrupo').onchange=e=>{st.pnGrupo=e.target.value;renderPainel();};
   $('#pnCod').onchange=e=>{st.pnCod=e.target.value.trim().toUpperCase();location.hash='painel/'+encodeURIComponent(st.pnCod);renderPainel();};
   if(!st.pnCod) return;
   $('#pnCorpo').innerHTML='<div class="carregando">Carregando série do produto…</div>';
