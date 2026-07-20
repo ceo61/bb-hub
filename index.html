@@ -177,6 +177,9 @@ th.ord .seta{font-size:9px;margin-left:3px}
 .pn-grid .eyebrow{margin-bottom:6px}
 .pn-grid p{grid-column:1/-1}
 @media (max-width:980px){.pn-grid{grid-template-columns:1fr}}
+.pn-it{display:flex;align-items:center;padding:7px 12px;cursor:pointer;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pn-it:hover{background:var(--accent-soft)}
+.pn-it.sel{color:var(--accent);font-weight:600}
 </style>
 </head>
 <body>
@@ -948,8 +951,10 @@ async function renderPainel(){
   $('#conteudo').innerHTML=`
     <div class="toolbar">
       <select id="pnGrupo"><option value="">Todos os grupos</option>${Object.keys(grupos).sort((a,b)=>grupos[b]-grupos[a]).map(g=>`<option ${st.pnGrupo===g?'selected':''} value="${esc(g)}">${esc(g)} (${grupos[g]})</option>`).join('')}</select>
-      <input list="pnLista" id="pnCod" placeholder="Digite ou escolha o produto…" value="${esc(st.pnCod||'')}" style="min-width:240px">
-      <datalist id="pnLista">${cods.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+      <span style="position:relative;display:inline-block">
+        <input id="pnCod" placeholder="Digite ou escolha o produto…" value="${esc(st.pnCod||'')}" autocomplete="off" style="min-width:240px">
+        <div id="pnDrop" style="display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:320px;max-height:340px;overflow-y:auto;background:var(--surface);border:1px solid var(--hair);border-radius:10px;box-shadow:var(--shadow);z-index:60"></div>
+      </span>
       ${st.pnGrupo?`<button class="kpi" id="pnTodoGrupo" style="padding:7px 14px;${(st.pnCod||'').startsWith('@')?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">📊 Grupo inteiro</button>`:''}
       ${[2,3,6,12].map(m=>`<button class="kpi" data-j="${m}" style="padding:7px 14px;${st.pnJan===m?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${m}m</button>`).join('')}
       ${st.pnJan>=6?['sem','mes'].map(ag=>`<button class="kpi" data-ag="${ag}" style="padding:7px 14px;${(st.pnAgg||'sem')===ag?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${ag==='sem'?'Semanal':'Mensal'}</button>`).join(''):''}
@@ -962,7 +967,29 @@ async function renderPainel(){
   const btg=document.getElementById('pnTodoGrupo');
   if(btg) btg.onclick=()=>{st.pnCod='@'+st.pnGrupo;st.pnFocus=false;location.hash='painel/'+encodeURIComponent(st.pnCod);renderPainel();};
   $('#pnCod').onchange=e=>{st.pnCod=e.target.value.trim().toUpperCase();location.hash='painel/'+encodeURIComponent(st.pnCod);renderPainel();};
-  $('#pnCod').onkeydown=e=>{  // ↑/↓ navegam pela listagem (respeitando o filtro de grupo)
+  const g2={}; st.radar.forEach(r=>{ if(!g2[r.cod]) g2[r.cod]=r.grupo||'—'; });
+  const drop=$('#pnDrop'), inpCod=$('#pnCod');
+  const abreLista=filtro=>{
+    const f=(filtro||'').trim().toUpperCase();
+    const ls=f?cods.filter(c=>c.includes(f)):cods;
+    drop.innerHTML=ls.length
+      ? ls.map(c=>`<div class="pn-it${c===(st.pnCod||'').toUpperCase()?' sel':''}" data-c="${esc(c)}"><span>${esc(c)}</span>${!st.pnGrupo?`<span style="margin-left:auto;padding-left:16px;color:var(--muted);font-size:11px">${esc(g2[c]||'')}</span>`:''}</div>`).join('')
+      : '<div class="pn-it" style="color:var(--muted);cursor:default">nenhum produto no filtro</div>';
+    drop.style.display='block';
+    const s=drop.querySelector('.pn-it.sel'); if(s) s.scrollIntoView({block:'center'});
+    drop.querySelectorAll('.pn-it[data-c]').forEach(el=>el.onmousedown=ev=>{
+      ev.preventDefault();
+      drop.style.display='none';
+      st.pnCod=el.dataset.c; st.pnFocus=false;
+      location.hash='painel/'+encodeURIComponent(st.pnCod);
+      renderPainel();
+    });
+  };
+  inpCod.onmousedown=()=>abreLista('');        // clique: abre a lista do grupo (ou de tudo)
+  inpCod.oninput=e=>abreLista(e.target.value); // digitação: filtra por trecho do código
+  inpCod.addEventListener('blur',()=>setTimeout(()=>{ if(drop.isConnected) drop.style.display='none'; },120));
+  $('#pnCod').onkeydown=e=>{  // ↑/↓ navegam pela listagem (respeitando o filtro de grupo); Esc fecha a lista
+    if(e.key==='Escape'){ drop.style.display='none'; return; }
     if(e.key!=='ArrowDown'&&e.key!=='ArrowUp') return;
     e.preventDefault();
     if(!cods.length) return;
