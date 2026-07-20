@@ -918,13 +918,17 @@ async function renderPainel(){
   // séries por dia (preenche buracos com zero p/ views/vendas)
   const dias=[]; for(let d=new Date(ini);d<=new Date();d.setDate(d.getDate()+1)) dias.push(d.toISOString().slice(0,10));
   const mc=Object.fromEntries(conv.map(x=>[x.data,x])), mv=Object.fromEntries(vend.map(x=>[x.data,x]));
-  const sViews=dias.map(d=>[d, mc[d]?.views||0]);
-  st.pnConvModo=st.pnConvModo||'mm7';
-  const sConv = st.pnConvModo==='mm7'
+  const M=st.pnModo=st.pnModo||{views:'raw',conv:'mm7',venda:'raw',preco:'mm7'};
+  const sViews = M.views==='mm7' ? mm7(dias.map(d=>[d, mc[d]?.views||0])) : dias.map(d=>[d, mc[d]?.views||0]);
+  const sConv = M.conv==='mm7'
     ? mm7(dias.map(d=>[d, mc[d]?.compras||0, mc[d]?.views||0])).map(p=>[p[0],p[1]!=null?p[1]*100:null])
     : dias.map(d=>{const c=mc[d]; return [d, (c&&c.views>0)?c.compras/c.views*100:null];});
-  const sVenda=dias.map(d=>[d, mv[d]?.qtd_b2c||0]);
-  const sPreco=mm7(dias.map(d=>[d, mv[d]?.val_b2c||0, mv[d]?.qtd_b2c||0]));
+  const sVenda = M.venda==='mm7' ? mm7(dias.map(d=>[d, mv[d]?.qtd_b2c||0])) : dias.map(d=>[d, mv[d]?.qtd_b2c||0]);
+  const sPreco = M.preco==='mm7'
+    ? mm7(dias.map(d=>[d, mv[d]?.val_b2c||0, mv[d]?.qtd_b2c||0]))
+    : dias.map(d=>{const v=mv[d]; return [d, (v&&v.qtd_b2c>0)?v.val_b2c/v.qtd_b2c:null];});
+  const tog=q=>`<span style="margin-left:auto;display:inline-flex;gap:4px">${[['mm7','média 7d'],['raw','diário puro']].map(([cm,lb])=>`<button data-q="${q}" data-cm="${cm}" style="font-size:10px;letter-spacing:.04em;padding:2px 9px;border-radius:99px;border:1px solid ${M[q]===cm?'var(--accent)':'var(--hair)'};color:${M[q]===cm?'var(--accent)':'var(--muted)'}">${lb}</button>`).join('')}</span>`;
+  const cab=(t,q)=>`<div class="eyebrow" style="display:flex;align-items:center;gap:8px">${t}${tog(q)}</div>`;
   const tViews=conv.reduce((s,x)=>s+x.views,0), tCompras=conv.reduce((s,x)=>s+x.compras,0),
         tCart=conv.reduce((s,x)=>s+x.carrinho,0),
         tQtd=vend.reduce((s,x)=>s+(x.qtd_b2c||0),0), tVal=vend.reduce((s,x)=>s+(x.val_b2c||0),0);
@@ -946,17 +950,13 @@ async function renderPainel(){
     </div>
     <div class="banner ambar" style="background:var(--accent-soft);color:var(--accent)">${verdict.join(' · ')}</div>
     <div class="tablecard pn-grid">
-      <div><div class="eyebrow">Acessos — views/dia (GA4, site)</div>${svgSerie(sViews,{tipo:'area',cor:'var(--ch1)',fmt:v=>nf.format(Math.round(v))})}</div>
-      <div><div class="eyebrow" style="display:flex;align-items:center;gap:8px">Conversão — %
-        <span style="margin-left:auto;display:inline-flex;gap:4px">
-          <button data-cm="mm7" style="font-size:10px;letter-spacing:.04em;padding:2px 9px;border-radius:99px;border:1px solid ${st.pnConvModo==='mm7'?'var(--accent)':'var(--hair)'};color:${st.pnConvModo==='mm7'?'var(--accent)':'var(--muted)'}">média 7d</button>
-          <button data-cm="raw" style="font-size:10px;letter-spacing:.04em;padding:2px 9px;border-radius:99px;border:1px solid ${st.pnConvModo==='raw'?'var(--accent)':'var(--hair)'};color:${st.pnConvModo==='raw'?'var(--accent)':'var(--muted)'}">diário puro</button>
-        </span></div>${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true})}</div>
-      <div><div class="eyebrow">Venda no site — un/dia (unidade 002)</div>${svgSerie(sVenda,{tipo:'area',cor:'var(--bar-strong)',fmt:v=>nf.format(Math.round(v))})}</div>
-      <div><div class="eyebrow">Preço médio praticado — R$/un (média móvel 7d)</div>${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf.format(v)})}</div>
+      <div>${cab('Acessos — views/dia (GA4, site)','views')}${svgSerie(sViews,{tipo:'area',cor:'var(--ch1)',fmt:v=>nf.format(Math.round(v))})}</div>
+      <div>${cab('Conversão — %','conv')}${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true})}</div>
+      <div>${cab('Venda no site — un/dia (002)','venda')}${svgSerie(sVenda,{tipo:'area',cor:'var(--bar-strong)',fmt:v=>nf.format(Math.round(v))})}</div>
+      <div>${cab('Preço médio praticado — R$/un','preco')}${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf.format(v)})}</div>
       <p class="gr" style="margin:0">Fontes: GA4 (Brasil) + BASE BBDI 2020, diárias, atualizadas às 6h${reconc}.</p>
     </div>`;
-  document.querySelectorAll('button[data-cm]').forEach(b=>b.onclick=()=>{st.pnConvModo=b.dataset.cm;renderPainel();});
+  document.querySelectorAll('button[data-q]').forEach(b=>b.onclick=()=>{st.pnModo[b.dataset.q]=b.dataset.cm;renderPainel();});
 }
 
 /* ---------- em construção / config ---------- */
