@@ -919,7 +919,7 @@ function bindHoverPainel(){
 function pearson(a,b){
   const xs=[],ys=[];
   for(let i=0;i<a.length;i++){ if(a[i]!=null&&b[i]!=null){xs.push(a[i]);ys.push(b[i]);} }
-  const n=xs.length; if(n<6) return null;
+  const n=xs.length; if(n<5) return null;
   const mx=xs.reduce((s,v)=>s+v,0)/n, my=ys.reduce((s,v)=>s+v,0)/n;
   let sxy=0,sx=0,sy=0;
   for(let i=0;i<n;i++){const dx=xs[i]-mx,dy=ys[i]-my; sxy+=dx*dy; sx+=dx*dx; sy+=dy*dy;}
@@ -1039,55 +1039,63 @@ async function renderPainel(){
         tCart=conv.reduce((s,x)=>s+x.carrinho,0),
         tQtd=vend.reduce((s,x)=>s+(x.qtd_b2c||0),0), tVal=vend.reduce((s,x)=>s+(x.val_b2c||0),0);
   const convMedia=tViews?tCompras/tViews*100:null;
-  // séries semanais p/ análise (independente do modo de exibição)
+  // séries MENSAIS p/ análise (independente do modo de exibição; meses incompletos descartados)
   const _sem={};
   for(const dd of dias){
-    const dt=new Date(dd+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7));
-    const w=dt.toISOString().slice(0,10);
+    const w=dd.slice(0,7)+'-01';
     const a=_sem[w]=_sem[w]||{vw:0,cp:0,qt:0,vl:0};
     const c=mc[dd], v=mv[dd];
     if(c){a.vw+=c.views;a.cp+=c.compras;}
     if(v){a.qt+=v.qtd_b2c||0;a.vl+=v.val_b2c||0;}
   }
-  const _ws=Object.keys(_sem).sort();
+  let _ws=Object.keys(_sem).sort();
+  if(_ws.length&&dias[0]>_ws[0]) _ws=_ws.slice(1);            // 1º mês entrou pela metade
+  if(_ws.length){                                             // mês corrente ainda aberto
+    const u=_ws[_ws.length-1], fimU=new Date(+u.slice(0,4), +u.slice(5,7), 0);
+    if(dias[dias.length-1] < u.slice(0,8)+String(fimU.getDate()).padStart(2,'0')) _ws=_ws.slice(0,-1);
+  }
   const wConv=_ws.map(w=>_sem[w].vw>0?_sem[w].cp/_sem[w].vw*100:null);
   const wViews=_ws.map(w=>_sem[w].vw);
   const wPreco=_ws.map(w=>_sem[w].qt>0?_sem[w].vl/_sem[w].qt:null);
   let leitura='';
   {
     const bullets=[];
-    const rTraf=pearson(wConv,wViews), rPreco=pearson(wConv,wPreco);
-    if(rTraf!=null){
-      if(rTraf<=-0.3) bullets.push(`⚠️ <b>Conversão × tráfego: r=${nf1.format(rTraf)}</b> — quando o tráfego cai, a conversão tende a SUBIR neste produto (tráfego menor costuma ser mais qualificado). <b>Cuidado: isso imita efeito de preço.</b>`);
-      else if(rTraf>=0.3) bullets.push(`Conversão × tráfego: r=+${nf1.format(rTraf)} — andam juntos na janela (tráfego novo está convertendo).`);
-      else bullets.push(`Conversão × tráfego: r=${rTraf>=0?'+':''}${nf1.format(rTraf)} — sem relação forte na janela.`);
+    const mesLb=w=>`${w.slice(5,7)}/${w.slice(2,4)}`;
+    if(_ws.length<4){
+      bullets.push('Janela curta para a leitura mensal — selecione 6 ou 12 meses para a análise completa (só meses fechados entram na conta).');
+    } else {
+      const rTraf=pearson(wConv,wViews), rPreco=pearson(wConv,wPreco);
+      if(rTraf!=null){
+        if(rTraf<=-0.3) bullets.push(`⚠️ <b>Conversão × tráfego: r=${nf1.format(rTraf)}</b> — nos meses de menos tráfego a conversão tende a SUBIR neste produto (tráfego menor costuma ser mais qualificado). <b>Cuidado: isso imita efeito de preço.</b>`);
+        else if(rTraf>=0.3) bullets.push(`Conversão × tráfego: r=+${nf1.format(rTraf)} — andam juntos na janela (tráfego novo está convertendo).`);
+        else bullets.push(`Conversão × tráfego: r=${rTraf>=0?'+':''}${nf1.format(rTraf)} — sem relação forte na janela.`);
+      }
+      if(rPreco!=null){
+        if(rPreco<=-0.3) bullets.push(`Conversão × preço: r=${nf1.format(rPreco)} — sinais de sensibilidade a preço (preço sobe → conversão cai).`);
+        else bullets.push(`Conversão × preço: r=${rPreco>=0?'+':''}${nf1.format(rPreco)} — pouca sensibilidade a preço visível na janela.`);
+      }
+      // degraus de preço (>=3% entre meses fechados) com antes/depois controlado por tráfego
+      const evs=[];
+      for(let i=1;i<_ws.length;i++){
+        const a=wPreco[i-1], b=wPreco[i];
+        if(a&&b&&Math.abs(b-a)/a>=0.03) evs.push({i,de:a,para:b,delta:(b-a)/a});
+      }
+      evs.sort((x,y)=>Math.abs(y.delta)-Math.abs(x.delta));
+      const mediaJ=(arr,ini2,fim2)=>{const v=arr.slice(Math.max(0,ini2),fim2).filter(x=>x!=null);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null;};
+      for(const ev of evs.slice(0,3)){
+        const cPre=mediaJ(wConv,ev.i-2,ev.i), cPos=mediaJ(wConv,ev.i,ev.i+2);
+        const vPre=mediaJ(wViews,ev.i-2,ev.i), vPos=mediaJ(wViews,ev.i,ev.i+2);
+        if(cPre==null||cPos==null) continue;
+        const dConv=cPos-cPre, dViews=(vPre&&vPos)?(vPos-vPre)/vPre:null;
+        let ver;
+        if(dViews!=null&&Math.abs(dViews)>=0.2) ver=`mas o tráfego variou ${dViews>0?'+':''}${nf.format(Math.round(dViews*100))}% no mesmo período — <b>atribuição incerta (tráfego contamina)</b>`;
+        else if(Math.sign(dConv)===-Math.sign(ev.delta)&&Math.abs(dConv)>=0.3) ver=`tráfego estável — <b>resposta consistente com efeito preço</b>`;
+        else ver=`tráfego estável e conversão pouco mudou — <b>preço não moveu a conversão</b>`;
+        bullets.push(`Preço ${ev.delta>0?'subiu':'caiu'} ${nf.format(Math.round(Math.abs(ev.delta)*100))}% em ${mesLb(_ws[ev.i])} (${rf2.format(ev.de)}→${rf2.format(ev.para)}): conversão ${dConv>=0?'+':''}${nf1.format(dConv)} p.p. vs 2 meses anteriores — ${ver}.`);
+      }
+      if(evs.length===0&&rPreco!=null) bullets.push(`Nenhum degrau de preço ≥3% entre os meses da janela — variações de conversão aqui vêm de tráfego/mix, não de preço.`);
     }
-    if(rPreco!=null){
-      if(rPreco<=-0.3) bullets.push(`Conversão × preço: r=${nf1.format(rPreco)} — sinais de sensibilidade a preço (preço sobe → conversão cai).`);
-      else bullets.push(`Conversão × preço: r=${rPreco>=0?'+':''}${nf1.format(rPreco)} — pouca sensibilidade a preço visível na janela.`);
-    }
-    // eventos de preço (degraus >=3% entre semanas) com antes/depois controlado por tráfego
-    const evs=[];
-    for(let i=1;i<_ws.length;i++){
-      const a=wPreco[i-1], b=wPreco[i];
-      if(a&&b&&Math.abs(b-a)/a>=0.03) evs.push({i,de:a,para:b,delta:(b-a)/a});
-    }
-    evs.sort((x,y)=>Math.abs(y.delta)-Math.abs(x.delta));
-    const mediaJ=(arr,ini,fim)=>{const v=arr.slice(Math.max(0,ini),fim).filter(x=>x!=null);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null;};
-    for(const ev of evs.slice(0,3)){
-      const cPre=mediaJ(wConv,ev.i-3,ev.i), cPos=mediaJ(wConv,ev.i,ev.i+3);
-      const vPre=mediaJ(wViews,ev.i-3,ev.i), vPos=mediaJ(wViews,ev.i,ev.i+3);
-      if(cPre==null||cPos==null) continue;
-      const dConv=cPos-cPre, dViews=(vPre&&vPos)?(vPos-vPre)/vPre:null;
-      let ver;
-      if(dViews!=null&&Math.abs(dViews)>=0.2) ver=`mas o tráfego variou ${dViews>0?'+':''}${nf.format(Math.round(dViews*100))}% no mesmo período — <b>atribuição incerta (tráfego contamina)</b>`;
-      else if(Math.sign(dConv)===-Math.sign(ev.delta)&&Math.abs(dConv)>=0.3) ver=`tráfego estável — <b>resposta consistente com efeito preço</b>`;
-      else ver=`tráfego estável e conversão pouco mudou — <b>preço não moveu a conversão</b>`;
-      const sem=_ws[ev.i];
-      bullets.push(`Preço ${ev.delta>0?'subiu':'caiu'} ${nf.format(Math.round(Math.abs(ev.delta)*100))}% na sem. de ${sem.slice(8,10)}/${sem.slice(5,7)} (${rf2.format(ev.de)}→${rf2.format(ev.para)}): conversão ${dConv>=0?'+':''}${nf1.format(dConv)} p.p. — ${ver}.`);
-    }
-    if(evs.length===0&&rPreco!=null) bullets.push(`Nenhum degrau de preço ≥3% na janela — variações de conversão aqui vêm de tráfego/mix, não de preço.`);
-    if(bullets.length) leitura=`<div class="tablecard" style="padding:12px 16px;margin:0 0 14px"><div class="eyebrow" style="margin-bottom:8px">🔍 Leitura automática — o que moveu a conversão? <span style="font-size:9px">(semanal; correlação ≠ causalidade)</span></div><div style="display:grid;gap:6px;font-size:13px">${bullets.map(b=>`<div>• ${b}</div>`).join('')}</div>${eq.amp?`<div class="gr" style="margin-top:8px">Escalas de Conversão e Preço equalizadas: ambos os gráficos exibem a mesma amplitude relativa (±${nf.format(Math.round(eq.amp*50))}%) — inclinação comparável a olho.</div>`:''}</div>`;
+    if(bullets.length) leitura=`<div class="tablecard" style="padding:12px 16px;margin:14px 0 0"><div class="eyebrow" style="margin-bottom:8px">🔍 Leitura automática — o que moveu a conversão? <span style="font-size:9px">(mensal, só meses fechados; correlação ≠ causalidade)</span></div><div style="display:grid;gap:6px;font-size:13px">${bullets.map(b=>`<div>• ${b}</div>`).join('')}</div>${eq.amp?`<div class="gr" style="margin-top:8px">Escalas de Conversão e Preço equalizadas: ambos os gráficos exibem a mesma amplitude relativa (±${nf.format(Math.round(eq.amp*50))}%) — inclinação comparável a olho.</div>`:''}</div>`;
   }
   const d=ehGrupo?{descricao:`agregado de ${st.radar.filter(r=>(r.grupo||'—')===st.pnCod.slice(1)).length} produtos com giro`}:st.radar.find(r=>r.cod===st.pnCod);
   const verdict=[];
@@ -1105,14 +1113,14 @@ async function renderPainel(){
       <div class="kpi"><span class="lab">Add-to-cart</span><span class="val">${tViews?nf1.format(tCart/tViews*100)+'%':'—'}</span></div>
     </div>
     <div class="banner ambar" style="background:var(--accent-soft);color:var(--accent)">${verdict.join(' · ')}</div>
-    ${leitura}
     <div class="tablecard pn-grid">
       <div>${cab('Acessos — views'+unid+' (GA4, site)','views')}${svgSerie(sViews,{tipo:'area',cor:'var(--ch1)',fmt:v=>nf.format(Math.round(v)),id:'views'})}</div>
       <div>${cab('Conversão — %','conv')}${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true,id:'conv',dominio:eq.da})}</div>
       <div>${cab('Venda no site — un'+unid+' (002)','venda')}${svgSerie(sVenda,{tipo:'area',cor:'var(--bar-strong)',fmt:v=>nf.format(Math.round(v)),id:'venda'})}</div>
       <div>${cab(ehGrupo?'Preço médio do MIX — R$/un (mix de produtos influencia)':'Preço médio praticado — R$/un','preco')}${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf2.format(v),id:'preco',zeroBase:false,dominio:eq.db})}</div>
       <p class="gr" style="margin:0">Fontes: GA4 (Brasil) + BASE BBDI 2020, diárias, atualizadas às 6h${reconc}.</p>
-    </div>`;
+    </div>
+    ${leitura}`;
   document.querySelectorAll('button[data-q]').forEach(b=>b.onclick=()=>{st.pnModo[b.dataset.q]=b.dataset.cm;renderPainel();});
   bindHoverPainel();
 }
