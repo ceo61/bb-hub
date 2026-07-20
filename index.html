@@ -864,21 +864,56 @@ function mm7(pts){ // média móvel 7d sobre [x, num, den] -> taxa; ou [x, v] ->
   }
   return out;
 }
-function svgSerie(pts,{h=210,tipo='area',cor='var(--ch1)',ref=null,fmt=v=>nf1.format(v),pct=false}={}){
+const PN_CH={};
+function svgSerie(pts,{h=210,tipo='area',cor='var(--ch1)',ref=null,fmt=v=>nf1.format(v),pct=false,id=null,zeroBase=true}={}){
   const W=640,P=42;
-  const xs=pts.map(p=>p[0]), vs=pts.map(p=>p[1]).filter(v=>v!=null);
+  const vs=pts.map(p=>p[1]).filter(v=>v!=null);
   if(!vs.length) return '<div class="carregando" style="padding:30px">sem dados na janela</div>';
-  const vmax=Math.max(...vs, ref||0)*1.08||1, vmin=0;
+  const lo=Math.min(...vs, ref!=null?ref:Infinity), hi=Math.max(...vs, ref!=null?ref:-Infinity);
+  const vmin=zeroBase?0:Math.max(0, lo-((hi-lo)||hi||1)*0.15);
+  const vmax=(hi+((hi-lo)||hi||1)*0.08)||1;
   const X=i=>P+(W-P-8)*(pts.length<2?0:i/(pts.length-1));
-  const Y=v=>h-16-(h-26)*((v-vmin)/(vmax-vmin));
+  const Y=v=>h-16-(h-26)*((v-vmin)/(vmax-vmin||1));
+  const fmtV=v=>pct?nf1.format(v)+'%':fmt(v);
   let path='', area='';
   pts.forEach((p,i)=>{ if(p[1]==null) return; const c=`${X(i).toFixed(1)},${Y(p[1]).toFixed(1)}`; path+=(path?' L':'M')+c; });
   if(tipo==='area'&&path) area=`<path d="${path} L${X(pts.length-1).toFixed(1)},${(h-16)} L${X(0).toFixed(1)},${h-16} Z" fill="${cor}" opacity="0.18"/>`;
-  const grid=[0.5,1].map(f=>{const v=vmin+(vmax-vmin)*f;return `<line x1="${P}" x2="${W-8}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--hair)" stroke-width="1"/><text x="${P-4}" y="${Y(v)+3}" text-anchor="end" font-size="9" fill="var(--muted)">${pct?nf1.format(v)+'%':fmt(v)}</text>`;}).join('');
+  const frs=zeroBase?[0.5,1]:[0,0.5,1];
+  const grid=frs.map(f=>{const v=vmin+(vmax-vmin)*f;return `<line x1="${P}" x2="${W-8}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--hair)" stroke-width="1"/><text x="${P-4}" y="${Y(v)+3}" text-anchor="end" font-size="9" fill="var(--muted)">${fmtV(v)}</text>`;}).join('');
   const refl=ref!=null?`<line x1="${P}" x2="${W-8}" y1="${Y(ref)}" y2="${Y(ref)}" stroke="var(--muted)" stroke-dasharray="4 3" stroke-width="1"/><text x="${W-10}" y="${Y(ref)-3}" text-anchor="end" font-size="9" fill="var(--muted)">mediana loja ${nf1.format(ref)}%</text>`:'';
   const meses={}; pts.forEach((p,i)=>{const m=p[0].slice(0,7); if(!(m in meses)) meses[m]=i;});
   const eixo=Object.entries(meses).filter((_,i,a)=>a.length<=8||i%2===0).map(([m,i])=>`<text x="${X(i)}" y="${h-3}" font-size="9" fill="var(--muted)">${m.slice(5,7)}/${m.slice(2,4)}</text>`).join('');
-  return `<svg viewBox="0 0 ${W} ${h}" style="width:100%;height:auto" role="img">${grid}${area}<path d="${path}" fill="none" stroke="${cor}" stroke-width="2"/>${refl}${eixo}</svg>`;
+  let extra='';
+  if(id){
+    PN_CH[id]={W, pix:pts.map((p,i)=>p[1]==null?null:[X(i),Y(p[1]),p[0],fmtV(p[1])]).filter(Boolean)};
+    extra=`<line id="ch-${id}" y1="10" y2="${h-16}" stroke="var(--muted)" stroke-width="1" opacity="0"/><circle id="mk-${id}" r="4" fill="${cor}" stroke="var(--surface)" stroke-width="1.5" opacity="0"/>`;
+  }
+  return `<svg ${id?`data-hover="${id}" style="width:100%;height:auto;cursor:crosshair"`:'style="width:100%;height:auto"'} viewBox="0 0 ${W} ${h}" role="img">${grid}${area}<path d="${path}" fill="none" stroke="${cor}" stroke-width="2"/>${refl}${eixo}${extra}</svg>`;
+}
+function bindHoverPainel(){
+  let tip=document.getElementById('pnTip');
+  if(!tip){
+    tip=document.createElement('div'); tip.id='pnTip';
+    tip.style.cssText='position:fixed;z-index:90;background:var(--ink);color:var(--page);font-size:12px;padding:4px 9px;border-radius:6px;pointer-events:none;opacity:0;font-variant-numeric:tabular-nums;white-space:nowrap';
+    document.body.appendChild(tip);
+  }
+  document.querySelectorAll('svg[data-hover]').forEach(svg=>{
+    const id=svg.dataset.hover, d=PN_CH[id]; if(!d) return;
+    const ch=svg.querySelector('[id^=ch-]'), mk=svg.querySelector('[id^=mk-]');
+    svg.onmousemove=e=>{
+      const r=svg.getBoundingClientRect();
+      const xv=(e.clientX-r.left)/r.width*d.W;
+      let best=null,bd=1e9;
+      for(const p of d.pix){const dd=Math.abs(p[0]-xv); if(dd<bd){bd=dd;best=p;}}
+      if(!best) return;
+      ch.setAttribute('x1',best[0]); ch.setAttribute('x2',best[0]); ch.setAttribute('opacity','.45');
+      mk.setAttribute('cx',best[0]); mk.setAttribute('cy',best[1]); mk.setAttribute('opacity','1');
+      const dt=best[2];
+      tip.textContent=`${dt.slice(8,10)}/${dt.slice(5,7)}/${dt.slice(2,4)} · ${best[3]}`;
+      tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY-10)+'px'; tip.style.opacity='1';
+    };
+    svg.onmouseleave=()=>{ tip.style.opacity='0'; ch.setAttribute('opacity','0'); mk.setAttribute('opacity','0'); };
+  });
 }
 async function medianaLojaConv(){
   if(st.medLoja!=null) return st.medLoja;
@@ -950,13 +985,14 @@ async function renderPainel(){
     </div>
     <div class="banner ambar" style="background:var(--accent-soft);color:var(--accent)">${verdict.join(' · ')}</div>
     <div class="tablecard pn-grid">
-      <div>${cab('Acessos — views/dia (GA4, site)','views')}${svgSerie(sViews,{tipo:'area',cor:'var(--ch1)',fmt:v=>nf.format(Math.round(v))})}</div>
-      <div>${cab('Conversão — %','conv')}${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true})}</div>
-      <div>${cab('Venda no site — un/dia (002)','venda')}${svgSerie(sVenda,{tipo:'area',cor:'var(--bar-strong)',fmt:v=>nf.format(Math.round(v))})}</div>
-      <div>${cab('Preço médio praticado — R$/un','preco')}${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf.format(v)})}</div>
+      <div>${cab('Acessos — views/dia (GA4, site)','views')}${svgSerie(sViews,{tipo:'area',cor:'var(--ch1)',fmt:v=>nf.format(Math.round(v)),id:'views'})}</div>
+      <div>${cab('Conversão — %','conv')}${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true,id:'conv'})}</div>
+      <div>${cab('Venda no site — un/dia (002)','venda')}${svgSerie(sVenda,{tipo:'area',cor:'var(--bar-strong)',fmt:v=>nf.format(Math.round(v)),id:'venda'})}</div>
+      <div>${cab('Preço médio praticado — R$/un','preco')}${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf2.format(v),id:'preco',zeroBase:false})}</div>
       <p class="gr" style="margin:0">Fontes: GA4 (Brasil) + BASE BBDI 2020, diárias, atualizadas às 6h${reconc}.</p>
     </div>`;
   document.querySelectorAll('button[data-q]').forEach(b=>b.onclick=()=>{st.pnModo[b.dataset.q]=b.dataset.cm;renderPainel();});
+  bindHoverPainel();
 }
 
 /* ---------- em construção / config ---------- */
