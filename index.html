@@ -938,6 +938,17 @@ async function renderPainel(){
   document.querySelectorAll('button[data-j]').forEach(b=>b.onclick=()=>{st.pnJan=+b.dataset.j;renderPainel();});
   $('#pnGrupo').onchange=e=>{st.pnGrupo=e.target.value;renderPainel();};
   $('#pnCod').onchange=e=>{st.pnCod=e.target.value.trim().toUpperCase();location.hash='painel/'+encodeURIComponent(st.pnCod);renderPainel();};
+  $('#pnCod').onkeydown=e=>{  // ↑/↓ navegam pela listagem (respeitando o filtro de grupo)
+    if(e.key!=='ArrowDown'&&e.key!=='ArrowUp') return;
+    e.preventDefault();
+    if(!cods.length) return;
+    let i=cods.indexOf((st.pnCod||'').toUpperCase());
+    if(i<0) i = e.key==='ArrowDown' ? -1 : 0;
+    i = e.key==='ArrowDown' ? (i+1)%cods.length : (i-1+cods.length)%cods.length;
+    st.pnCod=cods[i]; st.pnFocus=true;
+    location.hash='painel/'+encodeURIComponent(st.pnCod);
+  };
+  if(st.pnFocus){ const inp=$('#pnCod'); inp.focus(); const L=inp.value.length; try{inp.setSelectionRange(L,L);}catch(_){} }
   if(!st.pnCod) return;
   $('#pnCorpo').innerHTML='<div class="carregando">Carregando série do produto…</div>';
   const ini=new Date(Date.now()-st.pnJan*30.44*86400e3).toISOString().slice(0,10);
