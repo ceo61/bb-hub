@@ -180,6 +180,14 @@ th.ord .seta{font-size:9px;margin-left:3px}
 .pn-it{display:flex;align-items:center;padding:7px 12px;cursor:pointer;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .pn-it:hover{background:var(--accent-soft)}
 .pn-it.sel{color:var(--accent);font-weight:600}
+.nav .navsec{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:12px 12px 3px}
+.aclov{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:120;display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow-y:auto}
+.aclcard{background:var(--surface);border:1px solid var(--hair);border-radius:14px;box-shadow:var(--shadow);padding:20px 22px;width:min(680px,100%)}
+.aclgrp{border:1px solid var(--hair);border-radius:10px;padding:12px 14px;margin-top:12px}
+.aclpgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 12px;margin:10px 0;font-size:13px}
+.aclpgs label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.aclusers{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
+.aclu{background:var(--surface2);border:1px solid var(--hair);border-radius:99px;padding:3px 10px}
 </style>
 </head>
 <body>
@@ -215,9 +223,11 @@ th.ord .seta{font-size:9px;margin-left:3px}
       </svg>
       <div class="name">BB HUB<small>BestBattery</small></div>
     </div>
+    <div class="navsec">Análise</div>
+    <a href="#painel" data-pg="painel">📈 Painel do produto</a>
+    <div class="navsec">Gestão</div>
     <a href="#precos" data-pg="precos">🏷️ Preços — Markup</a>
     <a href="#sugestoes" data-pg="sugestoes">✅ Sugestões de preço</a>
-    <a href="#painel" data-pg="painel">📈 Painel do produto</a>
     <a href="#radar" data-pg="radar">📡 Radar</a>
     <a href="#produtos" data-pg="produtos">📦 Produtos</a>
     <a href="#compras" data-pg="compras">🚢 Compras &amp; Trânsito</a>
@@ -225,6 +235,7 @@ th.ord .seta{font-size:9px;margin-left:3px}
     <a href="#anuncios" data-pg="anuncios">📈 Anúncios &amp; Conversão <span class="soon">breve</span></a>
     <a href="#decisoes" data-pg="decisoes">💬 Decisões — Chat IA <span class="soon">breve</span></a>
     <div class="spacer"></div>
+    <a href="#acessos" id="navAcessos" class="hide">👥 Acessos</a>
     <a href="#config" data-pg="config">⚙️ Configurações</a>
   </aside>
 
@@ -304,10 +315,82 @@ sb.auth.onAuthStateChange((_ev, sess)=>{
   else { $('#telaLogin').classList.remove('hide'); $('#telaApp').classList.add('hide'); }
 });
 
+/* ---------- controle de acesso por grupo ---------- */
+const ADMIN='ceo@bestbattery.com.br';
+async function carregaAcl(){
+  const {data:{user}} = await sb.auth.getUser();
+  st.email=(user?.email||'').toLowerCase();
+  st.admin = st.email===ADMIN;
+  st.acl=null;  // null = vê tudo (admin e usuários sem grupo)
+  if(!st.admin){
+    const {data:u}=await sb.from('acl_usuarios').select('grupo').eq('email',st.email).maybeSingle();
+    if(u?.grupo){
+      const {data:g}=await sb.from('acl_grupos').select('paginas').eq('grupo',u.grupo).maybeSingle();
+      if(g) st.acl=new Set([...(g.paginas||[]),'config']);  // config (tema/sair) sempre acessível
+    }
+  }
+  aplicaAcl();
+}
+function aplicaAcl(){
+  if(st.admin) $('#navAcessos').classList.remove('hide');
+  document.querySelectorAll('.nav a[data-pg]').forEach(a=>
+    a.classList.toggle('hide', !!(st.acl && !st.acl.has(a.dataset.pg))));
+  document.querySelectorAll('.nav .navsec').forEach(s=>{  // seção sem item visível some
+    let el=s.nextElementSibling, tem=false;
+    while(el && el.tagName==='A'){ if(!el.classList.contains('hide')) tem=true; el=el.nextElementSibling; }
+    s.classList.toggle('hide', !tem);
+  });
+}
+$('#navAcessos').onclick=e=>{ e.preventDefault(); $('#nav').classList.remove('aberta'); abreAcessos(); };
+async function abreAcessos(){
+  let ov=document.getElementById('aclModal');
+  if(!ov){ ov=document.createElement('div'); ov.id='aclModal'; document.body.appendChild(ov); }
+  ov.className='aclov';
+  ov.innerHTML='<div class="aclcard"><div class="carregando">Carregando grupos…</div></div>';
+  ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
+  const [{data:gs},{data:us}]=await Promise.all([
+    sb.from('acl_grupos').select('*').order('grupo'),
+    sb.from('acl_usuarios').select('*').order('email')]);
+  const pgs=Object.keys(TITULOS).filter(p=>p!=='config');
+  ov.querySelector('.aclcard').innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0">👥 Acessos por grupo</h2><span id="aclFecha" style="margin-left:auto;cursor:pointer;font-size:20px">✕</span></div>
+    <p class="gr">Você (${esc(ADMIN)}) sempre vê tudo. <b>Usuários sem grupo também veem tudo</b> — para restringir alguém, inclua o e-mail num grupo. Configurações fica visível para todos (tema/sair).</p>
+    ${(gs||[]).map(g=>`
+      <div class="aclgrp" data-g="${esc(g.grupo)}">
+        <div style="display:flex;align-items:center;gap:8px"><b style="text-transform:uppercase;letter-spacing:.06em">${esc(g.grupo)}</b>
+          <button class="btn aclSalva" data-g="${esc(g.grupo)}" style="margin-left:auto;padding:4px 14px">Salvar páginas</button></div>
+        <div class="aclpgs">${pgs.map(p=>`<label><input type="checkbox" data-p="${p}" ${(g.paginas||[]).includes(p)?'checked':''}> ${TITULOS[p]}</label>`).join('')}</div>
+        <div class="aclusers">${(us||[]).filter(u=>u.grupo===g.grupo).map(u=>`<span class="aclu">${esc(u.email)} <b data-rm="${esc(u.email)}" style="cursor:pointer;color:var(--crit)">✕</b></span>`).join('')||'<span class="gr">nenhum usuário neste grupo ainda</span>'}</div>
+        <div style="display:flex;gap:8px;margin-top:8px"><input type="email" placeholder="email@bestbattery.com.br" class="aclAddMail" style="flex:1"><button class="btn aclAdd" data-g="${esc(g.grupo)}" style="padding:4px 14px">+ adicionar pessoa</button></div>
+      </div>`).join('')}
+    <div style="display:flex;gap:8px;margin-top:14px"><input placeholder="novo grupo (ex.: compras)" id="aclNovoG" style="flex:1"><button class="btn" id="aclCriaG" style="padding:4px 14px">Criar grupo</button></div>`;
+  ov.querySelector('#aclFecha').onclick=()=>ov.remove();
+  ov.querySelectorAll('.aclSalva').forEach(b=>b.onclick=async()=>{
+    const box=ov.querySelector(`.aclgrp[data-g="${CSS.escape(b.dataset.g)}"]`);
+    const sel=[...box.querySelectorAll('input[data-p]:checked')].map(i=>i.dataset.p);
+    const {error}=await sb.from('acl_grupos').update({paginas:sel,atualizado_em:new Date().toISOString()}).eq('grupo',b.dataset.g);
+    b.textContent=error?'erro ao salvar':'salvo ✓'; setTimeout(()=>b.textContent='Salvar páginas',1600);
+  });
+  ov.querySelectorAll('[data-rm]').forEach(x=>x.onclick=async()=>{
+    await sb.from('acl_usuarios').delete().eq('email',x.dataset.rm); abreAcessos();
+  });
+  ov.querySelectorAll('.aclAdd').forEach(b=>b.onclick=async()=>{
+    const em=b.previousElementSibling.value.trim().toLowerCase(); if(!em) return;
+    const {error}=await sb.from('acl_usuarios').upsert({grupo:b.dataset.g,email:em});
+    if(error) alert(error.message); else abreAcessos();
+  });
+  ov.querySelector('#aclCriaG').onclick=async()=>{
+    const g=ov.querySelector('#aclNovoG').value.trim().toLowerCase(); if(!g) return;
+    const {error}=await sb.from('acl_grupos').insert({grupo:g,paginas:[]});
+    if(error) alert(error.message); else abreAcessos();
+  };
+}
+
 /* ---------- carga de dados ---------- */
 async function carregaTudo(){
   st.carregado = true;
   try{
+    await carregaAcl();
     const {data:s} = await sb.from('radar').select('snapshot').order('snapshot',{ascending:false}).limit(1);
     st.snap = s?.[0]?.snapshot;
     if(!st.snap){ $('#conteudo').innerHTML = '<div class="carregando">Sem dados ainda — aguarde a primeira carga do ETL.</div>'; return; }
@@ -361,6 +444,7 @@ function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
   if(!TITULOS[pg]) pg='radar';
+  if(st.acl && !st.acl.has(pg)) pg=[...st.acl][0]||'config';
   st.pnCod = param || st.pnCod;
   st.pg=pg; st.shown=120;
   $('#tituloPagina').textContent = TITULOS[pg];
