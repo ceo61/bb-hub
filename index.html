@@ -933,10 +933,12 @@ async function renderPainel(){
       <datalist id="pnLista">${cods.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
       ${st.pnGrupo?`<button class="kpi" id="pnTodoGrupo" style="padding:7px 14px;${(st.pnCod||'').startsWith('@')?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">📊 Grupo inteiro</button>`:''}
       ${[2,3,6,12].map(m=>`<button class="kpi" data-j="${m}" style="padding:7px 14px;${st.pnJan===m?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${m}m</button>`).join('')}
+      ${st.pnJan>=6?['sem','mes'].map(ag=>`<button class="kpi" data-ag="${ag}" style="padding:7px 14px;${(st.pnAgg||'sem')===ag?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${ag==='sem'?'Semanal':'Mensal'}</button>`).join(''):''}
       <span class="count">GA4 = só o site bbbaterias (ML/Magalu não passam pelo GA4)</span>
     </div>
     <div id="pnCorpo"><div class="embreve"><div class="big">📈</div><h2>Escolha um produto</h2><p>Acessos, conversão, venda e preço médio — dia a dia.</p></div></div>`;
   document.querySelectorAll('button[data-j]').forEach(b=>b.onclick=()=>{st.pnJan=+b.dataset.j;renderPainel();});
+  document.querySelectorAll('button[data-ag]').forEach(b=>b.onclick=()=>{st.pnAgg=b.dataset.ag;renderPainel();});
   $('#pnGrupo').onchange=e=>{st.pnGrupo=e.target.value;renderPainel();};
   const btg=document.getElementById('pnTodoGrupo');
   if(btg) btg.onclick=()=>{st.pnCod='@'+st.pnGrupo;st.pnFocus=false;location.hash='painel/'+encodeURIComponent(st.pnCod);renderPainel();};
@@ -981,14 +983,15 @@ async function renderPainel(){
   const dias=[]; for(let d=new Date(ini);d<=new Date();d.setDate(d.getDate()+1)) dias.push(d.toISOString().slice(0,10));
   const mc=Object.fromEntries(conv.map(x=>[x.data,x])), mv=Object.fromEntries(vend.map(x=>[x.data,x]));
   const M=st.pnModo=st.pnModo||{views:'raw',conv:'mm7',venda:'raw',preco:'mm7'};
-  const semanal = st.pnJan>=6;  // 6m/12m: agregação semanal (2m/3m: diária)
+  const agreg = st.pnJan>=6 ? (st.pnAgg||'sem') : null;  // 6m/12m: semanal ou mensal (2m/3m: diária)
+  const semanal = !!agreg;
   let sViews,sConv,sVenda,sPreco;
   if(semanal){
-    const sem={};  // segunda-feira da semana -> acumuladores
+    const sem={};  // chave do período (segunda da semana OU 1º dia do mês) -> acumuladores
     for(const d of dias){
-      const dt=new Date(d+'T12:00:00');
-      dt.setDate(dt.getDate()-((dt.getDay()+6)%7));
-      const w=dt.toISOString().slice(0,10);
+      let w;
+      if(agreg==='mes') w=d.slice(0,7)+'-01';
+      else { const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); w=dt.toISOString().slice(0,10); }
       const a=sem[w]=sem[w]||{vw:0,cp:0,qt:0,vl:0};
       const c=mc[d], v=mv[d];
       if(c){a.vw+=c.views;a.cp+=c.compras;}
@@ -1009,9 +1012,9 @@ async function renderPainel(){
       ? mm7(dias.map(d=>[d, mv[d]?.val_b2c||0, mv[d]?.qtd_b2c||0]))
       : dias.map(d=>{const v=mv[d]; return [d, (v&&v.qtd_b2c>0)?v.val_b2c/v.qtd_b2c:null];});
   }
-  const unid = semanal?'/semana':'/dia';
+  const unid = agreg ? (agreg==='mes'?'/mês':'/semana') : '/dia';
   const tog=q=>`<span style="margin-left:auto;display:inline-flex;gap:4px">${[['mm7','média 7d'],['raw','diário puro']].map(([cm,lb])=>`<button data-q="${q}" data-cm="${cm}" style="font-size:10px;letter-spacing:.04em;padding:2px 9px;border-radius:99px;border:1px solid ${M[q]===cm?'var(--accent)':'var(--hair)'};color:${M[q]===cm?'var(--accent)':'var(--muted)'}">${lb}</button>`).join('')}</span>`;
-  const cab=(t,q)=>`<div class="eyebrow" style="display:flex;align-items:center;gap:8px">${t}${semanal?`<span style="margin-left:auto;font-size:10px;color:var(--muted)">agregação semanal</span>`:tog(q)}</div>`;
+  const cab=(t,q)=>`<div class="eyebrow" style="display:flex;align-items:center;gap:8px">${t}${semanal?`<span style="margin-left:auto;font-size:10px;color:var(--muted)">agregação ${agreg==='mes'?'mensal':'semanal'}</span>`:tog(q)}</div>`;
   const tViews=conv.reduce((s,x)=>s+x.views,0), tCompras=conv.reduce((s,x)=>s+x.compras,0),
         tCart=conv.reduce((s,x)=>s+x.carrinho,0),
         tQtd=vend.reduce((s,x)=>s+(x.qtd_b2c||0),0), tVal=vend.reduce((s,x)=>s+(x.val_b2c||0),0);
