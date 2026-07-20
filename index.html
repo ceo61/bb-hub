@@ -931,12 +931,15 @@ async function renderPainel(){
       <select id="pnGrupo"><option value="">Todos os grupos</option>${Object.keys(grupos).sort((a,b)=>grupos[b]-grupos[a]).map(g=>`<option ${st.pnGrupo===g?'selected':''} value="${esc(g)}">${esc(g)} (${grupos[g]})</option>`).join('')}</select>
       <input list="pnLista" id="pnCod" placeholder="Digite ou escolha o produto…" value="${esc(st.pnCod||'')}" style="min-width:240px">
       <datalist id="pnLista">${cods.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+      ${st.pnGrupo?`<button class="kpi" id="pnTodoGrupo" style="padding:7px 14px;${(st.pnCod||'').startsWith('@')?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">📊 Grupo inteiro</button>`:''}
       ${[2,3,6,12].map(m=>`<button class="kpi" data-j="${m}" style="padding:7px 14px;${st.pnJan===m?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${m}m</button>`).join('')}
       <span class="count">GA4 = só o site bbbaterias (ML/Magalu não passam pelo GA4)</span>
     </div>
     <div id="pnCorpo"><div class="embreve"><div class="big">📈</div><h2>Escolha um produto</h2><p>Acessos, conversão, venda e preço médio — dia a dia.</p></div></div>`;
   document.querySelectorAll('button[data-j]').forEach(b=>b.onclick=()=>{st.pnJan=+b.dataset.j;renderPainel();});
   $('#pnGrupo').onchange=e=>{st.pnGrupo=e.target.value;renderPainel();};
+  const btg=document.getElementById('pnTodoGrupo');
+  if(btg) btg.onclick=()=>{st.pnCod='@'+st.pnGrupo;st.pnFocus=false;location.hash='painel/'+encodeURIComponent(st.pnCod);renderPainel();};
   $('#pnCod').onchange=e=>{st.pnCod=e.target.value.trim().toUpperCase();location.hash='painel/'+encodeURIComponent(st.pnCod);renderPainel();};
   $('#pnCod').onkeydown=e=>{  // ↑/↓ navegam pela listagem (respeitando o filtro de grupo)
     if(e.key!=='ArrowDown'&&e.key!=='ArrowUp') return;
@@ -953,8 +956,18 @@ async function renderPainel(){
   $('#pnCorpo').innerHTML='<div class="carregando">Carregando série do produto…</div>';
   const ini=new Date(Date.now()-st.pnJan*30.44*86400e3).toISOString().slice(0,10);
   let conv,vend,med;
+  const ehGrupo=st.pnCod.startsWith('@');
   const chave=st.pnCod+'|'+st.pnJan;
   if(st.pnCache&&st.pnCache.chave===chave){ ({conv,vend,med}=st.pnCache); }
+  else if(ehGrupo){
+    const g=st.pnCod.slice(1);
+    [conv,vend,med]=await Promise.all([
+      sb.from('conversao_grupo_dia').select('data,views,carrinho,compras,receita').eq('grupo',g).gte('data',ini).order('data').then(r=>r.data||[]),
+      sb.from('vendas_grupo_dia').select('data,qtd_b2c,val_b2c,qtd,valor').eq('grupo',g).gte('data',ini).order('data').then(r=>r.data||[]),
+      medianaLojaConv(),
+    ]);
+    st.pnCache={chave,conv,vend,med};
+  }
   else {
     [conv,vend,med]=await Promise.all([
       sb.from('fato_conversao').select('data,views,carrinho,compras,receita').eq('cod',st.pnCod).gte('data',ini).order('data').then(r=>r.data||[]),
@@ -1003,13 +1016,13 @@ async function renderPainel(){
         tCart=conv.reduce((s,x)=>s+x.carrinho,0),
         tQtd=vend.reduce((s,x)=>s+(x.qtd_b2c||0),0), tVal=vend.reduce((s,x)=>s+(x.val_b2c||0),0);
   const convMedia=tViews?tCompras/tViews*100:null;
-  const d=st.radar.find(r=>r.cod===st.pnCod);
+  const d=ehGrupo?{descricao:`agregado de ${st.radar.filter(r=>(r.grupo||'—')===st.pnCod.slice(1)).length} produtos com giro`}:st.radar.find(r=>r.cod===st.pnCod);
   const verdict=[];
   if(convMedia!=null) verdict.push(convMedia>=med?`converte ACIMA da mediana da loja (${nf1.format(convMedia)}% vs ${nf1.format(med)}%)`:`converte ABAIXO da mediana da loja (${nf1.format(convMedia)}% vs ${nf1.format(med)}%)`);
   verdict.push(tViews/st.pnJan>=1000?'tráfego alto':'tráfego baixo — alavanca é SEO/anúncio, não preço');
   const reconc=tQtd>0?` · GA4 captura ${nf.format(tCompras)} de ${nf.format(tQtd)} vendas do site (${(tCompras/tQtd*100).toFixed(0)}% — perda de tracking + pedidos fora do site é normal)`:'';
   $('#pnCorpo').innerHTML=`
-    <p style="margin:0 0 10px"><span class="cod" style="font-size:16px">${esc(st.pnCod)}</span> <span class="gr">${esc(d?.descricao||'')}</span></p>
+    <p style="margin:0 0 10px"><span class="cod" style="font-size:16px">${ehGrupo?'Grupo '+esc(st.pnCod.slice(1)):esc(st.pnCod)}</span> <span class="gr">${esc(d?.descricao||'')}</span></p>
     <div class="kpis">
       <div class="kpi"><span class="lab">Venda site (un)</span><span class="val">${nf.format(tQtd)}</span></div>
       <div class="kpi"><span class="lab">Receita site</span><span class="val" style="font-size:19px">${rf.format(tVal)}</span></div>
@@ -1023,7 +1036,7 @@ async function renderPainel(){
       <div>${cab('Acessos — views'+unid+' (GA4, site)','views')}${svgSerie(sViews,{tipo:'area',cor:'var(--ch1)',fmt:v=>nf.format(Math.round(v)),id:'views'})}</div>
       <div>${cab('Conversão — %','conv')}${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true,id:'conv'})}</div>
       <div>${cab('Venda no site — un'+unid+' (002)','venda')}${svgSerie(sVenda,{tipo:'area',cor:'var(--bar-strong)',fmt:v=>nf.format(Math.round(v)),id:'venda'})}</div>
-      <div>${cab('Preço médio praticado — R$/un','preco')}${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf2.format(v),id:'preco',zeroBase:false})}</div>
+      <div>${cab(ehGrupo?'Preço médio do MIX — R$/un (mix de produtos influencia)':'Preço médio praticado — R$/un','preco')}${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf2.format(v),id:'preco',zeroBase:false})}</div>
       <p class="gr" style="margin:0">Fontes: GA4 (Brasil) + BASE BBDI 2020, diárias, atualizadas às 6h${reconc}.</p>
     </div>`;
   document.querySelectorAll('button[data-q]').forEach(b=>b.onclick=()=>{st.pnModo[b.dataset.q]=b.dataset.cm;renderPainel();});
