@@ -855,7 +855,7 @@ async function renderSugestoes(){
   const cont={}; lista.forEach(m=>cont[m._diag]=(cont[m._diag]||0)+1);
   st.sgSel=st.sgSel||new Set();
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um valor "POR" e o cliente que paga no PIX leva <b>−5%</b> — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Alvo = mediana do markup do grupo×geração · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — o diagnóstico é minha sugestão; a decisão é do analista (o campo de preço é editável em qualquer linha). Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Atacado e ML aparecem como referência (markup ML já é sobre o líquido: −16% comissão, −R$20 frete) — a ação desta tela mexe só no site. Alvo = mediana do markup do grupo×geração · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — o diagnóstico é minha sugestão; a decisão é do analista (o campo de preço é editável em qualquer linha). Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
     ${(pend||[]).length?`<div class="banner ambar" style="display:grid;gap:6px">
       <div>⏳ ${pend.length} ação(ões) na fila — <b>me diga "roda as aprovadas"</b> no chat para aplicar no ERP, ou cancele abaixo:</div>
       ${pend.map(a=>`<div style="display:flex;align-items:center;gap:10px;font-weight:400;font-size:12.5px">
@@ -873,7 +873,7 @@ async function renderSugestoes(){
       <span class="count" id="sgCount"></span>
     </div>
     <div class="tablecard"><div class="tscroll"><table>
-      <thead><tr><th></th><th>Produto</th><th>Geração</th><th>Diagnóstico</th><th>Giro/mês</th><th>Views 28d</th><th>Conv.</th><th>Custo</th><th>Mk atual</th><th>Mk alvo</th><th>Cliente paga hoje (à vista)</th><th>Novo preço à vista — editável</th></tr></thead>
+      <thead><tr><th></th><th>Produto</th><th>Geração</th><th>Diagnóstico</th><th>Giro/mês</th><th>Views 28d</th><th>Conv.</th><th>Custo</th><th>Mk site</th><th>Mk atac</th><th>Mk ML líq</th><th>Mk alvo</th><th>DE (site)</th><th>POR (site)</th><th>À vista hoje</th><th>Atacado</th><th>ML anúncio</th><th>Novo preço à vista — editável</th></tr></thead>
       <tbody id="sgRows"></tbody></table></div><button class="more hide" id="sgMore"></button></div>`;
   document.querySelectorAll('.kpi[data-d]').forEach(b=>b.onclick=()=>{st.sgDiag=st.sgDiag===b.dataset.d?null:b.dataset.d;renderSugestoes();});
   const desenha=()=>{
@@ -894,8 +894,16 @@ async function renderSugestoes(){
         <td><span class="gr">${GERLB[m.geracao]||m.geracao}</span></td>
         <td style="text-align:left"><span class="pill ${d.cl}"><i></i>${d.lb}</span></td>
         <td>${nf1.format(m._giro)}</td><td>${m._views?nf.format(m._views):'—'}</td><td>${m._conv!=null?nf1.format(m._conv)+'%':'—'}</td>
-        <td>${rf2.format(m.custo)}</td><td><b>${nf1.format(m.mk_site)}×</b></td><td>${nf1.format(m._alvo)}×</td>
-        <td>${rf2.format(m.p_site)}</td>
+        <td>${rf2.format(m.custo)}</td>
+        <td><b>${nf1.format(m.mk_site)}×</b></td>
+        <td>${m.mk_atacado?nf1.format(m.mk_atacado)+'×':'—'}</td>
+        <td>${m.mk_marketplace?nf1.format(m.mk_marketplace)+'×':'—'}</td>
+        <td>${nf1.format(m._alvo)}×</td>
+        <td>${m.p_site_de?rf2.format(m.p_site_de):'—'}</td>
+        <td>${m.p_site_por?rf2.format(m.p_site_por):'—'}</td>
+        <td><b>${rf2.format(m.p_site)}</b></td>
+        <td>${m.p_atacado?rf2.format(m.p_atacado):'—'}</td>
+        <td>${m.p_marketplace?rf2.format(m.p_marketplace):'—'}</td>
         <td><input type="number" step="0.01" min="0" data-preco="${esc(m.cod)}" value="${(st.sgEdit?.[m.cod]??m._avistaSug).toFixed(2)}" style="width:110px;text-align:right;font-weight:600"><br><span class="gr" id="por-${esc(m.cod).replace(/[^A-Za-z0-9]/g,'_')}">publica POR ${rf2.format((st.sgEdit?.[m.cod]??m._avistaSug)/0.95)}</span></td>`;
       tb.appendChild(tr);
     }
