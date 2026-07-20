@@ -210,6 +210,7 @@ th.ord .seta{font-size:9px;margin-left:3px}
     </div>
     <a href="#precos" data-pg="precos">🏷️ Preços — Markup</a>
     <a href="#sugestoes" data-pg="sugestoes">✅ Sugestões de preço</a>
+    <a href="#painel" data-pg="painel">📈 Painel do produto</a>
     <a href="#radar" data-pg="radar">📡 Radar</a>
     <a href="#produtos" data-pg="produtos">📦 Produtos</a>
     <a href="#compras" data-pg="compras">🚢 Compras &amp; Trânsito</a>
@@ -348,9 +349,12 @@ $('#semaforo').onclick = ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'Sugestões de preço', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'Sugestões de preço', painel:'Painel do produto', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
+  let param=null;
+  if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
   if(!TITULOS[pg]) pg='radar';
+  st.pnCod = param || st.pnCod;
   st.pg=pg; st.shown=120;
   $('#tituloPagina').textContent = TITULOS[pg];
   document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('ativo', a.dataset.pg===pg));
@@ -359,6 +363,7 @@ function navega(pg){
   else if(pg==='compras') renderCompras();
   else if(pg==='precos') renderPrecos();
   else if(pg==='sugestoes') renderSugestoes();
+  else if(pg==='painel') renderPainel();
   else if(pg==='config') renderConfig();
   else renderEmBreve(pg);
 }
@@ -509,6 +514,7 @@ async function ficha(r){
      ${pos.length?`<div class="polist">${pos.map(t=>`<div class="porow"><span><b>PO ${esc(t.po)}</b> · ${nf.format(t.qtd_pendente)} un</span><span class="${t.atrasado?'late':'mutedt'}">${t.atrasado?'vencido · ':''}chega ${d8(t.chegada_prevista)}</span></div>`).join('')}</div>`:''}</div>
    <div class="psec"><h3>Preço publicado por canal</h3><div class="prices" id="fPrecos"><span style="color:var(--muted);font-size:12px">carregando…</span></div></div>
    <div class="psec"><h3>Modelos compatíveis</h3><div class="chips" id="fCompat"><span style="color:var(--muted);font-size:12px">carregando…</span></div></div>
+   <div class="psec"><a href="#painel/${encodeURIComponent(r.cod)}" onclick="document.getElementById('scrim').click()" style="color:var(--accent);font-weight:600;font-size:13px">📈 Ver painel completo do produto →</a></div>
    <div class="psec"><h3>Decisão</h3><div class="actions">
      <div class="abtn"><span><b>Gerar sugestão de compra</b><br>alvo 6 meses − estoque − trânsito</span><span class="tag">Fase 3</span></div>
      <div class="abtn"><span><b>Reprecificar / promocionar</b><br>grava no ERP pelo fluxo homologado</span><span class="tag">Fase 3</span></div></div></div>`;
@@ -842,6 +848,97 @@ async function renderSugestoes(){
     st.sgSel.clear();
     renderSugestoes();
   };
+}
+
+/* ---------- painel do produto ---------- */
+function mm7(pts){ // média móvel 7d sobre [x, num, den] -> taxa; ou [x, v] -> média
+  const out=[];
+  for(let i=0;i<pts.length;i++){
+    const j=Math.max(0,i-6); let n=0,d=0;
+    for(let k=j;k<=i;k++){ n+=pts[k][1]; d+=pts[k][2]!=null?pts[k][2]:1; }
+    out.push([pts[i][0], d>0?n/d:null]);
+  }
+  return out;
+}
+function svgSerie(pts,{h=120,tipo='area',cor='var(--ch1)',ref=null,fmt=v=>nf1.format(v),pct=false}={}){
+  const W=760,P=34;
+  const xs=pts.map(p=>p[0]), vs=pts.map(p=>p[1]).filter(v=>v!=null);
+  if(!vs.length) return '<div class="carregando" style="padding:30px">sem dados na janela</div>';
+  const vmax=Math.max(...vs, ref||0)*1.08||1, vmin=0;
+  const X=i=>P+(W-P-8)*(pts.length<2?0:i/(pts.length-1));
+  const Y=v=>h-16-(h-26)*((v-vmin)/(vmax-vmin));
+  let path='', area='';
+  pts.forEach((p,i)=>{ if(p[1]==null) return; const c=`${X(i).toFixed(1)},${Y(p[1]).toFixed(1)}`; path+=(path?' L':'M')+c; });
+  if(tipo==='area'&&path) area=`<path d="${path} L${X(pts.length-1).toFixed(1)},${(h-16)} L${X(0).toFixed(1)},${h-16} Z" fill="${cor}" opacity="0.18"/>`;
+  const grid=[0.5,1].map(f=>{const v=vmin+(vmax-vmin)*f;return `<line x1="${P}" x2="${W-8}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--hair)" stroke-width="1"/><text x="${P-4}" y="${Y(v)+3}" text-anchor="end" font-size="9" fill="var(--muted)">${pct?nf1.format(v)+'%':fmt(v)}</text>`;}).join('');
+  const refl=ref!=null?`<line x1="${P}" x2="${W-8}" y1="${Y(ref)}" y2="${Y(ref)}" stroke="var(--muted)" stroke-dasharray="4 3" stroke-width="1"/><text x="${W-10}" y="${Y(ref)-3}" text-anchor="end" font-size="9" fill="var(--muted)">mediana loja ${nf1.format(ref)}%</text>`:'';
+  const meses={}; pts.forEach((p,i)=>{const m=p[0].slice(0,7); if(!(m in meses)) meses[m]=i;});
+  const eixo=Object.entries(meses).filter((_,i,a)=>a.length<=8||i%2===0).map(([m,i])=>`<text x="${X(i)}" y="${h-3}" font-size="9" fill="var(--muted)">${m.slice(5,7)}/${m.slice(2,4)}</text>`).join('');
+  return `<svg viewBox="0 0 ${W} ${h}" style="width:100%;height:auto" role="img">${grid}${area}<path d="${path}" fill="none" stroke="${cor}" stroke-width="2"/>${refl}${eixo}</svg>`;
+}
+async function medianaLojaConv(){
+  if(st.medLoja!=null) return st.medLoja;
+  const c=await tudo('conversao_28d',{select:'views,taxa_conv',eq:[]});
+  const v=c.filter(x=>x.views>=50&&x.taxa_conv!=null).map(x=>x.taxa_conv).sort((a,b)=>a-b);
+  st.medLoja=v.length?v[Math.floor(v.length/2)]:1;
+  return st.medLoja;
+}
+async function renderPainel(){
+  const cods=[...new Set(st.radar.map(r=>r.cod))].sort();
+  st.pnJan=st.pnJan||6;
+  $('#conteudo').innerHTML=`
+    <div class="toolbar">
+      <input list="pnLista" id="pnCod" placeholder="Digite ou escolha o produto…" value="${esc(st.pnCod||'')}" style="min-width:240px">
+      <datalist id="pnLista">${cods.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+      ${[2,3,6,12].map(m=>`<button class="kpi" data-j="${m}" style="padding:7px 14px;${st.pnJan===m?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${m}m</button>`).join('')}
+      <span class="count">GA4 = só o site bbbaterias (ML/Magalu não passam pelo GA4)</span>
+    </div>
+    <div id="pnCorpo"><div class="embreve"><div class="big">📈</div><h2>Escolha um produto</h2><p>Acessos, conversão, venda e preço médio — dia a dia.</p></div></div>`;
+  document.querySelectorAll('button[data-j]').forEach(b=>b.onclick=()=>{st.pnJan=+b.dataset.j;renderPainel();});
+  $('#pnCod').onchange=e=>{st.pnCod=e.target.value.trim().toUpperCase();location.hash='painel/'+encodeURIComponent(st.pnCod);renderPainel();};
+  if(!st.pnCod) return;
+  $('#pnCorpo').innerHTML='<div class="carregando">Carregando série do produto…</div>';
+  const ini=new Date(Date.now()-st.pnJan*30.44*86400e3).toISOString().slice(0,10);
+  const [conv,vend,med]=await Promise.all([
+    sb.from('fato_conversao').select('data,views,carrinho,compras,receita').eq('cod',st.pnCod).gte('data',ini).order('data').then(r=>r.data||[]),
+    sb.from('fato_vendas_diaria').select('data,qtd_b2c,val_b2c,qtd,valor').eq('cod',st.pnCod).gte('data',ini).order('data').then(r=>r.data||[]),
+    medianaLojaConv(),
+  ]);
+  if(!conv.length&&!vend.length){ $('#pnCorpo').innerHTML='<div class="carregando">Sem dados para este produto na janela.</div>'; return; }
+  // séries por dia (preenche buracos com zero p/ views/vendas)
+  const dias=[]; for(let d=new Date(ini);d<=new Date();d.setDate(d.getDate()+1)) dias.push(d.toISOString().slice(0,10));
+  const mc=Object.fromEntries(conv.map(x=>[x.data,x])), mv=Object.fromEntries(vend.map(x=>[x.data,x]));
+  const sViews=dias.map(d=>[d, mc[d]?.views||0]);
+  const sConv=mm7(dias.map(d=>[d, mc[d]?.compras||0, mc[d]?.views||0])).map(p=>[p[0],p[1]!=null?p[1]*100:null]);
+  const sVenda=dias.map(d=>[d, mv[d]?.qtd_b2c||0]);
+  const sPreco=mm7(dias.map(d=>[d, mv[d]?.val_b2c||0, mv[d]?.qtd_b2c||0]));
+  const tViews=conv.reduce((s,x)=>s+x.views,0), tCompras=conv.reduce((s,x)=>s+x.compras,0),
+        tCart=conv.reduce((s,x)=>s+x.carrinho,0),
+        tQtd=vend.reduce((s,x)=>s+(x.qtd_b2c||0),0), tVal=vend.reduce((s,x)=>s+(x.val_b2c||0),0);
+  const convMedia=tViews?tCompras/tViews*100:null;
+  const d=st.radar.find(r=>r.cod===st.pnCod);
+  const verdict=[];
+  if(convMedia!=null) verdict.push(convMedia>=med?`converte ACIMA da mediana da loja (${nf1.format(convMedia)}% vs ${nf1.format(med)}%)`:`converte ABAIXO da mediana da loja (${nf1.format(convMedia)}% vs ${nf1.format(med)}%)`);
+  verdict.push(tViews/st.pnJan>=1000?'tráfego alto':'tráfego baixo — alavanca é SEO/anúncio, não preço');
+  const reconc=tQtd>0?` · GA4 captura ${nf.format(tCompras)} de ${nf.format(tQtd)} vendas do site (${(tCompras/tQtd*100).toFixed(0)}% — perda de tracking + pedidos fora do site é normal)`:'';
+  $('#pnCorpo').innerHTML=`
+    <p style="margin:0 0 10px"><span class="cod" style="font-size:16px">${esc(st.pnCod)}</span> <span class="gr">${esc(d?.descricao||'')}</span></p>
+    <div class="kpis">
+      <div class="kpi"><span class="lab">Venda site (un)</span><span class="val">${nf.format(tQtd)}</span></div>
+      <div class="kpi"><span class="lab">Receita site</span><span class="val" style="font-size:19px">${rf.format(tVal)}</span></div>
+      <div class="kpi"><span class="lab">Preço médio</span><span class="val" style="font-size:19px">${tQtd?rf2.format(tVal/tQtd):'—'}</span></div>
+      <div class="kpi"><span class="lab">Acessos (views)</span><span class="val">${nf.format(tViews)}</span></div>
+      <div class="kpi"><span class="lab">Conversão</span><span class="val">${convMedia!=null?nf1.format(convMedia)+'%':'—'}</span><span class="sub">mediana loja ${nf1.format(med)}%</span></div>
+      <div class="kpi"><span class="lab">Add-to-cart</span><span class="val">${tViews?nf1.format(tCart/tViews*100)+'%':'—'}</span></div>
+    </div>
+    <div class="banner ambar" style="background:var(--accent-soft);color:var(--accent)">${verdict.join(' · ')}</div>
+    <div class="tablecard" style="padding:14px 16px;display:grid;gap:14px">
+      <div><div class="eyebrow">Acessos — views/dia (GA4, site)</div>${svgSerie(sViews,{tipo:'area',cor:'var(--ch1)',fmt:v=>nf.format(Math.round(v))})}</div>
+      <div><div class="eyebrow">Conversão — % (média móvel 7d)</div>${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true})}</div>
+      <div><div class="eyebrow">Venda no site — un/dia (unidade 002)</div>${svgSerie(sVenda,{tipo:'area',cor:'var(--bar-strong)',fmt:v=>nf.format(Math.round(v))})}</div>
+      <div><div class="eyebrow">Preço médio praticado — R$/un (média móvel 7d)</div>${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf.format(v)})}</div>
+      <p class="gr" style="margin:0">Fontes: GA4 (Brasil) + BASE BBDI 2020, diárias, atualizadas às 6h${reconc}.</p>
+    </div>`;
 }
 
 /* ---------- em construção / config ---------- */
