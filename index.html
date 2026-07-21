@@ -936,7 +936,7 @@ async function renderSugestoes(){
       if(st.sgQ&&!((m.cod+' '+(m.descricao||'')).toUpperCase().includes(st.sgQ))) return false;
       return true;
     });
-    if(st.sgCol) rows=[...rows].sort((a,b)=>{
+    if(st.sgCol) rows.sort((a,b)=>{
       if(st.sgCol==='cod') return (st.sgDir||1)*String(a.cod).localeCompare(String(b.cod));
       return (st.sgDir||-1)*(((a[st.sgCol]??-1e18))-((b[st.sgCol]??-1e18)));
     });
