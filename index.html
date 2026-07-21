@@ -874,9 +874,9 @@ function montaSugestoes(){
     const dM=st.mkDistM[m.grupo+'|'+m.geracao]??st.mkDistM[m.grupo];
     out.push({...m,_diag:diag,_alvo:alvo,_porSug:por,_avistaSug:avista,
       _alvoA:alvoA,_alvoM:alvoM,_atacSug:atacSug,_mlSug:mlSug,
-      _outS:!!(dS&&m.mk_site&&Math.abs(m.mk_site-dS.m)>2*dS.s),
-      _outA:!!(dA&&m.mk_atacado&&Math.abs(m.mk_atacado-dA.m)>2*dA.s),
-      _outM:!!(dM&&m.mk_marketplace&&Math.abs(m.mk_marketplace-dM.m)>2*dM.s),
+      _outS:(dS&&m.mk_site)?(Math.abs(m.mk_site-dS.m)>2*dS.s?2:(Math.abs(m.mk_site-dS.m)>dS.s?1:0)):0,
+      _outA:(dA&&m.mk_atacado)?(Math.abs(m.mk_atacado-dA.m)>2*dA.s?2:(Math.abs(m.mk_atacado-dA.m)>dA.s?1:0)):0,
+      _outM:(dM&&m.mk_marketplace)?(Math.abs(m.mk_marketplace-dM.m)>2*dM.s?2:(Math.abs(m.mk_marketplace-dM.m)>dM.s?1:0)):0,
       _impacto:diag==='ok'?0:m._giro*Math.abs(avista-m.p_site)});
   }
   out.sort((a,b)=>b._impacto-a._impacto);
@@ -891,10 +891,10 @@ async function renderSugestoes(){
   const aprA=(pend||[]).filter(a=>a.status==='aprovado'), emExec=(pend||[]).filter(a=>a.status==='executar'), comErro=(pend||[]).filter(a=>a.status==='erro');
   const {out,medConv}=montaSugestoes();
   const lista=out.filter(m=>!jaTem.has(m.cod));
-  const cOut={site:0,atac:0,ml:0}; lista.forEach(m=>{if(m._outS)cOut.site++;if(m._outA)cOut.atac++;if(m._outM)cOut.ml++;});
+  const cOut={site:0,atac:0,ml:0}; lista.forEach(m=>{if(m._outS===2)cOut.site++;if(m._outA===2)cOut.atac++;if(m._outM===2)cOut.ml++;});
   st.sgSel=st.sgSel||new Set();
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>As caixas de Atacado e ML vêm preenchidas com a sugestão do canal</b> (fora da banda → alvo×custo; dentro → preço atual) e mostram o markup efetivo enquanto você digita; <b>o DE é sempre manual</b> (eu não recalculo DE). Ao aprovar, entra na ação o que estiver nas caixas e for diferente do preço de hoje. Alvos = mediana do markup por canal (UN) × grupo × geração — site, atacado e ML têm alvos próprios · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — a decisão é do analista (o campo de preço é editável em qualquer linha). <b style="color:var(--crit)">Preço em vermelho</b> = markup daquele canal fora de 2 desvios-padrão da distribuição do grupo×geração no mesmo canal. Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>As caixas de Atacado e ML vêm preenchidas com a sugestão do canal</b> (fora da banda → alvo×custo; dentro → preço atual) e mostram o markup efetivo enquanto você digita; <b>o DE é sempre manual</b> (eu não recalculo DE). Ao aprovar, entra na ação o que estiver nas caixas e for diferente do preço de hoje. Alvos = mediana do markup por canal (UN) × grupo × geração — site, atacado e ML têm alvos próprios · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — a decisão é do analista (o campo de preço é editável em qualquer linha). <b style="color:var(--crit)">Preço em vermelho</b> = markup daquele canal a mais de 2 desvios-padrão da distribuição do grupo×geração no mesmo canal; <b style="color:var(--ser)">laranja</b> = entre 1σ e 2σ. Clique nos títulos das colunas para ordenar (2º clique inverte). Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
     ${((pend||[]).length||(feitas||[]).length)?`<div class="banner ambar" style="display:grid;gap:6px">
       ${aprA.length?`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">⏳ <b>${aprA.length} ação(ões) aprovadas na fila.</b>${st.admin?`<button class="btn" id="sgExec" style="padding:5px 16px">▶ Aplicar no ERP agora</button>`:`<span style="font-weight:400">aguardando aplicação pelo administrador</span>`}</div>`:''}
       ${aprA.map(a=>`<div style="display:flex;align-items:center;gap:10px;font-weight:400;font-size:12.5px">
@@ -922,18 +922,26 @@ async function renderSugestoes(){
       <span class="count" id="sgCount"></span>
     </div>
     <div class="tablecard"><div class="tscroll"><table>
-      <thead><tr><th></th><th>Produto</th><th>Geração</th><th>Giro/mês</th><th>Views 28d</th><th>Conv.</th><th>Custo</th><th>Atacado hoje</th><th>Atacado novo — editável</th><th>DE hoje</th><th>POR / PIX hoje</th><th>DE novo — editável</th><th>À vista novo — editável</th><th>ML hoje</th><th>ML novo — editável</th></tr></thead>
+      <thead><tr><th></th><th class="ord" data-c="cod">Produto<span class="seta"></span></th><th class="ord" data-c="_meses">Geração<span class="seta"></span></th><th class="ord" data-c="_giro">Giro/mês<span class="seta"></span></th><th class="ord" data-c="_views">Views 28d<span class="seta"></span></th><th class="ord" data-c="_conv">Conv.<span class="seta"></span></th><th class="ord" data-c="custo">Custo<span class="seta"></span></th><th class="ord" data-c="p_atacado">Atacado hoje<span class="seta"></span></th><th class="ord" data-c="_atacSug">Atacado novo — editável<span class="seta"></span></th><th class="ord" data-c="p_site_de">DE hoje<span class="seta"></span></th><th class="ord" data-c="p_site">POR / PIX hoje<span class="seta"></span></th><th>DE novo — editável</th><th class="ord" data-c="_avistaSug">À vista novo — editável<span class="seta"></span></th><th class="ord" data-c="p_marketplace">ML hoje<span class="seta"></span></th><th class="ord" data-c="_mlSug">ML novo — editável<span class="seta"></span></th></tr></thead>
       <tbody id="sgRows"></tbody></table></div><button class="more hide" id="sgMore"></button></div>`;
   document.querySelectorAll('.kpi[data-out]').forEach(b=>b.onclick=()=>{st.sgOut=st.sgOut===b.dataset.out?null:b.dataset.out;renderSugestoes();});
+  const corOut=l=>l===2?'color:var(--crit);font-weight:700':l===1?'color:var(--ser);font-weight:700':'';
   const desenha=()=>{
     const rows=lista.filter(m=>{
-      if(st.sgOut==='site'&&!m._outS) return false;
-      if(st.sgOut==='atac'&&!m._outA) return false;
-      if(st.sgOut==='ml'&&!m._outM) return false;
+      if(st.sgOut==='site'&&m._outS!==2) return false;
+      if(st.sgOut==='atac'&&m._outA!==2) return false;
+      if(st.sgOut==='ml'&&m._outM!==2) return false;
       if(st.sgG&&(m.grupo||'—')!==st.sgG) return false;
       if(st.sgGer&&m.geracao!==st.sgGer) return false;
       if(st.sgQ&&!((m.cod+' '+(m.descricao||'')).toUpperCase().includes(st.sgQ))) return false;
       return true;
+    });
+    if(st.sgCol) rows=[...rows].sort((a,b)=>{
+      if(st.sgCol==='cod') return (st.sgDir||1)*String(a.cod).localeCompare(String(b.cod));
+      return (st.sgDir||-1)*(((a[st.sgCol]??-1e18))-((b[st.sgCol]??-1e18)));
+    });
+    document.querySelectorAll('#conteudo th.ord').forEach(th=>{
+      const s=th.querySelector('.seta'); if(s) s.textContent = th.dataset.c===st.sgCol ? (st.sgDir>0?'▲':'▼') : '';
     });
     $('#sgCount').textContent=nf.format(rows.length)+' sugestões';
     const tb=$('#sgRows'); tb.innerHTML='';
@@ -947,13 +955,13 @@ async function renderSugestoes(){
         <td><span class="gr">${GERLB[m.geracao]||m.geracao}</span></td>
         <td>${nf1.format(m._giro)}</td><td>${m._views?nf.format(m._views):'—'}</td><td>${m._conv!=null?nf1.format(m._conv)+'%':'—'}</td>
         <td>${rf2.format(m.custo)}</td>
-        <td>${m.p_atacado?`<span style="${m._outA?'color:var(--crit);font-weight:700':''}">${rf2.format(m.p_atacado)}</span>`:'—'}<br><span class="gr">${m.mk_atacado?'mk '+nf1.format(m.mk_atacado)+'×':''}${m._alvoA?' · alvo '+nf1.format(m._alvoA)+'×':''}</span></td>
+        <td>${m.p_atacado?`<span style="${corOut(m._outA)}">${rf2.format(m.p_atacado)}</span>`:'—'}<br><span class="gr">${m.mk_atacado?'mk '+nf1.format(m.mk_atacado)+'×':''}${m._alvoA?' · alvo '+nf1.format(m._alvoA)+'×':''}</span></td>
         <td><input type="number" step="0.01" min="0" data-atac="${esc(m.cod)}" value="${vAt!=null?(+vAt).toFixed(2):''}" placeholder="—" style="width:100px;text-align:right"><br><span class="gr" id="mka-${sid}">${vAt?'fica mk '+nf1.format(vAt/m.custo)+'×':''}</span></td>
         <td>${m.p_site_de?rf2.format(m.p_site_de):'—'}</td>
-        <td>${m.p_site_por?rf2.format(m.p_site_por):'—'}<br><b style="${m._outS?'color:var(--crit)':''}">${rf2.format(m.p_site)}</b> <span class="gr">PIX</span><br><span class="gr">mk ${nf1.format(m.mk_site)}× · alvo ${nf1.format(m._alvo)}×</span></td>
+        <td>${m.p_site_por?rf2.format(m.p_site_por):'—'}<br><b style="${corOut(m._outS)}">${rf2.format(m.p_site)}</b> <span class="gr">PIX</span><br><span class="gr">mk ${nf1.format(m.mk_site)}× · alvo ${nf1.format(m._alvo)}×</span></td>
         <td><input type="number" step="0.01" min="0" data-de="${esc(m.cod)}" value="${vDe!=null?(+vDe).toFixed(2):''}" placeholder="—" style="width:100px;text-align:right"><br><span class="gr">manual — nunca recalculo</span></td>
         <td><input type="number" step="0.01" min="0" data-preco="${esc(m.cod)}" value="${(st.sgEdit?.[m.cod]??m._avistaSug).toFixed(2)}" style="width:110px;text-align:right;font-weight:600"><br><span class="gr" id="por-${sid}">publica POR ${rf2.format((st.sgEdit?.[m.cod]??m._avistaSug)/0.95)} · fica mk ${nf1.format((st.sgEdit?.[m.cod]??m._avistaSug)/m.custo)}×</span></td>
-        <td>${m.p_marketplace?`<span style="${m._outM?'color:var(--crit);font-weight:700':''}">${rf2.format(m.p_marketplace)}</span>`:'—'}<br><span class="gr">${m.mk_marketplace?'mk líq '+nf1.format(m.mk_marketplace)+'×':''}${m._alvoM?' · alvo '+nf1.format(m._alvoM)+'×':''}</span></td>
+        <td>${m.p_marketplace?`<span style="${corOut(m._outM)}">${rf2.format(m.p_marketplace)}</span>`:'—'}<br><span class="gr">${m.mk_marketplace?'mk líq '+nf1.format(m.mk_marketplace)+'×':''}${m._alvoM?' · alvo '+nf1.format(m._alvoM)+'×':''}</span></td>
         <td><input type="number" step="0.01" min="0" data-ml="${esc(m.cod)}" value="${vMl!=null?(+vMl).toFixed(2):''}" placeholder="—" style="width:100px;text-align:right"><br><span class="gr" id="mkm-${sid}">${vMl?'fica mk líq '+nf1.format((vMl*0.84-20)/m.custo)+'×':''}</span></td>`;
       tb.appendChild(tr);
     }
@@ -1008,6 +1016,12 @@ async function renderSugestoes(){
   let sgt; $('#sgQ').oninput=e=>{clearTimeout(sgt);sgt=setTimeout(()=>{st.sgQ=e.target.value.trim().toUpperCase();desenha();},200);};
   $('#sgG').onchange=e=>{st.sgG=e.target.value;desenha();};
   $('#sgGer').onchange=e=>{st.sgGer=e.target.value;desenha();};
+  document.querySelectorAll('#conteudo th.ord').forEach(th=>th.onclick=()=>{
+    const c=th.dataset.c;
+    if(st.sgCol===c) st.sgDir=-st.sgDir;               // 2º clique inverte
+    else { st.sgCol=c; st.sgDir = c==='cod' ? 1 : -1; } // texto asc, números desc
+    desenha();
+  });
   desenha();
   $('#sgAprovar').onclick=async ()=>{
     if(!st.sgSel.size) return;
