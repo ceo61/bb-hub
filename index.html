@@ -886,12 +886,12 @@ async function abreMC(cod, m){
   let ov=document.getElementById('mcModal');
   if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
   ov.className='aclov';
-  ov.innerHTML='<div class="aclcard" style="width:min(720px,100%)"><div class="carregando">Carregando MC…</div></div>';
+  ov.innerHTML='<div class="aclcard" style="width:min(880px,96vw)"><div class="carregando">Carregando MC…</div></div>';
   ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
   if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
   const {data:rows}=await sb.from('fato_mc').select('*').eq('cod',cod);
   const UN={'002':'Site (002)','001':'Atacado (001)','005':'ML (005)'};
-  const ordem=['002','001','005'];
+  const ordem=['001','002','005'];
   const rs=(rows||[]).sort((a,b)=>ordem.indexOf(a.un)-ordem.indexOf(b.un));
   const tot={mc365:0,mc90:0,mc60:0,mc30:0,sem1:0,sem2:0};
   rs.forEach(r=>{ for(const k in tot) tot[k]+=(+r[k]||0); });
