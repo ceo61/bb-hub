@@ -882,6 +882,35 @@ function montaSugestoes(){
   out.sort((a,b)=>b._impacto-a._impacto);
   return {out,medConv};
 }
+async function abreMC(cod, m){
+  let ov=document.getElementById('mcModal');
+  if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
+  ov.className='aclov';
+  ov.innerHTML='<div class="aclcard" style="width:min(720px,100%)"><div class="carregando">Carregando MC…</div></div>';
+  ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
+  if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
+  const {data:rows}=await sb.from('fato_mc').select('*').eq('cod',cod);
+  const UN={'002':'Site (002)','001':'Atacado (001)','005':'ML (005)'};
+  const ordem=['002','001','005'];
+  const rs=(rows||[]).sort((a,b)=>ordem.indexOf(a.un)-ordem.indexOf(b.un));
+  const tot={mc365:0,mc90:0,mc60:0,mc30:0,sem1:0,sem2:0};
+  rs.forEach(r=>{ for(const k in tot) tot[k]+=(+r[k]||0); });
+  const rel=(w,dias,b365)=>{ if(!b365||b365<=0) return null; const esp=b365*dias/365; return esp?(+w||0)/esp*100:null; };
+  const cor=p=>p==null?'':p>=110?'color:var(--good);font-weight:700':p>=90?'':p>=70?'color:var(--lar)':'color:var(--crit);font-weight:700';
+  const cel=(w,dias,b)=>{ const p=rel(w,dias,b); return `<td style="text-align:right;${cor(p)}">${p!=null?nf.format(Math.round(p))+'%':'—'}</td>`; };
+  const linha=(rot,r,forte)=>`<tr${forte?' style="border-bottom:1px solid var(--hair)"':''}><td style="text-align:left">${forte?'<b>'+rot+'</b>':rot}</td><td style="text-align:right"><b>${rf2.format(r.mc365||0)}</b></td>${cel(r.mc90,90,r.mc365)}${cel(r.mc60,60,r.mc365)}${cel(r.mc30,30,r.mc365)}${cel(r.sem2,7,r.mc365)}${cel(r.sem1,7,r.mc365)}</tr>`;
+  const cob=(m&&m._giro>0)?m._saldo/m._giro:null;
+  const d0=rs[0]?.d0;
+  ov.querySelector('.aclcard').innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')}</span><span style="cursor:pointer;font-size:20px" id="mcX">✕</span></div>
+    <p class="gr" style="margin:6px 0 10px">MC = lucro bruto <b>transação a transação</b> (BASE BBDI 2020). <b>100% = no ritmo do próprio ano</b> (pro-rata da janela sobre o 365dd); acima = acelerando, abaixo = perdendo ritmo. <span style="color:var(--good)">≥110</span> · 90–110 · <span style="color:var(--lar)">70–90</span> · <span style="color:var(--crit)">&lt;70</span>.</p>
+    ${rs.length?`<div class="tscroll"><table style="width:100%">
+      <thead><tr><th style="text-align:left">Canal</th><th>MC 365dd</th><th>365/90</th><th>365/60</th><th>365/30</th><th>sem 2</th><th>sem 1</th></tr></thead>
+      <tbody>${linha('TOTAL — todos os canais',tot,true)}${rs.map(r=>linha(UN[r.un]||('UN '+r.un), r)).join('')}</tbody></table></div>`
+    :'<p class="gr">Sem MC registrada nos últimos 365 dias para este produto.</p>'}
+    <p class="gr" style="margin:10px 0 0">Estoque útil ${nf.format(m?._saldo||0)} un · giro ${nf1.format(m?._giro||0)}/mês · <b>cobertura ${cob!=null?nf1.format(cob)+' meses':'—'}</b> · janelas até ${d0?d0.split('-').reverse().join('/'):'—'} (atualiza no ETL das 6h)</p>`;
+  ov.querySelector('#mcX').onclick=()=>ov.remove();
+}
 async function renderSugestoes(){
   $('#conteudo').innerHTML='<div class="carregando">Montando sugestões…</div>';
   await carregaMarkup();
@@ -894,7 +923,7 @@ async function renderSugestoes(){
   const cOut={site:0,atac:0,ml:0}; lista.forEach(m=>{if(m._outS===2)cOut.site++;if(m._outA===2)cOut.atac++;if(m._outM===2)cOut.ml++;});
   st.sgSel=st.sgSel||new Set();
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>As caixas de Atacado e ML vêm preenchidas com a sugestão do canal</b> (fora da banda → alvo×custo; dentro → preço atual) e mostram o markup efetivo enquanto você digita; <b>o DE é sempre manual</b> (eu não recalculo DE). Ao aprovar, entra na ação o que estiver nas caixas e for diferente do preço de hoje. Alvos = mediana do markup por canal (UN) × grupo × geração — site, atacado e ML têm alvos próprios · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — a decisão é do analista (o campo de preço é editável em qualquer linha). <b style="color:var(--crit)">Preço em vermelho</b> = markup daquele canal a mais de 2 desvios-padrão da distribuição do grupo×geração no mesmo canal; <b style="color:var(--lar)">laranja</b> = entre 1σ e 2σ. Clique nos títulos das colunas para ordenar (2º clique inverte). Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>As caixas de Atacado e ML vêm preenchidas com a sugestão do canal</b> (fora da banda → alvo×custo; dentro → preço atual) e mostram o markup efetivo enquanto você digita; <b>o DE é sempre manual</b> (eu não recalculo DE). Ao aprovar, entra na ação o que estiver nas caixas e for diferente do preço de hoje. Alvos = mediana do markup por canal (UN) × grupo × geração — site, atacado e ML têm alvos próprios · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — a decisão é do analista (o campo de preço é editável em qualquer linha). <b style="color:var(--crit)">Preço em vermelho</b> = markup daquele canal a mais de 2 desvios-padrão da distribuição do grupo×geração no mesmo canal; <b style="color:var(--lar)">laranja</b> = entre 1σ e 2σ. Clique nos títulos das colunas para ordenar (2º clique inverte). Clique no <b>código do produto</b> para o raio-X de MC: lucro bruto 365dd e o ritmo 90/60/30 dias e semanas, por canal — é ele que diz se o preço atual está entregando. Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
     ${((pend||[]).length||(feitas||[]).length)?`<div class="banner ambar" style="display:grid;gap:6px">
       ${aprA.length?`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">⏳ <b>${aprA.length} ação(ões) aprovadas na fila.</b>${st.admin?`<button class="btn" id="sgExec" style="padding:5px 16px">▶ Aplicar no ERP agora</button>`:`<span style="font-weight:400">aguardando aplicação pelo administrador</span>`}</div>`:''}
       ${aprA.map(a=>`<div style="display:flex;align-items:center;gap:10px;font-weight:400;font-size:12.5px">
@@ -951,7 +980,7 @@ async function renderSugestoes(){
       const sid=esc(m.cod).replace(/[^A-Za-z0-9]/g,'_');
       const tr=document.createElement('tr');
       tr.innerHTML=`<td style="text-align:center"><input type="checkbox" data-cod="${esc(m.cod)}" ${st.sgSel.has(m.cod)?'checked':''} style="width:16px;height:16px"></td>
-        <td style="text-align:left"><span class="cod" title="${esc(m.descricao||'')}">${esc(m.cod)}</span><br><span class="gr">${esc(m.grupo||'')}</span></td>
+        <td style="text-align:left"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span><br><span class="gr">${esc(m.grupo||'')}</span></td>
         <td><span class="gr">${GERLB[m.geracao]||m.geracao}</span></td>
         <td>${nf1.format(m._giro)}</td><td>${m._views?nf.format(m._views):'—'}</td><td>${m._conv!=null?nf1.format(m._conv)+'%':'—'}</td>
         <td>${rf2.format(m.custo)}</td>
@@ -991,6 +1020,7 @@ async function renderSugestoes(){
             if(el&&MB[cod]) el.textContent=cfg.fx(v,MB[cod]); } }
       });
     }
+    document.querySelectorAll('#sgRows .cod[data-mc]').forEach(el=>el.onclick=e=>{e.stopPropagation();abreMC(el.dataset.mc, MB[el.dataset.mc]);});
     document.querySelectorAll('#sgRows input[type=checkbox]').forEach(cb=>cb.onchange=()=>{
       cb.checked?st.sgSel.add(cb.dataset.cod):st.sgSel.delete(cb.dataset.cod);
       $('#sgN').textContent=st.sgSel.size;
