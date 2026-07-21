@@ -9,7 +9,7 @@
 :root{
   --page:#f6f7f6; --surface:#fcfcfd; --surface2:#f1f2f1; --ink:#0c0e12; --ink2:#565b63;
   --muted:#8a8f98; --hair:#e3e4e1; --accent:#2456c9; --accent-soft:#e8eefc;
-  --crit:#d03b3b; --crit-soft:#faecec; --ser:#c25a2e; --ser-soft:#fbeee7;
+  --crit:#d03b3b; --crit-soft:#faecec; --ser:#c25a2e; --ser-soft:#fbeee7; --lar:#d97706;
   --warn:#9a6c00; --warn-soft:#fdf3d9; --good:#006300; --good-soft:#e7f3e7;
   --ch1:#2a78d6; --ch2:#1baf7a; --ch3:#eda100; --bar:#2a78d6; --bar-strong:#1c5cab;
   --shadow:0 12px 40px rgba(12,14,18,.14);
@@ -17,7 +17,7 @@
 html[data-tema="escuro"]{
   --page:#0d0e10; --surface:#17181b; --surface2:#1e2024; --ink:#f3f4f6; --ink2:#b8bcc3;
   --muted:#8a8f98; --hair:#2a2c30; --accent:#5c8bf0; --accent-soft:#1b2740;
-  --crit:#e05252; --crit-soft:#3a1d1d; --ser:#e07a45; --ser-soft:#382217;
+  --crit:#e05252; --crit-soft:#3a1d1d; --ser:#e07a45; --ser-soft:#382217; --lar:#ffa94d;
   --warn:#e8b93a; --warn-soft:#332a12; --good:#3dbb3d; --good-soft:#162c16;
   --ch1:#3987e5; --ch2:#199e70; --ch3:#c98500; --bar:#3987e5; --bar-strong:#6da7ec;
   --shadow:0 12px 40px rgba(0,0,0,.5);
@@ -894,7 +894,7 @@ async function renderSugestoes(){
   const cOut={site:0,atac:0,ml:0}; lista.forEach(m=>{if(m._outS===2)cOut.site++;if(m._outA===2)cOut.atac++;if(m._outM===2)cOut.ml++;});
   st.sgSel=st.sgSel||new Set();
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>As caixas de Atacado e ML vêm preenchidas com a sugestão do canal</b> (fora da banda → alvo×custo; dentro → preço atual) e mostram o markup efetivo enquanto você digita; <b>o DE é sempre manual</b> (eu não recalculo DE). Ao aprovar, entra na ação o que estiver nas caixas e for diferente do preço de hoje. Alvos = mediana do markup por canal (UN) × grupo × geração — site, atacado e ML têm alvos próprios · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — a decisão é do analista (o campo de preço é editável em qualquer linha). <b style="color:var(--crit)">Preço em vermelho</b> = markup daquele canal a mais de 2 desvios-padrão da distribuição do grupo×geração no mesmo canal; <b style="color:var(--ser)">laranja</b> = entre 1σ e 2σ. Clique nos títulos das colunas para ordenar (2º clique inverte). Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>As caixas de Atacado e ML vêm preenchidas com a sugestão do canal</b> (fora da banda → alvo×custo; dentro → preço atual) e mostram o markup efetivo enquanto você digita; <b>o DE é sempre manual</b> (eu não recalculo DE). Ao aprovar, entra na ação o que estiver nas caixas e for diferente do preço de hoje. Alvos = mediana do markup por canal (UN) × grupo × geração — site, atacado e ML têm alvos próprios · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — a decisão é do analista (o campo de preço é editável em qualquer linha). <b style="color:var(--crit)">Preço em vermelho</b> = markup daquele canal a mais de 2 desvios-padrão da distribuição do grupo×geração no mesmo canal; <b style="color:var(--lar)">laranja</b> = entre 1σ e 2σ. Clique nos títulos das colunas para ordenar (2º clique inverte). Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
     ${((pend||[]).length||(feitas||[]).length)?`<div class="banner ambar" style="display:grid;gap:6px">
       ${aprA.length?`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">⏳ <b>${aprA.length} ação(ões) aprovadas na fila.</b>${st.admin?`<button class="btn" id="sgExec" style="padding:5px 16px">▶ Aplicar no ERP agora</button>`:`<span style="font-weight:400">aguardando aplicação pelo administrador</span>`}</div>`:''}
       ${aprA.map(a=>`<div style="display:flex;align-items:center;gap:10px;font-weight:400;font-size:12.5px">
@@ -925,7 +925,7 @@ async function renderSugestoes(){
       <thead><tr><th></th><th class="ord" data-c="cod">Produto<span class="seta"></span></th><th class="ord" data-c="_meses">Geração<span class="seta"></span></th><th class="ord" data-c="_giro">Giro/mês<span class="seta"></span></th><th class="ord" data-c="_views">Views 28d<span class="seta"></span></th><th class="ord" data-c="_conv">Conv.<span class="seta"></span></th><th class="ord" data-c="custo">Custo<span class="seta"></span></th><th class="ord" data-c="p_atacado">Atacado hoje<span class="seta"></span></th><th class="ord" data-c="_atacSug">Atacado novo — editável<span class="seta"></span></th><th class="ord" data-c="p_site_de">DE hoje<span class="seta"></span></th><th class="ord" data-c="p_site">POR / PIX hoje<span class="seta"></span></th><th>DE novo — editável</th><th class="ord" data-c="_avistaSug">À vista novo — editável<span class="seta"></span></th><th class="ord" data-c="p_marketplace">ML hoje<span class="seta"></span></th><th class="ord" data-c="_mlSug">ML novo — editável<span class="seta"></span></th></tr></thead>
       <tbody id="sgRows"></tbody></table></div><button class="more hide" id="sgMore"></button></div>`;
   document.querySelectorAll('.kpi[data-out]').forEach(b=>b.onclick=()=>{st.sgOut=st.sgOut===b.dataset.out?null:b.dataset.out;renderSugestoes();});
-  const corOut=l=>l===2?'color:var(--crit);font-weight:700':l===1?'color:var(--ser);font-weight:700':'';
+  const corOut=l=>l===2?'color:var(--crit);font-weight:800':l===1?'color:var(--lar)':'';
   const desenha=()=>{
     const rows=lista.filter(m=>{
       if(st.sgOut==='site'&&m._outS!==2) return false;
