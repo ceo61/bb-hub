@@ -188,9 +188,6 @@ th.ord .seta{font-size:9px;margin-left:3px}
 .aclpgs label{display:flex;gap:6px;align-items:center;cursor:pointer}
 .aclusers{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
 .aclu{background:var(--surface2);border:1px solid var(--hair);border-radius:99px;padding:3px 10px}
-.mombtn{border:1px solid var(--hair);border-radius:6px;background:none;font-size:10px;padding:1px 5px;cursor:pointer;vertical-align:1px;color:var(--muted)}
-.mombtn:hover{border-color:var(--accent);color:var(--accent)}
-.mompop{position:fixed;z-index:130;width:min(430px,94vw);max-height:min(580px,88vh);overflow-y:auto;background:var(--surface);border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);padding:14px 16px;font-size:12.5px}
 </style>
 </head>
 <body>
@@ -731,31 +728,6 @@ async function carregaMarkup(){
     const conv={}; (await tudo('conversao_28d',{select:'cod,views,compras,taxa_conv',eq:[]})).forEach(x=>conv[x.cod]=x);
     const radarMap=new Map(st.radar.map(r=>[r.cod,r]));
     for(const m of st.markup){ const rr=radarMap.get(m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._meses=GERORD.indexOf(m.geracao); m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); const cv=conv[m.cod]; m._views=cv?.views||0; m._conv=cv?.taxa_conv??null; }
-    const momRows=await tudo('momento_produto',{eq:[]});
-    st.momIdx={};
-    for(const r of momRows){
-      const c=r.custo!=null?+r.custo:null, lb=(v,q)=>(+v||0)-(+q||0)*c;
-      const o={q365:+r.q365||0, d0:r.d0, lb365:c!=null?lb(r.v365,r.q365):null};
-      if(c!=null&&o.lb365>=300){
-        o.e7=o.lb365/52.14; o.e30=o.lb365/12.17;
-        o.lb7=lb(r.v7,r.q7); o.lb7a=lb(r.v7a,r.q7a); o.lb30=lb(r.v30,r.q30); o.lb30a=lb(r.v30a,r.q30a);
-        o.mom7=o.lb7/o.e7*100; o.mom7a=o.lb7a/o.e7*100; o.mom30=o.lb30/o.e30*100; o.mom30a=o.lb30a/o.e30*100;
-      }
-      st.momIdx[r.cod]=o;
-    }
-    const porC={};
-    for(const m of st.markup){
-      const mi=st.momIdx[m.cod];
-      if(mi&&mi.mom30!=null){
-        for(const k of [m.grupo, m.grupo+'|'+m.geracao]){
-          (porC[k]=porC[k]||{a7:[],a30:[]}); porC[k].a7.push(mi.mom7); porC[k].a30.push(mi.mom30);
-        }
-      }
-    }
-    st.momCoorte={};
-    const medC=v=>{const s=[...v].sort((a,b)=>a-b);return s[Math.floor(s.length/2)];};
-    for(const k in porC) if(porC[k].a30.length>=6)
-      st.momCoorte[k]={m7:medC(porC[k].a7), m30:medC(porC[k].a30), n:porC[k].a30.length};
 }
 async function renderPrecos(){
   $('#conteudo').innerHTML='<div class="carregando">Calculando markups…</div>';
@@ -905,80 +877,11 @@ function montaSugestoes(){
       _outS:(dS&&m.mk_site)?(Math.abs(m.mk_site-dS.m)>2*dS.s?2:(Math.abs(m.mk_site-dS.m)>dS.s?1:0)):0,
       _outA:(dA&&m.mk_atacado)?(Math.abs(m.mk_atacado-dA.m)>2*dA.s?2:(Math.abs(m.mk_atacado-dA.m)>dA.s?1:0)):0,
       _outM:(dM&&m.mk_marketplace)?(Math.abs(m.mk_marketplace-dM.m)>2*dM.s?2:(Math.abs(m.mk_marketplace-dM.m)>dM.s?1:0)):0,
-      _mom30:(st.momIdx?.[m.cod]?.mom30)??null,
-      _rel30:(()=>{const mi=st.momIdx?.[m.cod];const co=st.momCoorte?.[m.grupo+'|'+m.geracao]??st.momCoorte?.[m.grupo];return (mi&&mi.mom30!=null&&co)?mi.mom30-co.m30:null;})(),
       _impacto:diag==='ok'?0:m._giro*Math.abs(avista-m.p_site)});
   }
   out.sort((a,b)=>b._impacto-a._impacto);
   return {out,medConv};
 }
-function fechaMomento(){ document.getElementById('momPop')?.remove(); }
-async function abreMomento(cod, rc, m){
-  fechaMomento();
-  const mi=st.momIdx?.[cod];
-  const pop=document.createElement('div'); pop.id='momPop'; pop.className='mompop';
-  pop.style.left=Math.max(8,Math.min(rc.left, innerWidth-448))+'px';
-  pop.style.top=Math.max(8,Math.min(rc.bottom+8, innerHeight-420))+'px';
-  document.body.appendChild(pop);
-  const kge=(m?.grupo||'')+'|'+(m?.geracao||'');
-  const co=st.momCoorte?.[kge] ?? st.momCoorte?.[m?.grupo];
-  const dS=st.mkDist?.[kge] ?? st.mkDist?.[m?.grupo];
-  const cob=(m&&m._giro>0)?m._saldo/m._giro:null;
-  const fp=v=>nf.format(Math.round(v))+'%';
-  let corpo='', rel30=null;
-  if(mi&&mi.mom30!=null){
-    rel30=co?mi.mom30-co.m30:null; const rel7=co?mi.mom7-co.m7:null;
-    corpo=`
-    <div class="gr">Lucro bruto 365d <b>${rf2.format(mi.lb365)}</b> → esperado ${rf2.format(mi.e7)}/sem · ${rf2.format(mi.e30)}/30d</div>
-    <table style="width:100%;margin:8px 0;font-size:12.5px">
-      <tr><td style="text-align:left">Últimos 7d</td><td style="text-align:right"><b>${fp(mi.mom7)}</b> (${rf2.format(mi.lb7)})</td><td style="text-align:right" class="gr">7d anteriores ${fp(mi.mom7a)}</td></tr>
-      <tr><td style="text-align:left">Últimos 30d</td><td style="text-align:right"><b>${fp(mi.mom30)}</b> (${rf2.format(mi.lb30)})</td><td style="text-align:right" class="gr">30d anteriores ${fp(mi.mom30a)}</td></tr>
-      ${co?`<tr><td style="text-align:left" class="gr">Coorte (mediana, n=${co.n})</td><td style="text-align:right" class="gr">${fp(co.m7)} 7d</td><td style="text-align:right" class="gr">${fp(co.m30)} 30d</td></tr>`:''}
-    </table>
-    ${rel30!=null?`<div style="margin:2px 0 6px"><b style="color:${rel30>=10?'var(--good)':rel30<=-10?'var(--crit)':'var(--ink2)'}">Momento relativo: ${rel30>=0?'+':''}${nf.format(Math.round(rel30))}pp (30d) · ${rel7>=0?'+':''}${nf.format(Math.round(rel7))}pp (7d) vs coorte</b></div>`:''}`;
-  } else {
-    corpo=`<div class="gr">Lucro bruto 365d ${mi&&mi.lb365!=null?rf2.format(mi.lb365):'—'} — volume/margem baixos para leitura de momento confiável; use as barras de venda abaixo.</div>`;
-  }
-  const ver=[];
-  if(mi&&mi.mom30!=null&&co&&dS&&m){
-    const caro=m.mk_site>dS.m;
-    if(m._outS&&caro&&rel30>=10) ver.push('Preço ACIMA da média do grupo, mas momento acima da coorte → <b>não reduzir por enquanto — o preço não está travando a venda</b>.');
-    else if(m._outS&&caro&&rel30<=-10) ver.push('Preço acima da média E momento abaixo da coorte → <b>reduzir tem apoio nos dados</b>.');
-    else if(m._outS&&!caro&&rel30>=10) ver.push('Preço ABAIXO da média e momento forte → <b>espaço para subir</b>.');
-    else if(m._outS&&!caro&&rel30<=-10) ver.push('Preço abaixo da média e ainda assim momento fraco → <b>preço não parece ser o problema</b> (checar anúncio, estoque, concorrência).');
-    else ver.push('Momento em linha com a coorte — o preço atual não está travando nem impulsionando de forma clara.');
-  }
-  if(cob!=null){
-    if(cob<1) ver.push(`⚠️ Cobertura ${nf1.format(cob)} mês — reduzir preço aceleraria RUPTURA; subir protege o estoque.`);
-    else if(cob>8) ver.push(`Cobertura alta (${nf1.format(cob)} meses) — capital parado; promoção defensável.`);
-  }
-  pop.innerHTML=`
-    <div style="display:flex;align-items:center;gap:8px"><b>${esc(cod)}</b><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')}</span><span style="cursor:pointer;font-size:16px" id="momX">✕</span></div>
-    ${corpo}
-    <div class="gr" style="margin:4px 0">Estoque útil ${nf.format(m?._saldo||0)} un · giro ${nf1.format(m?._giro||0)}/mês · <b>cobertura ${cob!=null?nf1.format(cob)+' meses':'—'}</b></div>
-    ${ver.length?`<div style="border-top:1px solid var(--hair);padding-top:8px;margin-top:6px">${ver.map(v=>`<div style="margin:3px 0">${v}</div>`).join('')}</div>`:''}
-    <div id="momBars" class="gr" style="margin-top:8px">carregando vendas…</div>
-    <div class="gr" style="margin-top:6px;font-size:10.5px">Lucro bruto ≈ receita − custo atual (B2_CM1) · todos os canais · dados até ${mi?.d0?mi.d0.split('-').reverse().join('/'):'—'}</div>`;
-  pop.querySelector('#momX').onclick=fechaMomento;
-  const rapido=mi&&(mi.q365/52.14)>=3;
-  const d0=mi?.d0?new Date(mi.d0+'T12:00:00'):new Date();
-  const ini=new Date(d0); ini.setDate(ini.getDate()-(rapido?83:181));
-  const {data:serie}=await sb.from('fato_vendas_diaria').select('data,qtd').eq('cod',cod).gte('data',ini.toISOString().slice(0,10)).order('data');
-  const bk={};
-  for(const r of (serie||[])){
-    let k;
-    if(rapido){ const dt=new Date(r.data+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); k=dt.toISOString().slice(0,10); }
-    else k=r.data.slice(0,7);
-    bk[k]=(bk[k]||0)+(+r.qtd||0);
-  }
-  const ks=Object.keys(bk).sort(), mx=Math.max(...ks.map(k=>bk[k]),1);
-  const W=384,H=64,bw=W/Math.max(ks.length,1);
-  const bars=ks.map((k,i)=>`<rect x="${(i*bw+1).toFixed(1)}" y="${(H-4-(bk[k]/mx*(H-10))).toFixed(1)}" width="${Math.max(bw-2,2).toFixed(1)}" height="${(bk[k]/mx*(H-10)).toFixed(1)}" rx="2" fill="var(--bar)"><title>${rapido?'sem. de '+k.slice(8,10)+'/'+k.slice(5,7):k.slice(5,7)+'/'+k.slice(2,4)} · ${nf.format(bk[k])} un</title></rect>`).join('');
-  const el=document.getElementById('momBars');
-  if(el) el.innerHTML=`<div style="font-size:11px;margin-bottom:2px">Venda ${rapido?'semanal (12 semanas — produto rápido)':'mensal (6 meses)'} · pico ${nf.format(mx)} un (passe o mouse nas barras)</div><svg width="${W}" height="${H}" style="max-width:100%">${bars}</svg>`;
-}
-document.addEventListener('click',e=>{ const p=document.getElementById('momPop'); if(p&&!e.target.closest('#momPop')&&!e.target.closest('.mombtn')) p.remove(); });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape') fechaMomento(); });
 async function renderSugestoes(){
   $('#conteudo').innerHTML='<div class="carregando">Montando sugestões…</div>';
   await carregaMarkup();
@@ -991,7 +894,7 @@ async function renderSugestoes(){
   const cOut={site:0,atac:0,ml:0}; lista.forEach(m=>{if(m._outS===2)cOut.site++;if(m._outA===2)cOut.atac++;if(m._outM===2)cOut.ml++;});
   st.sgSel=st.sgSel||new Set();
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>As caixas de Atacado e ML vêm preenchidas com a sugestão do canal</b> (fora da banda → alvo×custo; dentro → preço atual) e mostram o markup efetivo enquanto você digita; <b>o DE é sempre manual</b> (eu não recalculo DE). Ao aprovar, entra na ação o que estiver nas caixas e for diferente do preço de hoje. Alvos = mediana do markup por canal (UN) × grupo × geração — site, atacado e ML têm alvos próprios · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — a decisão é do analista (o campo de preço é editável em qualquer linha). <b style="color:var(--crit)">Preço em vermelho</b> = markup daquele canal a mais de 2 desvios-padrão da distribuição do grupo×geração no mesmo canal; <b style="color:var(--lar)">laranja</b> = entre 1σ e 2σ. Clique nos títulos das colunas para ordenar (2º clique inverte). O 🔎 na linha abre o <b>momento do produto</b>: lucro bruto realizado vs o esperado pelo próprio ano (7d/30d), comparado com a coorte grupo×geração + cobertura de estoque. Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>As caixas de Atacado e ML vêm preenchidas com a sugestão do canal</b> (fora da banda → alvo×custo; dentro → preço atual) e mostram o markup efetivo enquanto você digita; <b>o DE é sempre manual</b> (eu não recalculo DE). Ao aprovar, entra na ação o que estiver nas caixas e for diferente do preço de hoje. Alvos = mediana do markup por canal (UN) × grupo × geração — site, atacado e ML têm alvos próprios · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — a decisão é do analista (o campo de preço é editável em qualquer linha). <b style="color:var(--crit)">Preço em vermelho</b> = markup daquele canal a mais de 2 desvios-padrão da distribuição do grupo×geração no mesmo canal; <b style="color:var(--lar)">laranja</b> = entre 1σ e 2σ. Clique nos títulos das colunas para ordenar (2º clique inverte). Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
     ${((pend||[]).length||(feitas||[]).length)?`<div class="banner ambar" style="display:grid;gap:6px">
       ${aprA.length?`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">⏳ <b>${aprA.length} ação(ões) aprovadas na fila.</b>${st.admin?`<button class="btn" id="sgExec" style="padding:5px 16px">▶ Aplicar no ERP agora</button>`:`<span style="font-weight:400">aguardando aplicação pelo administrador</span>`}</div>`:''}
       ${aprA.map(a=>`<div style="display:flex;align-items:center;gap:10px;font-weight:400;font-size:12.5px">
@@ -1048,7 +951,7 @@ async function renderSugestoes(){
       const sid=esc(m.cod).replace(/[^A-Za-z0-9]/g,'_');
       const tr=document.createElement('tr');
       tr.innerHTML=`<td style="text-align:center"><input type="checkbox" data-cod="${esc(m.cod)}" ${st.sgSel.has(m.cod)?'checked':''} style="width:16px;height:16px"></td>
-        <td style="text-align:left"><span class="cod" title="${esc(m.descricao||'')}">${esc(m.cod)}</span> <button class="mombtn" data-mom="${esc(m.cod)}" title="Momento do produto — lucro bruto vs próprio ano e vs coorte">🔎</button><br><span class="gr">${esc(m.grupo||'')}</span>${m._mom30!=null?`<br><span style="font-size:11px;${m._rel30!=null&&m._rel30>=10?'color:var(--good)':(m._rel30!=null&&m._rel30<=-10?'color:var(--crit)':'color:var(--muted)')}">momento ${nf.format(Math.round(m._mom30))}%${m._rel30!=null?` · ${m._rel30>=0?'+':''}${nf.format(Math.round(m._rel30))}pp coorte`:''}</span>`:''}</td>
+        <td style="text-align:left"><span class="cod" title="${esc(m.descricao||'')}">${esc(m.cod)}</span><br><span class="gr">${esc(m.grupo||'')}</span></td>
         <td><span class="gr">${GERLB[m.geracao]||m.geracao}</span></td>
         <td>${nf1.format(m._giro)}</td><td>${m._views?nf.format(m._views):'—'}</td><td>${m._conv!=null?nf1.format(m._conv)+'%':'—'}</td>
         <td>${rf2.format(m.custo)}</td>
@@ -1088,7 +991,6 @@ async function renderSugestoes(){
             if(el&&MB[cod]) el.textContent=cfg.fx(v,MB[cod]); } }
       });
     }
-    document.querySelectorAll('#sgRows .mombtn').forEach(b=>b.onclick=e=>{e.stopPropagation();abreMomento(b.dataset.mom, b.getBoundingClientRect(), MB[b.dataset.mom]);});
     document.querySelectorAll('#sgRows input[type=checkbox]').forEach(cb=>cb.onchange=()=>{
       cb.checked?st.sgSel.add(cb.dataset.cod):st.sgSel.delete(cb.dataset.cod);
       $('#sgN').textContent=st.sgSel.size;
