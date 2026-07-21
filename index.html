@@ -725,9 +725,10 @@ async function carregaMarkup(){
       r[g]={m:mn,s:Math.sqrt(v.reduce((s,x)=>s+(x-mn)**2,0)/v.length)};}}return r;};
     st.mkDist=stats(porG); st.mkDistA=stats(porGA); st.mkDistM=stats(porGM);
     const estq={}; (await tudo('fato_estoque',{select:'cod,estoque_util',eq:[['snapshot',st.snap]]})).forEach(e=>estq[e.cod]=e.estoque_util);
+    const tra={}; (st.transito||[]).forEach(t=>{ tra[t.cod]=(tra[t.cod]||0)+(+t.qtd_pendente||0); });
     const conv={}; (await tudo('conversao_28d',{select:'cod,views,compras,taxa_conv',eq:[]})).forEach(x=>conv[x.cod]=x);
     const radarMap=new Map(st.radar.map(r=>[r.cod,r]));
-    for(const m of st.markup){ const rr=radarMap.get(m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._meses=GERORD.indexOf(m.geracao); m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); const cv=conv[m.cod]; m._views=cv?.views||0; m._conv=cv?.taxa_conv??null; }
+    for(const m of st.markup){ const rr=radarMap.get(m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._transito=tra[m.cod]||0; m._meses=GERORD.indexOf(m.geracao); m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); const cv=conv[m.cod]; m._views=cv?.views||0; m._conv=cv?.taxa_conv??null; }
 }
 async function renderPrecos(){
   $('#conteudo').innerHTML='<div class="carregando">Calculando markups…</div>';
@@ -982,7 +983,7 @@ async function renderSugestoes(){
       tr.innerHTML=`<td style="text-align:center"><input type="checkbox" data-cod="${esc(m.cod)}" ${st.sgSel.has(m.cod)?'checked':''} style="width:16px;height:16px"></td>
         <td style="text-align:left"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span><br><span class="gr">${esc(m.grupo||'')}</span></td>
         <td><span class="gr">${GERLB[m.geracao]||m.geracao}</span></td>
-        <td>${nf.format(m._saldo||0)}</td>
+        <td>${nf.format(m._saldo||0)}${m._transito?`<br><span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)} encom.)</span>`:''}</td>
         <td>${nf1.format(m._giro)}</td><td>${m._views?nf.format(m._views):'—'}</td><td>${m._conv!=null?nf1.format(m._conv)+'%':'—'}</td>
         <td>${rf2.format(m.custo)}</td>
         <td>${m.p_atacado?`<span style="${corOut(m._outA)}">${rf2.format(m.p_atacado)}</span>`:'—'}<br><span class="gr">${m.mk_atacado?'mk '+nf1.format(m.mk_atacado)+'×':''}${m._alvoA?' · alvo '+nf1.format(m._alvoA)+'×':''}</span></td>
