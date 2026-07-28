@@ -1469,7 +1469,7 @@ async function renderSkus(){
       <thead><tr><th style="text-align:left">SKU (${skus.length})</th>${meses.map(ms=>`<th>${mrot(ms)}</th>`).join('')}<th>total</th></tr></thead>
       <tbody>
         ${linha('TOTAL — '+esc(cod), esc(st.dim[cod]?.descricao||''), TOT, true)}
-        ${skus.map(id=>{const l=L[id]||{};return linha(esc(l.ref||id), esc([l.pn,l.esp].filter(Boolean).join(' — '))+(l.ref?` · <span title="itemId GA4/VTEX">${esc(id)}</span>`:''), S[id], false);}).join('')}
+        ${skus.map(id=>{const l=L[id]||{};const nome=l.esp||l.pn||'';return linha(nome?esc(nome)+` · <span class="gr" title="itemId GA4/VTEX">${esc(id)}</span>`:esc(id), '', S[id], false);}).join('')}
       </tbody></table></div></div>
     <p class="gr" style="margin:10px 2px 0">* mês corrente (parcial). Conversão = compras÷acessos do SKU · ticket = receita÷compras · fonte GA4 (só o site bbbaterias; ML/Magalu não passam por aqui). SKUs sem tráfego na janela não aparecem. Linhas ordenadas por acessos no período.</p>`;
   document.querySelectorAll('button[data-met]').forEach(b=>b.onclick=()=>{st.skMet=b.dataset.met;renderSkus();});
