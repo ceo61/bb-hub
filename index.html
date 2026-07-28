@@ -1191,9 +1191,14 @@ function domEqualizado(sa,sb){ // mesma amplitude RELATIVA nos dois gráficos
   return {da:[Math.max(0,ma*(1-A/2)),ma*(1+A/2)], db:[Math.max(0,mb*(1-A/2)),mb*(1+A/2)], amp:A};
 }
 async function medianaLojaConv(){
+  // conversão COMERCIAL: venda faturada 002 (28d) ÷ views GA4 (28d), por produto
   if(st.medLoja!=null) return st.medLoja;
-  const c=await tudo('conversao_28d',{select:'views,taxa_conv',eq:[]});
-  const v=c.filter(x=>x.views>=50&&x.taxa_conv!=null).map(x=>x.taxa_conv).sort((a,b)=>a-b);
+  const [c,vd]=await Promise.all([
+    tudo('conversao_28d',{select:'cod,views',eq:[]}),
+    tudo('vendas_28d',{select:'cod,qtd_b2c',eq:[]}),
+  ]);
+  const qtd={}; vd.forEach(x=>qtd[x.cod]=+x.qtd_b2c||0);
+  const v=c.filter(x=>x.views>=50).map(x=>(qtd[x.cod]||0)/x.views*100).sort((a,b)=>a-b);
   st.medLoja=v.length?v[Math.floor(v.length/2)]:1;
   return st.medLoja;
 }
@@ -1291,21 +1296,21 @@ async function renderPainel(){
       let w;
       if(agreg==='mes') w=d.slice(0,7)+'-01';
       else { const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); w=dt.toISOString().slice(0,10); }
-      const a=sem[w]=sem[w]||{vw:0,cp:0,qt:0,vl:0};
+      const a=sem[w]=sem[w]||{vw:0,qt:0,vl:0};
       const c=mc[d], v=mv[d];
-      if(c){a.vw+=c.views;a.cp+=c.compras;}
+      if(c){a.vw+=c.views;}
       if(v){a.qt+=v.qtd_b2c||0;a.vl+=v.val_b2c||0;}
     }
     const ws=Object.keys(sem).sort();
     sViews=ws.map(w=>[w,sem[w].vw]);
-    sConv=ws.map(w=>[w,sem[w].vw>0?sem[w].cp/sem[w].vw*100:null]);
+    sConv=ws.map(w=>[w,sem[w].vw>0?sem[w].qt/sem[w].vw*100:null]);
     sVenda=ws.map(w=>[w,sem[w].qt]);
     sPreco=ws.map(w=>[w,sem[w].qt>0?sem[w].vl/sem[w].qt:null]);
   } else {
     sViews = M.views==='mm7' ? mm7(dias.map(d=>[d, mc[d]?.views||0])) : dias.map(d=>[d, mc[d]?.views||0]);
     sConv = M.conv==='mm7'
-      ? mm7(dias.map(d=>[d, mc[d]?.compras||0, mc[d]?.views||0])).map(p=>[p[0],p[1]!=null?p[1]*100:null])
-      : dias.map(d=>{const c=mc[d]; return [d, (c&&c.views>0)?c.compras/c.views*100:null];});
+      ? mm7(dias.map(d=>[d, mv[d]?.qtd_b2c||0, mc[d]?.views||0])).map(p=>[p[0],p[1]!=null?p[1]*100:null])
+      : dias.map(d=>{const c=mc[d]; return [d, (c&&c.views>0)?(mv[d]?.qtd_b2c||0)/c.views*100:null];});
     sVenda = M.venda==='mm7' ? mm7(dias.map(d=>[d, mv[d]?.qtd_b2c||0])) : dias.map(d=>[d, mv[d]?.qtd_b2c||0]);
     sPreco = M.preco==='mm7'
       ? mm7(dias.map(d=>[d, mv[d]?.val_b2c||0, mv[d]?.qtd_b2c||0]))
@@ -1318,14 +1323,14 @@ async function renderPainel(){
   const tViews=conv.reduce((s,x)=>s+x.views,0), tCompras=conv.reduce((s,x)=>s+x.compras,0),
         tCart=conv.reduce((s,x)=>s+x.carrinho,0),
         tQtd=vend.reduce((s,x)=>s+(x.qtd_b2c||0),0), tVal=vend.reduce((s,x)=>s+(x.val_b2c||0),0);
-  const convMedia=tViews?tCompras/tViews*100:null;
+  const convMedia=tViews?tQtd/tViews*100:null;   // conversão COMERCIAL: venda 002 ÷ acessos
   // séries MENSAIS p/ análise (independente do modo de exibição; meses incompletos descartados)
   const _sem={};
   for(const dd of dias){
     const w=dd.slice(0,7)+'-01';
-    const a=_sem[w]=_sem[w]||{vw:0,cp:0,qt:0,vl:0};
+    const a=_sem[w]=_sem[w]||{vw:0,qt:0,vl:0};
     const c=mc[dd], v=mv[dd];
-    if(c){a.vw+=c.views;a.cp+=c.compras;}
+    if(c){a.vw+=c.views;}
     if(v){a.qt+=v.qtd_b2c||0;a.vl+=v.val_b2c||0;}
   }
   let _ws=Object.keys(_sem).sort();
@@ -1334,7 +1339,7 @@ async function renderPainel(){
     const u=_ws[_ws.length-1], fimU=new Date(+u.slice(0,4), +u.slice(5,7), 0);
     if(dias[dias.length-1] < u.slice(0,8)+String(fimU.getDate()).padStart(2,'0')) _ws=_ws.slice(0,-1);
   }
-  const wConv=_ws.map(w=>_sem[w].vw>0?_sem[w].cp/_sem[w].vw*100:null);
+  const wConv=_ws.map(w=>_sem[w].vw>0?_sem[w].qt/_sem[w].vw*100:null);
   const wViews=_ws.map(w=>_sem[w].vw);
   const wPreco=_ws.map(w=>_sem[w].qt>0?_sem[w].vl/_sem[w].qt:null);
   let leitura='';
@@ -1385,17 +1390,18 @@ async function renderPainel(){
   $('#pnCorpo').innerHTML=`
     <p style="margin:0 0 10px"><span class="cod" style="font-size:16px">${ehGrupo?'Grupo '+esc(st.pnCod.slice(1)):esc(st.pnCod)}</span> <span class="gr">${esc(d?.descricao||'')}</span></p>
     <div class="kpis">
-      <div class="kpi"><span class="lab">Venda site (un)</span><span class="val">${nf.format(tQtd)}</span></div>
+      <div class="kpi"><span class="lab">Venda site (un)</span><span class="val">${nf.format(tQtd)}</span><span class="sub">faturado 002</span></div>
+      <div class="kpi"><span class="lab">Compras site (GA4)</span><span class="val">${nf.format(tCompras)}</span><span class="sub">só checkout rastreado</span></div>
       <div class="kpi"><span class="lab">Receita site</span><span class="val" style="font-size:19px">${rf.format(tVal)}</span></div>
       <div class="kpi"><span class="lab">Preço médio</span><span class="val" style="font-size:19px">${tQtd?rf2.format(tVal/tQtd):'—'}</span></div>
       <div class="kpi"><span class="lab">Acessos (views)</span><span class="val">${nf.format(tViews)}</span></div>
-      <div class="kpi"><span class="lab">Conversão</span><span class="val">${convMedia!=null?nf1.format(convMedia)+'%':'—'}</span><span class="sub">mediana loja ${nf1.format(med)}%</span></div>
+      <div class="kpi"><span class="lab">Conversão</span><span class="val">${convMedia!=null?nf1.format(convMedia)+'%':'—'}</span><span class="sub">venda 002 ÷ acessos · mediana loja ${nf1.format(med)}%</span></div>
       <div class="kpi"><span class="lab">Add-to-cart</span><span class="val">${tViews?nf1.format(tCart/tViews*100)+'%':'—'}</span></div>
     </div>
     <div class="banner ambar" style="background:var(--accent-soft);color:var(--accent)">${verdict.join(' · ')}</div>
     <div class="tablecard pn-grid">
       <div>${cab('Acessos — views'+unid+' (GA4, site)','views')}${svgSerie(sViews,{tipo:'area',cor:'var(--ch1)',fmt:v=>nf.format(Math.round(v)),id:'views'})}</div>
-      <div>${cab('Conversão — %','conv')}${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true,id:'conv',dominio:eq.da})}</div>
+      <div>${cab('Conversão — % (venda 002 ÷ acessos)','conv')}${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true,id:'conv',dominio:eq.da})}</div>
       <div>${cab('Venda no site — un'+unid+' (002)','venda')}${svgSerie(sVenda,{tipo:'area',cor:'var(--bar-strong)',fmt:v=>nf.format(Math.round(v)),id:'venda'})}</div>
       <div>${cab(ehGrupo?'Preço médio do MIX — R$/un (mix de produtos influencia)':'Preço médio praticado — R$/un','preco')}${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf2.format(v),id:'preco',zeroBase:false,dominio:eq.db})}</div>
       <p class="gr" style="margin:0">Fontes: GA4 (Brasil) + BASE BBDI 2020, diárias, atualizadas às 6h${reconc}.</p>
