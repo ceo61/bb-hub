@@ -1468,14 +1468,24 @@ async function renderSkus(){
   const mrot=ms=>ms.slice(5,7)+'/'+ms.slice(2,4)+(ms===mesAtual?'*':'');
   const linha=(rot,sub,d,forte)=>`<tr${forte?' style="border-bottom:1px solid var(--hair)"':''}><td style="text-align:left;max-width:360px">${forte?'<b>'+rot+'</b>':rot}${sub?`<br><span class="gr">${sub}</span>`:''}</td>${meses.map(ms=>`<td>${fmt(val(d.m[ms]))}</td>`).join('')}<td><b>${fmt(val(d.tot))}</b></td></tr>`;
   $('#skCorpo').innerHTML=`
-    <div class="kpis" style="margin-bottom:10px">${Object.entries(METS).map(([k,lb])=>`<button class="kpi" data-met="${k}" style="padding:7px 16px;${st.skMet===k?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${lb}</button>`).join('')}</div>
+    <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">${Object.entries(METS).map(([k,lb])=>`<button class="kpi" data-met="${k}" style="padding:7px 16px;${st.skMet===k?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${lb}</button>`).join('')}
+      <input type="search" id="skQ" placeholder="Filtrar IDSKU ou nome…" value="${esc(st.skQ||'')}" style="margin-left:auto;min-width:230px"></div>
+    <div id="skTab"></div>`;
+  const desenhaSk=()=>{
+    const q=(st.skQ||'').trim().toUpperCase();
+    const lista=skus.filter(id=>{ if(!q) return true; const l=L[id]||{};
+      return id.includes(q)||(l.esp||'').toUpperCase().includes(q)||(l.pn||'').toUpperCase().includes(q); });
+    $('#skTab').innerHTML=`
     <div class="tablecard"><div class="tscroll"><table style="min-width:760px">
-      <thead><tr><th style="text-align:left">SKU (${skus.length})</th>${meses.map(ms=>`<th>${mrot(ms)}</th>`).join('')}<th>total</th></tr></thead>
+      <thead><tr><th style="text-align:left">SKU (${q?nf.format(lista.length)+' de ':''}${nf.format(skus.length)})</th>${meses.map(ms=>`<th>${mrot(ms)}</th>`).join('')}<th>total</th></tr></thead>
       <tbody>
         ${linha('TOTAL — '+esc(cod), esc(st.dim[cod]?.descricao||''), TOT, true)}
-        ${skus.map(id=>{const l=L[id]||{};const nome=l.esp||l.pn||'';return linha(nome?esc(nome)+` · <span class="gr" title="itemId GA4/VTEX">${esc(id)}</span>`:esc(id), '', S[id], false);}).join('')}
+        ${lista.map(id=>{const l=L[id]||{};const nome=l.esp||l.pn||'';return linha(nome?esc(nome)+` · <span class="gr" title="itemId GA4/VTEX">${esc(id)}</span>`:esc(id), '', S[id], false);}).join('')}
       </tbody></table></div></div>
-    <p class="gr" style="margin:10px 2px 0">* mês corrente (parcial). Conversão = compras÷acessos do SKU · ticket = receita÷compras · fonte GA4 (só o site bbbaterias; ML/Magalu não passam por aqui). SKUs sem tráfego na janela não aparecem. Linhas ordenadas por acessos no período.</p>`;
+    <p class="gr" style="margin:10px 2px 0">* mês corrente (parcial). Conversão = compras÷acessos do SKU · ticket = receita÷compras · fonte GA4 (só o site bbbaterias; ML/Magalu não passam por aqui). SKUs sem tráfego na janela não aparecem. Linhas ordenadas por acessos no período. O TOTAL é sempre do produto inteiro, mesmo com filtro.</p>`;
+  };
+  desenhaSk();
+  let skT; $('#skQ').oninput=e=>{clearTimeout(skT);skT=setTimeout(()=>{st.skQ=e.target.value.trim().toUpperCase();desenhaSk();},200);};
   document.querySelectorAll('button[data-met]').forEach(b=>b.onclick=()=>{st.skMet=b.dataset.met;renderSkus();});
 }
 
