@@ -225,6 +225,7 @@ th.ord .seta{font-size:9px;margin-left:3px}
     </div>
     <div class="navsec">Análise</div>
     <a href="#painel" data-pg="painel">📈 Painel do produto</a>
+    <a href="#skus" data-pg="skus">🧩 SKUs</a>
     <div class="navsec">Gestão</div>
     <a href="#precos" data-pg="precos">🏷️ Preços — Markup</a>
     <a href="#sugestoes" data-pg="sugestoes">✅ Sugestões de preço</a>
@@ -439,13 +440,14 @@ $('#semaforo').onclick = ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'Sugestões de preço', painel:'Painel do produto', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'Sugestões de preço', painel:'Painel do produto', skus:'SKUs', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
   if(!TITULOS[pg]) pg='radar';
   if(st.acl && !st.acl.has(pg)) pg=[...st.acl][0]||'config';
-  st.pnCod = param || st.pnCod;
+  if(pg==='skus') st.skCod = param ? param.toUpperCase() : st.skCod;
+  else st.pnCod = param || st.pnCod;
   st.pg=pg; st.shown=120;
   $('#tituloPagina').textContent = TITULOS[pg];
   document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('ativo', a.dataset.pg===pg));
@@ -455,6 +457,7 @@ function navega(pg){
   else if(pg==='precos') renderPrecos();
   else if(pg==='sugestoes') renderSugestoes();
   else if(pg==='painel') renderPainel();
+  else if(pg==='skus') renderSkus();
   else if(pg==='config') renderConfig();
   else renderEmBreve(pg);
 }
@@ -1373,6 +1376,103 @@ async function renderPainel(){
     ${leitura}`;
   document.querySelectorAll('button[data-q]').forEach(b=>b.onclick=()=>{st.pnModo[b.dataset.q]=b.dataset.cm;renderPainel();});
   bindHoverPainel();
+}
+
+/* ---------- SKUs — conversão por anúncio VTEX ---------- */
+async function renderSkus(){
+  const grupos={}; st.radar.forEach(r=>{const g=r.grupo||'—'; grupos[g]=(grupos[g]||0)+1;});
+  const cods=[...new Set(st.radar.filter(r=>!st.skGrupo||(r.grupo||'—')===st.skGrupo).map(r=>r.cod))].sort();
+  $('#conteudo').innerHTML=`
+    <div class="toolbar">
+      <select id="skGrupo"><option value="">Todos os grupos</option>${Object.keys(grupos).sort((a,b)=>grupos[b]-grupos[a]).map(g=>`<option ${st.skGrupo===g?'selected':''} value="${esc(g)}">${esc(g)} (${grupos[g]})</option>`).join('')}</select>
+      <span style="position:relative;display:inline-block">
+        <input id="skCod" placeholder="Digite ou escolha o produto…" value="${esc(st.skCod||'')}" autocomplete="off" style="min-width:240px">
+        <div id="skDrop" style="display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:320px;max-height:340px;overflow-y:auto;background:var(--surface);border:1px solid var(--hair);border-radius:10px;box-shadow:var(--shadow);z-index:60"></div>
+      </span>
+      <span class="count">GA4 · site bbbaterias · cada SKU VTEX tem seu próprio link e conversão</span>
+    </div>
+    <div id="skCorpo"><div class="embreve"><div class="big">🧩</div><h2>Escolha um produto</h2><p>Acessos, conversão, ticket e receita de cada SKU — mês a mês (7 meses).</p></div></div>`;
+  $('#skGrupo').onchange=e=>{st.skGrupo=e.target.value;renderSkus();};
+  const g2={}; st.radar.forEach(r=>{ if(!g2[r.cod]) g2[r.cod]=r.grupo||'—'; });
+  const drop=$('#skDrop'), inp=$('#skCod');
+  const abre=f=>{
+    const F=(f||'').trim().toUpperCase();
+    const ls=F?cods.filter(c=>c.includes(F)):cods;
+    drop.innerHTML=ls.length?ls.map(c=>`<div class="pn-it${c===(st.skCod||'').toUpperCase()?' sel':''}" data-c="${esc(c)}"><span>${esc(c)}</span>${!st.skGrupo?`<span style="margin-left:auto;padding-left:16px;color:var(--muted);font-size:11px">${esc(g2[c]||'')}</span>`:''}</div>`).join(''):'<div class="pn-it" style="color:var(--muted);cursor:default">nenhum produto</div>';
+    drop.style.display='block';
+    const s=drop.querySelector('.pn-it.sel'); if(s) s.scrollIntoView({block:'center'});
+    drop.querySelectorAll('.pn-it[data-c]').forEach(el=>el.onmousedown=ev=>{
+      ev.preventDefault(); drop.style.display='none';
+      st.skCod=el.dataset.c; st.skFocus=false;
+      location.hash='skus/'+encodeURIComponent(st.skCod); renderSkus();
+    });
+  };
+  inp.onmousedown=()=>abre('');
+  inp.oninput=e=>abre(e.target.value);
+  inp.addEventListener('blur',()=>setTimeout(()=>{ if(drop.isConnected) drop.style.display='none'; },120));
+  inp.onchange=e=>{st.skCod=e.target.value.trim().toUpperCase();location.hash='skus/'+encodeURIComponent(st.skCod);renderSkus();};
+  inp.onkeydown=e=>{
+    if(e.key==='Escape'){ drop.style.display='none'; return; }
+    if(e.key!=='ArrowDown'&&e.key!=='ArrowUp') return;
+    e.preventDefault();
+    if(!cods.length) return;
+    let i=cods.indexOf((st.skCod||'').toUpperCase());
+    if(i<0) i = e.key==='ArrowDown' ? -1 : 0;
+    i = e.key==='ArrowDown' ? (i+1)%cods.length : (i-1+cods.length)%cods.length;
+    st.skCod=cods[i]; st.skFocus=true;
+    location.hash='skus/'+encodeURIComponent(st.skCod);
+  };
+  if(st.skFocus){ const L=inp.value.length; inp.focus(); try{inp.setSelectionRange(L,L);}catch(_){} }
+  if(!st.skCod) return;
+  $('#skCorpo').innerHTML='<div class="carregando">Carregando SKUs…</div>';
+  const cod=st.skCod;
+  let dados=st.skCache?.[cod];
+  if(!dados){
+    const [{data:cv},{data:lbl}]=await Promise.all([
+      sb.from('fato_conversao_sku').select('*').eq('cod',cod),
+      sb.from('dim_compatibilidade').select('idvtex,codref,modelo,espec').eq('cod',cod)]);
+    dados={cv:cv||[], lbl:lbl||[]}; (st.skCache=st.skCache||{})[cod]=dados;
+  }
+  if(cod!==st.skCod) return;
+  if(!dados.cv.length){ $('#skCorpo').innerHTML='<div class="carregando">Sem tráfego GA4 por SKU para este produto nos últimos 7 meses.</div>'; return; }
+  const meses=[...new Set(dados.cv.map(r=>r.mes))].sort().slice(-7);
+  const mesAtual=new Date().toISOString().slice(0,7);
+  const L={}; dados.lbl.forEach(x=>{ if(x.idvtex) L[x.idvtex]={ref:x.codref||'', pn:x.modelo||'', esp:x.espec||''}; });
+  const S={};
+  for(const r of dados.cv){
+    if(!meses.includes(r.mes)) continue;
+    const a=S[r.idvtex]=S[r.idvtex]||{tot:{v:0,c:0,p:0,r:0},m:{}};
+    const b=a.m[r.mes]=a.m[r.mes]||{v:0,c:0,p:0,r:0};
+    b.v+=+r.views||0; b.c+=+r.carrinho||0; b.p+=+r.compras||0; b.r+=+r.receita||0;
+    a.tot.v+=+r.views||0; a.tot.c+=+r.carrinho||0; a.tot.p+=+r.compras||0; a.tot.r+=+r.receita||0;
+  }
+  const skus=Object.keys(S).sort((a,b)=>S[b].tot.v-S[a].tot.v);
+  const TOT={m:{},tot:{v:0,c:0,p:0,r:0}};
+  for(const id of skus){
+    for(const ms of meses){ const b=S[id].m[ms]; if(b){ const t=TOT.m[ms]=TOT.m[ms]||{v:0,c:0,p:0,r:0}; t.v+=b.v;t.c+=b.c;t.p+=b.p;t.r+=b.r; } }
+    TOT.tot.v+=S[id].tot.v; TOT.tot.c+=S[id].tot.c; TOT.tot.p+=S[id].tot.p; TOT.tot.r+=S[id].tot.r;
+  }
+  st.skMet=st.skMet||'views';
+  const METS={views:'Acessos', conv:'Conversão', compras:'Compras', ticket:'Ticket', receita:'Receita'};
+  const val=b=>{ if(!b) return null;
+    if(st.skMet==='views') return b.v;
+    if(st.skMet==='compras') return b.p;
+    if(st.skMet==='receita') return b.r;
+    if(st.skMet==='conv') return b.v>0?b.p/b.v*100:null;
+    return b.p>0?b.r/b.p:null; };
+  const fmt=v=>v==null?'—':st.skMet==='conv'?nf1.format(v)+'%':(st.skMet==='ticket'||st.skMet==='receita')?rf2.format(v):nf.format(Math.round(v));
+  const mrot=ms=>ms.slice(5,7)+'/'+ms.slice(2,4)+(ms===mesAtual?'*':'');
+  const linha=(rot,sub,d,forte)=>`<tr${forte?' style="border-bottom:1px solid var(--hair)"':''}><td style="text-align:left;max-width:360px">${forte?'<b>'+rot+'</b>':rot}${sub?`<br><span class="gr">${sub}</span>`:''}</td>${meses.map(ms=>`<td>${fmt(val(d.m[ms]))}</td>`).join('')}<td><b>${fmt(val(d.tot))}</b></td></tr>`;
+  $('#skCorpo').innerHTML=`
+    <div class="kpis" style="margin-bottom:10px">${Object.entries(METS).map(([k,lb])=>`<button class="kpi" data-met="${k}" style="padding:7px 16px;${st.skMet===k?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${lb}</button>`).join('')}</div>
+    <div class="tablecard"><div class="tscroll"><table style="min-width:760px">
+      <thead><tr><th style="text-align:left">SKU (${skus.length})</th>${meses.map(ms=>`<th>${mrot(ms)}</th>`).join('')}<th>total</th></tr></thead>
+      <tbody>
+        ${linha('TOTAL — '+esc(cod), esc(st.dim[cod]?.descricao||''), TOT, true)}
+        ${skus.map(id=>{const l=L[id]||{};return linha(esc(l.ref||id), esc([l.pn,l.esp].filter(Boolean).join(' — '))+(l.ref?` · <span title="itemId GA4/VTEX">${esc(id)}</span>`:''), S[id], false);}).join('')}
+      </tbody></table></div></div>
+    <p class="gr" style="margin:10px 2px 0">* mês corrente (parcial). Conversão = compras÷acessos do SKU · ticket = receita÷compras · fonte GA4 (só o site bbbaterias; ML/Magalu não passam por aqui). SKUs sem tráfego na janela não aparecem. Linhas ordenadas por acessos no período.</p>`;
+  document.querySelectorAll('button[data-met]').forEach(b=>b.onclick=()=>{st.skMet=b.dataset.met;renderSkus();});
 }
 
 /* ---------- em construção / config ---------- */
