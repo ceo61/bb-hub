@@ -1428,9 +1428,9 @@ async function renderSkus(){
   const cod=st.skCod;
   let dados=st.skCache?.[cod];
   if(!dados){
-    const [{data:cv},{data:lbl}]=await Promise.all([
-      sb.from('fato_conversao_sku').select('*').eq('cod',cod),
-      sb.from('dim_compatibilidade').select('idvtex,codref,modelo,espec').eq('cod',cod)]);
+    const [cv,lbl]=await Promise.all([
+      tudo('fato_conversao_sku',{eq:[['cod',cod]]}),
+      tudo('dim_compatibilidade',{select:'idvtex,codref,modelo,espec',eq:[['cod',cod]]})]);
     dados={cv:cv||[], lbl:lbl||[]}; (st.skCache=st.skCache||{})[cod]=dados;
   }
   if(cod!==st.skCod) return;
