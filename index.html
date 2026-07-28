@@ -368,7 +368,17 @@ async function abreAcessos(){
         <div class="aclusers">${(us||[]).filter(u=>u.grupo===g.grupo).map(u=>`<span class="aclu">${esc(u.email)} <b data-rm="${esc(u.email)}" style="cursor:pointer;color:var(--crit)">✕</b></span>`).join('')||'<span class="gr">nenhum usuário neste grupo ainda</span>'}</div>
         <div style="display:flex;gap:8px;margin-top:8px"><input type="email" placeholder="email@bestbattery.com.br" class="aclAddMail" style="flex:1"><button class="btn aclAdd" data-g="${esc(g.grupo)}" style="padding:4px 14px">+ adicionar pessoa</button></div>
       </div>`).join('')}
-    <div style="display:flex;gap:8px;margin-top:14px"><input placeholder="novo grupo (ex.: compras)" id="aclNovoG" style="flex:1"><button class="btn" id="aclCriaG" style="padding:4px 14px">Criar grupo</button></div>`;
+    <div style="display:flex;gap:8px;margin-top:14px"><input placeholder="novo grupo (ex.: compras)" id="aclNovoG" style="flex:1"><button class="btn" id="aclCriaG" style="padding:4px 14px">Criar grupo</button></div>
+    <div class="aclgrp" style="margin-top:16px">
+      <b style="text-transform:uppercase;letter-spacing:.06em">🔑 Criar acesso (login + senha)</b>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <input type="email" id="aclNvEmail" placeholder="email@bestbattery.com.br" style="flex:2;min-width:200px">
+        <input type="text" id="aclNvSenha" placeholder="senha (mín. 8)" style="flex:1;min-width:140px" autocomplete="off">
+        <select id="aclNvGrupo"><option value="">sem grupo (vê tudo)</option>${(gs||[]).map(g=>`<option value="${esc(g.grupo)}">${esc(g.grupo)}</option>`).join('')}</select>
+        <button class="btn" id="aclNvCria" style="padding:4px 14px">Criar acesso</button>
+      </div>
+      <p class="gr" style="margin:8px 0 0">Cria o login já confirmado — a pessoa entra na hora com este e-mail e senha em ceo61.github.io/bb-hub. Escolhendo um grupo, o e-mail já entra nele. Sem mais dashboard.</p>
+    </div>`;
   ov.querySelector('#aclFecha').onclick=()=>ov.remove();
   ov.querySelectorAll('.aclSalva').forEach(b=>b.onclick=async()=>{
     const box=ov.querySelector(`.aclgrp[data-g="${CSS.escape(b.dataset.g)}"]`);
@@ -388,6 +398,19 @@ async function abreAcessos(){
     const g=ov.querySelector('#aclNovoG').value.trim().toLowerCase(); if(!g) return;
     const {error}=await sb.from('acl_grupos').insert({grupo:g,paginas:[]});
     if(error) alert(error.message); else abreAcessos();
+  };
+  ov.querySelector('#aclNvCria').onclick=async()=>{
+    const em=ov.querySelector('#aclNvEmail').value.trim().toLowerCase();
+    const sn=ov.querySelector('#aclNvSenha').value;
+    const gp=ov.querySelector('#aclNvGrupo').value;
+    if(!em||!em.includes('@')||sn.length<8){ alert('Informe um e-mail válido e uma senha com pelo menos 8 caracteres.'); return; }
+    const b=ov.querySelector('#aclNvCria'); b.disabled=true; b.textContent='criando…';
+    const {data,error}=await sb.functions.invoke('admin-users',{body:{email:em,senha:sn,grupo:gp||null}});
+    b.disabled=false; b.textContent='Criar acesso';
+    if(error){ alert('Erro ao criar: '+error.message); return; }
+    if(data?.error){ alert('Erro: '+data.error); return; }
+    alert('✅ Acesso criado para '+em+(data?.aviso?'\n⚠️ '+data.aviso:gp?' (grupo '+gp+')':''));
+    abreAcessos();
   };
 }
 
