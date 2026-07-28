@@ -1217,15 +1217,6 @@ function pearson(a,b){
   for(let i=0;i<n;i++){const dx=xs[i]-mx,dy=ys[i]-my; sxy+=dx*dy; sx+=dx*dx; sy+=dy*dy;}
   return (sx>0&&sy>0)?sxy/Math.sqrt(sx*sy):null;
 }
-function domEqualizado(sa,sb){ // mesma amplitude RELATIVA nos dois gráficos
-  const va=sa.map(p=>p[1]).filter(v=>v!=null), vb=sb.map(p=>p[1]).filter(v=>v!=null);
-  if(va.length<2||vb.length<2) return {da:null,db:null,amp:null};
-  const ma=(Math.max(...va)+Math.min(...va))/2, mb=(Math.max(...vb)+Math.min(...vb))/2;
-  if(!ma||!mb) return {da:null,db:null,amp:null};
-  const ra=(Math.max(...va)-Math.min(...va))/ma, rb=(Math.max(...vb)-Math.min(...vb))/mb;
-  const A=Math.max(ra,rb,0.08)*1.15;
-  return {da:[Math.max(0,ma*(1-A/2)),ma*(1+A/2)], db:[Math.max(0,mb*(1-A/2)),mb*(1+A/2)], amp:A};
-}
 async function medianaLojaConv(){
   // conversão COMERCIAL: venda faturada 002 (28d) ÷ views GA4 (28d), por produto
   if(st.medLoja!=null) return st.medLoja;
@@ -1353,7 +1344,6 @@ async function renderPainel(){
       : dias.map(d=>{const v=mv[d]; return [d, (v&&v.qtd_b2c>0)?v.val_b2c/v.qtd_b2c:null];});
   }
   const unid = agreg ? (agreg==='mes'?'/mês':'/semana') : '/dia';
-  const eq=domEqualizado(sConv,sPreco);
   const tog=q=>`<span style="margin-left:auto;display:inline-flex;gap:4px">${[['mm7','média 7d'],['raw','diário puro']].map(([cm,lb])=>`<button data-q="${q}" data-cm="${cm}" style="font-size:10px;letter-spacing:.04em;padding:2px 9px;border-radius:99px;border:1px solid ${M[q]===cm?'var(--accent)':'var(--hair)'};color:${M[q]===cm?'var(--accent)':'var(--muted)'}">${lb}</button>`).join('')}</span>`;
   const cab=(t,q)=>`<div class="eyebrow" style="display:flex;align-items:center;gap:8px">${t}${semanal?`<span style="margin-left:auto;font-size:10px;color:var(--muted)">agregação ${agreg==='mes'?'mensal':'semanal'}</span>`:tog(q)}</div>`;
   const tViews=conv.reduce((s,x)=>s+x.views,0), tCompras=conv.reduce((s,x)=>s+x.compras,0),
@@ -1416,7 +1406,7 @@ async function renderPainel(){
       }
       if(evs.length===0&&rPreco!=null) bullets.push(`Nenhum degrau de preço ≥3% entre os meses da janela — variações de conversão aqui vêm de tráfego/mix, não de preço.`);
     }
-    if(bullets.length) leitura=`<div class="tablecard" style="padding:12px 16px;margin:14px 0 0"><div class="eyebrow" style="margin-bottom:8px">🔍 Leitura automática — o que moveu a conversão? <span style="font-size:9px">(mensal, só meses fechados; correlação ≠ causalidade)</span></div><div style="display:grid;gap:6px;font-size:13px">${bullets.map(b=>`<div>• ${b}</div>`).join('')}</div>${eq.amp?`<div class="gr" style="margin-top:8px">Escalas de Conversão e Preço equalizadas: ambos os gráficos exibem a mesma amplitude relativa (±${nf.format(Math.round(eq.amp*50))}%) — inclinação comparável a olho.</div>`:''}</div>`;
+    if(bullets.length) leitura=`<div class="tablecard" style="padding:12px 16px;margin:14px 0 0"><div class="eyebrow" style="margin-bottom:8px">🔍 Leitura automática — o que moveu a conversão? <span style="font-size:9px">(mensal, só meses fechados; correlação ≠ causalidade)</span></div><div style="display:grid;gap:6px;font-size:13px">${bullets.map(b=>`<div>• ${b}</div>`).join('')}</div></div>`;
   }
   const d=ehGrupo?{descricao:`agregado de ${st.radar.filter(r=>(r.grupo||'—')===st.pnCod.slice(1)).length} produtos com giro`}:st.radar.find(r=>r.cod===st.pnCod);
   const verdict=[];
@@ -1437,9 +1427,9 @@ async function renderPainel(){
     <div class="banner ambar" style="background:var(--accent-soft);color:var(--accent)">${verdict.join(' · ')}</div>
     <div class="tablecard pn-grid">
       <div>${cab('Acessos — views'+unid+' (GA4, site)','views')}${svgSerie(sViews,{tipo:'area',cor:'var(--ch1)',fmt:v=>nf.format(Math.round(v)),id:'views'})}</div>
-      <div>${cab('Conversão — % (venda 002 ÷ acessos)','conv')}${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true,id:'conv',dominio:eq.da})}</div>
+      <div>${cab('Conversão — % (venda 002 ÷ acessos)','conv')}${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true,id:'conv',zeroBase:false})}</div>
       <div>${cab('Venda no site — un'+unid+' (002)','venda')}${svgSerie(sVenda,{tipo:'area',cor:'var(--bar-strong)',fmt:v=>nf.format(Math.round(v)),id:'venda'})}</div>
-      <div>${cab(ehGrupo?'Preço médio do MIX — R$/un (mix de produtos influencia)':'Preço médio praticado — R$/un','preco')}${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf2.format(v),id:'preco',zeroBase:false,dominio:eq.db})}</div>
+      <div>${cab(ehGrupo?'Preço médio do MIX — R$/un (mix de produtos influencia)':'Preço médio praticado — R$/un','preco')}${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf2.format(v),id:'preco',zeroBase:false})}</div>
       <div style="grid-column:1/-1"><div class="eyebrow" style="display:flex;align-items:center;gap:8px">Conversão × preço praticado — sobreposição${semanal?`<span style="margin-left:auto;font-size:10px;color:var(--muted)">agregação ${agreg==='mes'?'mensal':'semanal'}</span>`:''}</div>${svgDuplo(sConv,sPreco,{ref:med,id:'duplo'})}<p class="gr" style="margin:6px 0 0"><span style="color:var(--ch2)">━</span> conversão (venda 002 ÷ acessos, eixo esq.) · <span style="color:var(--ch3)">━</span> preço médio praticado (R$/un, eixo dir.) · eixos independentes: cada linha usa a amplitude toda (compare o TIMING dos movimentos, não o tamanho)</p></div>
       <p class="gr" style="margin:0">Fontes: GA4 (Brasil) + BASE BBDI 2020, diárias, atualizadas às 6h${reconc}.</p>
     </div>
