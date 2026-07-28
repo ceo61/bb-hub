@@ -1147,6 +1147,41 @@ function svgSerie(pts,{h=210,tipo='area',cor='var(--ch1)',ref=null,fmt=v=>nf1.fo
   }
   return `<svg ${id?`data-hover="${id}" style="width:100%;height:auto;cursor:crosshair"`:'style="width:100%;height:auto"'} viewBox="0 0 ${W} ${h}" role="img">${grid}${area}<path d="${path}" fill="none" stroke="${cor}" stroke-width="2"/>${refl}${eixo}${extra}</svg>`;
 }
+function svgDuplo(A,B,{h=250,corA='var(--ch2)',corB='var(--ch3)',ref=null,fmtA=v=>nf1.format(v)+'%',fmtB=v=>rf2.format(v),id=null,dominioA=null,dominioB=null}={}){
+  // duas séries no MESMO gráfico, dois eixos (A esq., B dir.) — largura total
+  const W=1320,P=48,PR=64;
+  const va=A.map(p=>p[1]).filter(v=>v!=null), vb=B.map(p=>p[1]).filter(v=>v!=null);
+  if(!va.length||!vb.length) return '<div class="carregando" style="padding:30px">sem dados na janela</div>';
+  const pad=(lo,hi)=>{const d=(hi-lo)||hi||1;return [Math.max(0,lo-d*0.12), hi+d*0.1];};
+  const [aMin,aMax]=dominioA||pad(Math.min(...va, ref!=null?ref:Infinity), Math.max(...va, ref!=null?ref:-Infinity));
+  const [bMin,bMax]=dominioB||pad(Math.min(...vb), Math.max(...vb));
+  const n=A.length;
+  const X=i=>P+(W-P-PR)*(n<2?0:i/(n-1));
+  const YA=v=>h-18-(h-30)*((v-aMin)/(aMax-aMin||1));
+  const YB=v=>h-18-(h-30)*((v-bMin)/(bMax-bMin||1));
+  const linha=(pts,Y)=>{let p='';pts.forEach((q,i)=>{if(q[1]==null)return;p+=(p?' L':'M')+`${X(i).toFixed(1)},${Y(q[1]).toFixed(1)}`;});return p;};
+  const grid=[0,0.5,1].map(f=>{
+    const y=YA(aMin+(aMax-aMin)*f);
+    return `<line x1="${P}" x2="${W-PR}" y1="${y}" y2="${y}" stroke="var(--hair)" stroke-width="1"/>`+
+      `<text x="${P-5}" y="${y+3}" text-anchor="end" font-size="9" fill="${corA}">${fmtA(aMin+(aMax-aMin)*f)}</text>`+
+      `<text x="${W-PR+6}" y="${y+3}" font-size="9" fill="${corB}">${fmtB(bMin+(bMax-bMin)*f)}</text>`;
+  }).join('');
+  const refl=(ref!=null&&ref>=aMin&&ref<=aMax)?`<line x1="${P}" x2="${W-PR}" y1="${YA(ref)}" y2="${YA(ref)}" stroke="var(--muted)" stroke-dasharray="4 3" stroke-width="1"/><text x="${W-PR-4}" y="${YA(ref)-4}" text-anchor="end" font-size="9" fill="var(--muted)">mediana loja ${nf1.format(ref)}%</text>`:'';
+  const meses={}; A.forEach((p,i)=>{const m=p[0].slice(0,7); if(!(m in meses)) meses[m]=i;});
+  const eixo=Object.entries(meses).filter((_,i,a)=>a.length<=13||i%2===0).map(([m,i])=>`<text x="${X(i)}" y="${h-3}" font-size="9" fill="var(--muted)">${m.slice(5,7)}/${m.slice(2,4)}</text>`).join('');
+  let extra='';
+  if(id){
+    const mb={}; B.forEach(q=>{mb[q[0]]=q[1];});
+    PN_CH[id]={W, pix:A.map((p,i)=>{
+      const bv=mb[p[0]];
+      if(p[1]==null&&bv==null) return null;
+      const tt=[p[1]!=null?fmtA(p[1]):null, bv!=null?fmtB(bv):null].filter(Boolean).join(' · ');
+      return [X(i), p[1]!=null?YA(p[1]):null, p[0], tt, bv!=null?YB(bv):null];
+    }).filter(Boolean)};
+    extra=`<line id="ch-${id}" y1="10" y2="${h-18}" stroke="var(--muted)" stroke-width="1" opacity="0"/><circle id="mk-${id}" r="4" fill="${corA}" stroke="var(--surface)" stroke-width="1.5" opacity="0"/><circle id="mk2-${id}" r="4" fill="${corB}" stroke="var(--surface)" stroke-width="1.5" opacity="0"/>`;
+  }
+  return `<svg ${id?`data-hover="${id}" style="width:100%;height:auto;cursor:crosshair"`:'style="width:100%;height:auto"'} viewBox="0 0 ${W} ${h}" role="img">${grid}${refl}<path d="${linha(A,YA)}" fill="none" stroke="${corA}" stroke-width="2"/><path d="${linha(B,YB)}" fill="none" stroke="${corB}" stroke-width="2"/>${eixo}${extra}</svg>`;
+}
 function bindHoverPainel(){
   let tip=document.getElementById('pnTip');
   if(!tip){
@@ -1156,7 +1191,7 @@ function bindHoverPainel(){
   }
   document.querySelectorAll('svg[data-hover]').forEach(svg=>{
     const id=svg.dataset.hover, d=PN_CH[id]; if(!d) return;
-    const ch=svg.querySelector('[id^=ch-]'), mk=svg.querySelector('[id^=mk-]');
+    const ch=svg.querySelector('[id^=ch-]'), mk=svg.querySelector(`[id="mk-${id}"]`), mk2=svg.querySelector(`[id="mk2-${id}"]`);
     svg.onmousemove=e=>{
       const r=svg.getBoundingClientRect();
       const xv=(e.clientX-r.left)/r.width*d.W;
@@ -1164,12 +1199,13 @@ function bindHoverPainel(){
       for(const p of d.pix){const dd=Math.abs(p[0]-xv); if(dd<bd){bd=dd;best=p;}}
       if(!best) return;
       ch.setAttribute('x1',best[0]); ch.setAttribute('x2',best[0]); ch.setAttribute('opacity','.45');
-      mk.setAttribute('cx',best[0]); mk.setAttribute('cy',best[1]); mk.setAttribute('opacity','1');
+      if(best[1]!=null){ mk.setAttribute('cx',best[0]); mk.setAttribute('cy',best[1]); mk.setAttribute('opacity','1'); } else mk.setAttribute('opacity','0');
+      if(mk2){ if(best[4]!=null){ mk2.setAttribute('cx',best[0]); mk2.setAttribute('cy',best[4]); mk2.setAttribute('opacity','1'); } else mk2.setAttribute('opacity','0'); }
       const dt=best[2];
       tip.textContent=`${dt.slice(8,10)}/${dt.slice(5,7)}/${dt.slice(2,4)} · ${best[3]}`;
       tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY-10)+'px'; tip.style.opacity='1';
     };
-    svg.onmouseleave=()=>{ tip.style.opacity='0'; ch.setAttribute('opacity','0'); mk.setAttribute('opacity','0'); };
+    svg.onmouseleave=()=>{ tip.style.opacity='0'; ch.setAttribute('opacity','0'); mk.setAttribute('opacity','0'); if(mk2) mk2.setAttribute('opacity','0'); };
   });
 }
 function pearson(a,b){
@@ -1404,6 +1440,7 @@ async function renderPainel(){
       <div>${cab('Conversão — % (venda 002 ÷ acessos)','conv')}${svgSerie(sConv,{tipo:'linha',cor:'var(--ch2)',ref:med,pct:true,id:'conv',dominio:eq.da})}</div>
       <div>${cab('Venda no site — un'+unid+' (002)','venda')}${svgSerie(sVenda,{tipo:'area',cor:'var(--bar-strong)',fmt:v=>nf.format(Math.round(v)),id:'venda'})}</div>
       <div>${cab(ehGrupo?'Preço médio do MIX — R$/un (mix de produtos influencia)':'Preço médio praticado — R$/un','preco')}${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf2.format(v),id:'preco',zeroBase:false,dominio:eq.db})}</div>
+      <div style="grid-column:1/-1"><div class="eyebrow" style="display:flex;align-items:center;gap:8px">Conversão × preço praticado — sobreposição${semanal?`<span style="margin-left:auto;font-size:10px;color:var(--muted)">agregação ${agreg==='mes'?'mensal':'semanal'}</span>`:''}</div>${svgDuplo(sConv,sPreco,{ref:med,id:'duplo',dominioA:eq.da,dominioB:eq.db})}<p class="gr" style="margin:6px 0 0"><span style="color:var(--ch2)">━</span> conversão (venda 002 ÷ acessos, eixo esq.) · <span style="color:var(--ch3)">━</span> preço médio praticado (R$/un, eixo dir.)${eq.amp?` · escalas equalizadas: mesma amplitude relativa nos dois eixos — inclinação comparável a olho`:''}</p></div>
       <p class="gr" style="margin:0">Fontes: GA4 (Brasil) + BASE BBDI 2020, diárias, atualizadas às 6h${reconc}.</p>
     </div>
     ${leitura}`;
