@@ -957,7 +957,7 @@ async function abrePreco(cod, un, m){
   let ov=document.getElementById('mcModal');
   if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
   ov.className='aclov';
-  ov.innerHTML='<div class="aclcard" style="width:min(1220px,96vw)"><div class="carregando">Carregando preços…</div></div>';
+  ov.innerHTML='<div class="aclcard" style="width:min(1120px,96vw)"><div class="carregando">Carregando preços…</div></div>';
   ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
   if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
   const ini=new Date(Date.now()-90*86400e3).toISOString().slice(0,10);
@@ -983,8 +983,8 @@ async function abrePreco(cod, un, m){
       ? svgDuplo(sPrat,sTab,{W:640,h:260,corA:'var(--ch3)',corB:'var(--ch1)',fmtA:v=>rf2.format(v),fmtB:v=>rf2.format(v),dominioA:dom,dominioB:dom})
       : svgSerie(temPrat?sPrat:sTab,{W:640,h:260,tipo:'linha',cor:temPrat?'var(--ch3)':'var(--ch1)',fmt:v=>rf2.format(v),zeroBase:false});
   }
-  const linhas=[...ws].reverse().map((w,i,arr)=>{
-    const s0=sem[w], ant=arr[i+1]?sem[arr[i+1]]:null;
+  const linhas=ws.map((w,i,arr)=>{
+    const s0=sem[w], ant=i>0?sem[arr[i-1]]:null;
     const pm=s0.q>0?s0.v/s0.q:null, pmAnt=(ant&&ant.q>0)?ant.v/ant.q:null;
     const d=(pm!=null&&pmAnt)?(pm/pmAnt-1)*100:null;
     const forte=d!=null&&Math.abs(d)>=3;
