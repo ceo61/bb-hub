@@ -89,6 +89,11 @@ tbody td:nth-child(1),tbody td:nth-child(2){text-align:left}
 tbody tr.clicavel{cursor:pointer}
 tbody tr.clicavel:hover{background:var(--surface2)}
 tbody tr:last-child td{border-bottom:none}
+/* colunas fixas no scroll lateral (checkbox + produto) — tabela de sugestões */
+table.fix2 th:nth-child(1),table.fix2 td:nth-child(1){position:sticky;left:0;background:var(--surface);z-index:2;width:42px;min-width:42px}
+table.fix2 th:nth-child(2),table.fix2 td:nth-child(2){position:sticky;left:42px;background:var(--surface);z-index:2;box-shadow:6px 0 8px -6px rgba(0,0,0,.25)}
+table.fix2 thead th{z-index:3}
+table.fix2 thead th:nth-child(-n+2){z-index:4}
 .cod{font-weight:600}
 .gr{font-size:11px;color:var(--muted)}
 .descr{max-width:250px;overflow:hidden;text-overflow:ellipsis;color:var(--ink2)}
@@ -983,7 +988,7 @@ async function renderSugestoes(){
       <button class="btn" id="sgAprovar">Aprovar selecionados (<span id="sgN">0</span>)</button>
       <span class="count" id="sgCount"></span>
     </div>
-    <div class="tablecard"><div class="tscroll"><table>
+    <div class="tablecard"><div class="tscroll"><table class="fix2">
       <thead><tr><th></th><th class="ord" data-c="cod">Produto<span class="seta"></span></th><th class="ord" data-c="_meses">Geração<span class="seta"></span></th><th class="ord" data-c="_saldo">Estoque<span class="seta"></span></th><th class="ord" data-c="_giro">Giro/mês<span class="seta"></span></th><th class="ord" data-c="_views">Views 28d<span class="seta"></span></th><th class="ord" data-c="_conv">Conv.<span class="seta"></span></th><th class="ord" data-c="custo">Custo<span class="seta"></span></th><th title="ritmo de MC do Atacado (001): sem 1 e 365/30 — 100% = no ritmo do próprio ano">MC 001<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_atacado">Atacado hoje<span class="seta"></span></th><th class="ord" data-c="_atacSug">Atacado novo — editável<span class="seta"></span></th><th title="ritmo de MC do Site (002): sem 1 e 365/30 — 100% = no ritmo do próprio ano">MC 002<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_site_de">DE hoje<span class="seta"></span></th><th class="ord" data-c="p_site">POR / PIX hoje<span class="seta"></span></th><th>DE novo — editável</th><th class="ord" data-c="_avistaSug">À vista novo — editável<span class="seta"></span></th><th title="ritmo de MC do ML (005): sem 1 e 365/30 — 100% = no ritmo do próprio ano">MC 005<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_marketplace">ML hoje<span class="seta"></span></th><th class="ord" data-c="_mlSug">ML novo — editável<span class="seta"></span></th></tr></thead>
       <tbody id="sgRows"></tbody></table></div><button class="more hide" id="sgMore"></button></div>`;
   document.querySelectorAll('.kpi[data-out]').forEach(b=>b.onclick=()=>{st.sgOut=st.sgOut===b.dataset.out?null:b.dataset.out;renderSugestoes();});
