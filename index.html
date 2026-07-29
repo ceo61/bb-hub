@@ -988,9 +988,9 @@ async function abrePreco(cod, un, m){
     const pm=s0.q>0?s0.v/s0.q:null, pmAnt=(ant&&ant.q>0)?ant.v/ant.q:null;
     const d=(pm!=null&&pmAnt)?(pm/pmAnt-1)*100:null;
     const forte=d!=null&&Math.abs(d)>=3;
-    const tdc='padding:6px 8px;white-space:nowrap;font-size:12.5px;';
+    const tdc='padding:6px 10px;white-space:nowrap;font-size:12.5px;';
     return `<tr><td style="${tdc}text-align:left">${w.slice(8,10)}/${w.slice(5,7)}</td>
-      <td style="${tdc}">${s0.tab!=null?rf2.format(s0.tab):'—'}</td>
+      <td style="${tdc}text-align:right">${s0.tab!=null?rf2.format(s0.tab):'—'}</td>
       <td style="${tdc}"><b>${pm!=null?rf2.format(pm):'—'}</b></td>
       <td style="${tdc}${forte?'color:var(--accent);font-weight:700':''}">${d!=null?(d>0?'+':'')+nf1.format(d)+'%':'—'}</td>
       <td style="${tdc}">${nf.format(s0.q)}</td></tr>`;
@@ -1000,8 +1000,8 @@ async function abrePreco(cod, un, m){
     <p class="gr" style="margin:6px 0 10px"><b>${esc(c.lb)}</b> · evolução de preço — 90 dias, semanal. <span style="color:var(--ch3)">━</span> preço médio <b>praticado</b> (faturado ÷ un da semana) · <span style="color:var(--ch1)">━</span> preço de <b>tabela</b> (snapshot diário; histórico acumula desde 15/07/26) · mesma escala nos dois eixos.</p>
     <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
       <div style="flex:1 1 480px;min-width:0">${graf}</div>
-      <div class="tscroll" style="flex:1 1 440px;min-width:0;max-height:320px"><table style="width:100%">
-        <thead><tr><th style="text-align:left;padding:8px 8px">Semana</th><th style="padding:8px 8px">Tabela</th><th style="padding:8px 8px">Praticado</th><th style="padding:8px 8px">Δ prat.</th><th style="padding:8px 8px">Qtd</th></tr></thead>
+      <div class="tscroll" style="flex:1 1 440px;min-width:0;max-height:320px"><table style="width:auto;min-width:0">
+        <thead><tr><th style="text-align:left;padding:8px 10px">Semana</th><th style="text-align:right;padding:8px 10px">Tabela</th><th style="text-align:right;padding:8px 10px">Praticado</th><th style="text-align:right;padding:8px 10px">Δ prat.</th><th style="text-align:right;padding:8px 10px">Qtd</th></tr></thead>
         <tbody>${linhas||'<tr><td colspan="5" class="gr">sem dados</td></tr>'}</tbody></table></div>
     </div>
     <p class="gr" style="margin:10px 0 0">Δ prat. = variação do praticado vs semana anterior; <b style="color:var(--accent)">destacado</b> quando ≥3% — provável mudança de preço (ou mix de desconto). Praticado ≠ tabela = desconto/negociação.</p>`;
