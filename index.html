@@ -1061,7 +1061,7 @@ async function renderSugestoes(){
       <span class="count" id="sgCount"></span>
     </div>
     <div class="tablecard"><div class="tscroll"><table class="fix2">
-      <thead><tr><th></th><th class="ord" data-c="cod">Produto<span class="seta"></span></th><th class="ord" data-c="_meses">Geração<span class="seta"></span></th><th class="ord" data-c="_saldo">Estoque<span class="seta"></span></th><th class="ord" data-c="_giro">Giro/mês<span class="seta"></span></th><th class="ord" data-c="_views">Views 28d<span class="seta"></span></th><th class="ord" data-c="_conv">Conv.<span class="seta"></span></th><th class="ord" data-c="custo">Custo<span class="seta"></span></th><th title="ritmo de MC do Atacado (001): sem 1 e 365/30 — 100% = no ritmo do próprio ano">MC 001<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_atacado">Atacado hoje<span class="seta"></span></th><th class="ord" data-c="_atacSug">Atacado novo — editável<span class="seta"></span></th><th title="ritmo de MC do Site (002): sem 1 e 365/30 — 100% = no ritmo do próprio ano">MC 002<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_site_de">DE hoje<span class="seta"></span></th><th class="ord" data-c="p_site">POR / PIX hoje<span class="seta"></span></th><th>DE novo — editável</th><th class="ord" data-c="_avistaSug">À vista novo — editável<span class="seta"></span></th><th title="ritmo de MC do ML (005): sem 1 e 365/30 — 100% = no ritmo do próprio ano">MC 005<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_marketplace">ML hoje<span class="seta"></span></th><th class="ord" data-c="_mlSug">ML novo — editável<span class="seta"></span></th></tr></thead>
+      <thead><tr><th></th><th class="ord" data-c="cod">Produto<span class="seta"></span></th><th class="ord" data-c="_meses">Geração<span class="seta"></span></th><th class="ord" data-c="_saldo">Estoque<span class="seta"></span></th><th class="ord" data-c="_giro">Giro/mês<span class="seta"></span></th><th title="cobertura de estoque em MESES: estoque útil ÷ giro mês; 2ª linha soma o que está encomendado (POs abertos em trânsito)">Folga (m)<br><span class="gr">estoque · c/ compra</span></th><th class="ord" data-c="_views">Views 28d<span class="seta"></span></th><th class="ord" data-c="_conv">Conv.<span class="seta"></span></th><th class="ord" data-c="custo">Custo<span class="seta"></span></th><th title="ritmo de MC do Atacado (001): sem 1 e 365/30 — 100% = no ritmo do próprio ano">MC 001<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_atacado">Atacado hoje<span class="seta"></span></th><th class="ord" data-c="_atacSug">Atacado novo — editável<span class="seta"></span></th><th title="ritmo de MC do Site (002): sem 1 e 365/30 — 100% = no ritmo do próprio ano">MC 002<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_site_de">DE hoje<span class="seta"></span></th><th class="ord" data-c="p_site">POR / PIX hoje<span class="seta"></span></th><th>DE novo — editável</th><th class="ord" data-c="_avistaSug">À vista novo — editável<span class="seta"></span></th><th title="ritmo de MC do ML (005): sem 1 e 365/30 — 100% = no ritmo do próprio ano">MC 005<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_marketplace">ML hoje<span class="seta"></span></th><th class="ord" data-c="_mlSug">ML novo — editável<span class="seta"></span></th></tr></thead>
       <tbody id="sgRows"></tbody></table></div><button class="more hide" id="sgMore"></button></div>`;
   document.querySelectorAll('.kpi[data-out]').forEach(b=>b.onclick=()=>{st.sgOut=st.sgOut===b.dataset.out?null:b.dataset.out;renderSugestoes();});
   const corOut=l=>l===2?'color:var(--crit);font-weight:800':l===1?'color:var(--lar)':'';
@@ -1086,6 +1086,12 @@ async function renderSugestoes(){
     const tb=$('#sgRows'); tb.innerHTML='';
     const MB={}; rows.forEach(x=>MB[x.cod]=x);
     const fmtP=p=>p!=null?nf.format(Math.round(p))+'%':'—';
+    const corCob=x=>x==null?'':x<0?'color:var(--crit);font-weight:700':x<1?'color:var(--warn);font-weight:700':'';
+    const fmtCob=x=>x==null?'—':x===Infinity?'∞':nf1.format(x);
+    const folgaCell=m=>{ const g=m._giro||0, s=m._saldo||0, t=m._transito||0;
+      const c1=g>0?s/g:(s>0?Infinity:null);
+      const c2=g>0?(s+t)/g:((s+t)>0?Infinity:null);
+      return `<td style="text-align:right;white-space:nowrap;font-size:12px"><span style="${corCob(c1)}">${fmtCob(c1)}</span><br><span style="${corCob(c2)}">${fmtCob(c2)}</span></td>`; };
     const mcCell=(cod,un)=>{ const r=st.mcAll?.[cod+'|'+un];
       if(!r) return '<td style="text-align:right"><span class="gr">—</span></td>';
       const p1=mcRel(r.sem1,7,r.mc365), p30=mcRel(r.mc30,30,r.mc365);
@@ -1098,7 +1104,9 @@ async function renderSugestoes(){
         <td style="text-align:left"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span><br><span class="gr">${esc(m.grupo||'')}</span></td>
         <td><span class="gr">${GERLB[m.geracao]||m.geracao}</span></td>
         <td>${nf.format(m._saldo||0)}${m._transito?`<br><span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)} encom.)</span>`:''}</td>
-        <td>${nf1.format(m._giro)}</td><td>${m._views?nf.format(m._views):'—'}</td><td>${m._conv!=null?nf1.format(m._conv)+'%':'—'}</td>
+        <td>${nf1.format(m._giro)}</td>
+        ${folgaCell(m)}
+        <td>${m._views?nf.format(m._views):'—'}</td><td>${m._conv!=null?nf1.format(m._conv)+'%':'—'}</td>
         <td>${rf2.format(m.custo)}</td>
         ${mcCell(m.cod,'001')}
         <td>${m.p_atacado?`<span data-ph="${esc(m.cod)}|001" title="clique: evolução de preço 90d — Atacado" style="cursor:pointer;border-bottom:1px dotted var(--muted);${corOut(m._outA)}">${rf2.format(m.p_atacado)}</span>`:'—'}<br><span class="gr">${m.mk_atacado?'mk '+nf1.format(m.mk_atacado)+'×':''}${m._alvoA?' · alvo '+nf1.format(m._alvoA)+'×':''}</span></td>
