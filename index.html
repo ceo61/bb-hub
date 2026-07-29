@@ -11,7 +11,7 @@
   --muted:#8a8f98; --hair:#e3e4e1; --accent:#2456c9; --accent-soft:#e8eefc;
   --crit:#d03b3b; --crit-soft:#faecec; --ser:#c25a2e; --ser-soft:#fbeee7; --lar:#d97706;
   --warn:#9a6c00; --warn-soft:#fdf3d9; --good:#006300; --good-soft:#e7f3e7;
-  --ch1:#2a78d6; --ch2:#1baf7a; --ch3:#eda100; --bar:#2a78d6; --bar-strong:#1c5cab;
+  --ch1:#2a78d6; --ch2:#1baf7a; --ch3:#eda100; --ch4:#7c5cd6; --bar:#2a78d6; --bar-strong:#1c5cab;
   --shadow:0 12px 40px rgba(12,14,18,.14);
 }
 html[data-tema="escuro"]{
@@ -19,7 +19,7 @@ html[data-tema="escuro"]{
   --muted:#8a8f98; --hair:#2a2c30; --accent:#5c8bf0; --accent-soft:#1b2740;
   --crit:#e05252; --crit-soft:#3a1d1d; --ser:#e07a45; --ser-soft:#382217; --lar:#ffa94d;
   --warn:#e8b93a; --warn-soft:#332a12; --good:#3dbb3d; --good-soft:#162c16;
-  --ch1:#3987e5; --ch2:#199e70; --ch3:#c98500; --bar:#3987e5; --bar-strong:#6da7ec;
+  --ch1:#3987e5; --ch2:#199e70; --ch3:#c98500; --ch4:#9d84e8; --bar:#3987e5; --bar-strong:#6da7ec;
   --shadow:0 12px 40px rgba(0,0,0,.5);
 }
 *{box-sizing:border-box}
@@ -1121,8 +1121,8 @@ function mm7(pts){ // média móvel 7d sobre [x, num, den] -> taxa; ou [x, v] ->
   return out;
 }
 const PN_CH={};
-function svgSerie(pts,{h=210,tipo='area',cor='var(--ch1)',ref=null,fmt=v=>nf1.format(v),pct=false,id=null,zeroBase=true,dominio=null}={}){
-  const W=640,P=42;
+function svgSerie(pts,{h=210,W=640,tipo='area',cor='var(--ch1)',ref=null,fmt=v=>nf1.format(v),pct=false,id=null,zeroBase=true,dominio=null}={}){
+  const P=42;
   const vs=pts.map(p=>p[1]).filter(v=>v!=null);
   if(!vs.length) return '<div class="carregando" style="padding:30px">sem dados na janela</div>';
   const lo=Math.min(...vs, ref!=null?ref:Infinity), hi=Math.max(...vs, ref!=null?ref:-Infinity);
@@ -1296,7 +1296,7 @@ async function renderPainel(){
     const g=st.pnCod.slice(1);
     [conv,vend,med]=await Promise.all([
       sb.from('conversao_grupo_dia').select('data,views,carrinho,compras,receita').eq('grupo',g).gte('data',ini).order('data').then(r=>r.data||[]),
-      sb.from('vendas_grupo_dia').select('data,qtd_b2c,val_b2c,qtd,valor').eq('grupo',g).gte('data',ini).order('data').then(r=>r.data||[]),
+      sb.from('vendas_grupo_dia').select('data,qtd_b2c,val_b2c,qtd,valor,lucro_b2c').eq('grupo',g).gte('data',ini).order('data').then(r=>r.data||[]),
       medianaLojaConv(),
     ]);
     st.pnCache={chave,conv,vend,med};
@@ -1304,7 +1304,7 @@ async function renderPainel(){
   else {
     [conv,vend,med]=await Promise.all([
       sb.from('fato_conversao').select('data,views,carrinho,compras,receita').eq('cod',st.pnCod).gte('data',ini).order('data').then(r=>r.data||[]),
-      sb.from('fato_vendas_diaria').select('data,qtd_b2c,val_b2c,qtd,valor').eq('cod',st.pnCod).gte('data',ini).order('data').then(r=>r.data||[]),
+      sb.from('fato_vendas_diaria').select('data,qtd_b2c,val_b2c,qtd,valor,lucro_b2c').eq('cod',st.pnCod).gte('data',ini).order('data').then(r=>r.data||[]),
       medianaLojaConv(),
     ]);
     st.pnCache={chave,conv,vend,med};
@@ -1313,26 +1313,28 @@ async function renderPainel(){
   // séries por dia (preenche buracos com zero p/ views/vendas)
   const dias=[]; for(let d=new Date(ini);d<=new Date();d.setDate(d.getDate()+1)) dias.push(d.toISOString().slice(0,10));
   const mc=Object.fromEntries(conv.map(x=>[x.data,x])), mv=Object.fromEntries(vend.map(x=>[x.data,x]));
-  const M=st.pnModo=st.pnModo||{views:'raw',conv:'mm7',venda:'raw',preco:'mm7'};
+  const M=st.pnModo=st.pnModo||{views:'raw',conv:'mm7',venda:'raw',preco:'mm7',lucro:'raw'};
+  M.lucro=M.lucro||'raw';
   const agreg = st.pnJan>=6 ? (st.pnAgg||'sem') : null;  // 6m/12m: semanal ou mensal (2m/3m: diária)
   const semanal = !!agreg;
-  let sViews,sConv,sVenda,sPreco;
+  let sViews,sConv,sVenda,sPreco,sLucro;
   if(semanal){
     const sem={};  // chave do período (segunda da semana OU 1º dia do mês) -> acumuladores
     for(const d of dias){
       let w;
       if(agreg==='mes') w=d.slice(0,7)+'-01';
       else { const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); w=dt.toISOString().slice(0,10); }
-      const a=sem[w]=sem[w]||{vw:0,qt:0,vl:0};
+      const a=sem[w]=sem[w]||{vw:0,qt:0,vl:0,lu:0};
       const c=mc[d], v=mv[d];
       if(c){a.vw+=c.views;}
-      if(v){a.qt+=v.qtd_b2c||0;a.vl+=v.val_b2c||0;}
+      if(v){a.qt+=v.qtd_b2c||0;a.vl+=v.val_b2c||0;a.lu+=v.lucro_b2c||0;}
     }
     const ws=Object.keys(sem).sort();
     sViews=ws.map(w=>[w,sem[w].vw]);
     sConv=ws.map(w=>[w,sem[w].vw>0?sem[w].qt/sem[w].vw*100:null]);
     sVenda=ws.map(w=>[w,sem[w].qt]);
     sPreco=ws.map(w=>[w,sem[w].qt>0?sem[w].vl/sem[w].qt:null]);
+    sLucro=ws.map(w=>[w,sem[w].lu]);
   } else {
     sViews = M.views==='mm7' ? mm7(dias.map(d=>[d, mc[d]?.views||0])) : dias.map(d=>[d, mc[d]?.views||0]);
     sConv = M.conv==='mm7'
@@ -1342,6 +1344,7 @@ async function renderPainel(){
     sPreco = M.preco==='mm7'
       ? mm7(dias.map(d=>[d, mv[d]?.val_b2c||0, mv[d]?.qtd_b2c||0]))
       : dias.map(d=>{const v=mv[d]; return [d, (v&&v.qtd_b2c>0)?v.val_b2c/v.qtd_b2c:null];});
+    sLucro = M.lucro==='mm7' ? mm7(dias.map(d=>[d, mv[d]?.lucro_b2c||0])) : dias.map(d=>[d, mv[d]?.lucro_b2c||0]);
   }
   const unid = agreg ? (agreg==='mes'?'/mês':'/semana') : '/dia';
   const tog=q=>`<span style="margin-left:auto;display:inline-flex;gap:4px">${[['mm7','média 7d'],['raw','diário puro']].map(([cm,lb])=>`<button data-q="${q}" data-cm="${cm}" style="font-size:10px;letter-spacing:.04em;padding:2px 9px;border-radius:99px;border:1px solid ${M[q]===cm?'var(--accent)':'var(--hair)'};color:${M[q]===cm?'var(--accent)':'var(--muted)'}">${lb}</button>`).join('')}</span>`;
@@ -1431,6 +1434,8 @@ async function renderPainel(){
       <div>${cab('Venda no site — un'+unid+' (002)','venda')}${svgSerie(sVenda,{tipo:'area',cor:'var(--bar-strong)',fmt:v=>nf.format(Math.round(v)),id:'venda'})}</div>
       <div>${cab(ehGrupo?'Preço médio do MIX — R$/un (mix de produtos influencia)':'Preço médio praticado — R$/un','preco')}${svgSerie(sPreco,{tipo:'linha',cor:'var(--ch3)',fmt:v=>rf2.format(v),id:'preco',zeroBase:false})}</div>
       <div style="grid-column:1/-1"><div class="eyebrow" style="display:flex;align-items:center;gap:8px">Conversão × preço praticado — sobreposição${semanal?`<span style="margin-left:auto;font-size:10px;color:var(--muted)">agregação ${agreg==='mes'?'mensal':'semanal'}</span>`:''}</div>${svgDuplo(sConv,sPreco,{ref:med,id:'duplo'})}<p class="gr" style="margin:6px 0 0"><span style="color:var(--ch2)">━</span> conversão (venda 002 ÷ acessos, eixo esq.) · <span style="color:var(--ch3)">━</span> preço médio praticado (R$/un, eixo dir.) · eixos independentes: cada linha usa a amplitude toda (compare o TIMING dos movimentos, não o tamanho)</p></div>
+      <div style="grid-column:1/-1">${cab('Lucro bruto — R$'+unid+' (002)','lucro')}${svgSerie(sLucro,{W:1320,h:250,tipo:'area',cor:'var(--ch4)',fmt:v=>rf.format(v),id:'lucro'})}<p class="gr" style="margin:6px 0 0">Campo "Lucro Bruto" da BASE BBDI 2020 (receita − impostos − CMV), unidade 002.</p></div>
+      <div style="grid-column:1/-1"><div class="eyebrow" style="display:flex;align-items:center;gap:8px">Lucro bruto × acessos — sobreposição${semanal?`<span style="margin-left:auto;font-size:10px;color:var(--muted)">agregação ${agreg==='mes'?'mensal':'semanal'}</span>`:''}</div>${svgDuplo(sLucro,sViews,{corA:'var(--ch4)',corB:'var(--ch1)',fmtA:v=>rf.format(v),fmtB:v=>nf.format(Math.round(v)),id:'lucroviews'})}<p class="gr" style="margin:6px 0 0"><span style="color:var(--ch4)">━</span> lucro bruto (R$${unid}, eixo esq.) · <span style="color:var(--ch1)">━</span> acessos (views${unid}, eixo dir.) · eixos independentes — compare o timing: tráfego subindo com lucro parado = conversão/margem escapando</p></div>
       <p class="gr" style="margin:0">Fontes: GA4 (Brasil) + BASE BBDI 2020, diárias, atualizadas às 6h${reconc}.</p>
     </div>
     ${leitura}`;
