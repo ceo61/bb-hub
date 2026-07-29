@@ -1417,7 +1417,7 @@ async function renderPainel(){
   verdict.push(tViews/st.pnJan>=1000?'tráfego alto':'tráfego baixo — alavanca é SEO/anúncio, não preço');
   const reconc=tQtd>0?` · GA4 captura ${nf.format(tCompras)} de ${nf.format(tQtd)} vendas do site (${(tCompras/tQtd*100).toFixed(0)}% — perda de tracking + pedidos fora do site é normal)`:'';
   $('#pnCorpo').innerHTML=`
-    <p style="margin:0 0 10px"><span class="cod" style="font-size:16px">${ehGrupo?'Grupo '+esc(st.pnCod.slice(1)):esc(st.pnCod)}</span> <span class="gr">${esc(d?.descricao||'')}</span></p>
+    <p style="margin:0 0 10px;display:flex;align-items:center;gap:10px"><span class="cod" style="font-size:16px">${ehGrupo?'Grupo '+esc(st.pnCod.slice(1)):esc(st.pnCod)}</span> <span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d?.descricao||'')}</span>${ehGrupo?'':`<button class="btn" id="pnMC" style="padding:4px 14px;font-size:12px;flex:none">📊 MC por canal</button>`}</p>
     <div class="kpis">
       <div class="kpi"><span class="lab">Venda site (un)</span><span class="val">${nf.format(tQtd)}</span><span class="sub">faturado 002</span></div>
       <div class="kpi"><span class="lab">Compras site (GA4)</span><span class="val">${nf.format(tCompras)}</span><span class="sub">só checkout rastreado</span></div>
@@ -1440,6 +1440,8 @@ async function renderPainel(){
     </div>
     ${leitura}`;
   document.querySelectorAll('button[data-q]').forEach(b=>b.onclick=()=>{st.pnModo[b.dataset.q]=b.dataset.cm;renderPainel();});
+  const bMC=$('#pnMC');
+  if(bMC) bMC.onclick=()=>abreMC(st.pnCod, d?{descricao:d.descricao,_saldo:d.estoque_util,_giro:d.media_mes}:null);
   bindHoverPainel();
 }
 
