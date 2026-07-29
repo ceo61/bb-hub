@@ -913,6 +913,9 @@ function montaSugestoes(){
   out.sort((a,b)=>b._impacto-a._impacto);
   return {out,medConv};
 }
+// ritmo de MC: 100% = no ritmo do próprio ano (pro-rata da janela sobre o 365dd)
+const mcRel=(w,dias,b365)=>{ if(!b365||b365<=0) return null; const esp=b365*dias/365; return esp?(+w||0)/esp*100:null; };
+const mcCor=p=>p==null?'':p>=110?'color:var(--good);font-weight:700':p>=90?'':p>=70?'color:var(--lar)':'color:var(--crit);font-weight:700';
 async function abreMC(cod, m){
   let ov=document.getElementById('mcModal');
   if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
@@ -926,9 +929,7 @@ async function abreMC(cod, m){
   const rs=(rows||[]).sort((a,b)=>ordem.indexOf(a.un)-ordem.indexOf(b.un));
   const tot={mc365:0,mc90:0,mc60:0,mc30:0,sem1:0,sem2:0};
   rs.forEach(r=>{ for(const k in tot) tot[k]+=(+r[k]||0); });
-  const rel=(w,dias,b365)=>{ if(!b365||b365<=0) return null; const esp=b365*dias/365; return esp?(+w||0)/esp*100:null; };
-  const cor=p=>p==null?'':p>=110?'color:var(--good);font-weight:700':p>=90?'':p>=70?'color:var(--lar)':'color:var(--crit);font-weight:700';
-  const cel=(w,dias,b)=>{ const p=rel(w,dias,b); return `<td style="text-align:right;${cor(p)}">${p!=null?nf.format(Math.round(p))+'%':'—'}</td>`; };
+  const cel=(w,dias,b)=>{ const p=mcRel(w,dias,b); return `<td style="text-align:right;${mcCor(p)}">${p!=null?nf.format(Math.round(p))+'%':'—'}</td>`; };
   const linha=(rot,r,forte)=>`<tr${forte?' style="border-bottom:1px solid var(--hair)"':''}><td style="text-align:left">${forte?'<b>'+rot+'</b>':rot}</td><td style="text-align:right"><b>${rf2.format(r.mc365||0)}</b></td>${cel(r.mc90,90,r.mc365)}${cel(r.mc60,60,r.mc365)}${cel(r.mc30,30,r.mc365)}${cel(r.sem2,7,r.mc365)}${cel(r.sem1,7,r.mc365)}</tr>`;
   const cob=(m&&m._giro>0)?m._saldo/m._giro:null;
   const d0=rs[0]?.d0;
@@ -949,6 +950,7 @@ async function renderSugestoes(){
   const {data:feitas}=await sb.from('acoes_preco').select('*').eq('status','executado').gte('executado_em',new Date(Date.now()-86400e3).toISOString()).order('executado_em',{ascending:false});
   const jaTem=new Set([...(pend||[]),...(feitas||[])].map(a=>a.cod));
   const aprA=(pend||[]).filter(a=>a.status==='aprovado'), emExec=(pend||[]).filter(a=>a.status==='executar'), comErro=(pend||[]).filter(a=>a.status==='erro');
+  if(!st.mcAll){ st.mcAll={}; (await tudo('fato_mc',{select:'cod,un,mc30,mc365,sem1',eq:[]})).forEach(r=>st.mcAll[r.cod+'|'+r.un]=r); }
   const {out,medConv}=montaSugestoes();
   const lista=out.filter(m=>!jaTem.has(m.cod));
   const cOut={site:0,atac:0,ml:0}; lista.forEach(m=>{if(m._outS===2)cOut.site++;if(m._outA===2)cOut.atac++;if(m._outM===2)cOut.ml++;});
@@ -982,7 +984,7 @@ async function renderSugestoes(){
       <span class="count" id="sgCount"></span>
     </div>
     <div class="tablecard"><div class="tscroll"><table>
-      <thead><tr><th></th><th class="ord" data-c="cod">Produto<span class="seta"></span></th><th class="ord" data-c="_meses">Geração<span class="seta"></span></th><th class="ord" data-c="_saldo">Estoque<span class="seta"></span></th><th class="ord" data-c="_giro">Giro/mês<span class="seta"></span></th><th class="ord" data-c="_views">Views 28d<span class="seta"></span></th><th class="ord" data-c="_conv">Conv.<span class="seta"></span></th><th class="ord" data-c="custo">Custo<span class="seta"></span></th><th class="ord" data-c="p_atacado">Atacado hoje<span class="seta"></span></th><th class="ord" data-c="_atacSug">Atacado novo — editável<span class="seta"></span></th><th class="ord" data-c="p_site_de">DE hoje<span class="seta"></span></th><th class="ord" data-c="p_site">POR / PIX hoje<span class="seta"></span></th><th>DE novo — editável</th><th class="ord" data-c="_avistaSug">À vista novo — editável<span class="seta"></span></th><th class="ord" data-c="p_marketplace">ML hoje<span class="seta"></span></th><th class="ord" data-c="_mlSug">ML novo — editável<span class="seta"></span></th></tr></thead>
+      <thead><tr><th></th><th class="ord" data-c="cod">Produto<span class="seta"></span></th><th class="ord" data-c="_meses">Geração<span class="seta"></span></th><th class="ord" data-c="_saldo">Estoque<span class="seta"></span></th><th class="ord" data-c="_giro">Giro/mês<span class="seta"></span></th><th class="ord" data-c="_views">Views 28d<span class="seta"></span></th><th class="ord" data-c="_conv">Conv.<span class="seta"></span></th><th class="ord" data-c="custo">Custo<span class="seta"></span></th><th title="ritmo de MC do Atacado (001): sem 1 e 365/30 — 100% = no ritmo do próprio ano">MC 001<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_atacado">Atacado hoje<span class="seta"></span></th><th class="ord" data-c="_atacSug">Atacado novo — editável<span class="seta"></span></th><th title="ritmo de MC do Site (002): sem 1 e 365/30 — 100% = no ritmo do próprio ano">MC 002<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_site_de">DE hoje<span class="seta"></span></th><th class="ord" data-c="p_site">POR / PIX hoje<span class="seta"></span></th><th>DE novo — editável</th><th class="ord" data-c="_avistaSug">À vista novo — editável<span class="seta"></span></th><th title="ritmo de MC do ML (005): sem 1 e 365/30 — 100% = no ritmo do próprio ano">MC 005<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_marketplace">ML hoje<span class="seta"></span></th><th class="ord" data-c="_mlSug">ML novo — editável<span class="seta"></span></th></tr></thead>
       <tbody id="sgRows"></tbody></table></div><button class="more hide" id="sgMore"></button></div>`;
   document.querySelectorAll('.kpi[data-out]').forEach(b=>b.onclick=()=>{st.sgOut=st.sgOut===b.dataset.out?null:b.dataset.out;renderSugestoes();});
   const corOut=l=>l===2?'color:var(--crit);font-weight:800':l===1?'color:var(--lar)':'';
@@ -1006,6 +1008,11 @@ async function renderSugestoes(){
     $('#sgCount').textContent=nf.format(rows.length)+' sugestões';
     const tb=$('#sgRows'); tb.innerHTML='';
     const MB={}; rows.forEach(x=>MB[x.cod]=x);
+    const fmtP=p=>p!=null?nf.format(Math.round(p))+'%':'—';
+    const mcCell=(cod,un)=>{ const r=st.mcAll?.[cod+'|'+un];
+      if(!r) return '<td style="text-align:right"><span class="gr">—</span></td>';
+      const p1=mcRel(r.sem1,7,r.mc365), p30=mcRel(r.mc30,30,r.mc365);
+      return `<td style="text-align:right;white-space:nowrap;font-size:12px"><span style="${mcCor(p1)}">${fmtP(p1)}</span><br><span style="${mcCor(p30)}">${fmtP(p30)}</span></td>`; };
     for(const m of rows.slice(0,150)){
       const vDe=st.sgDe?.[m.cod]??m.p_site_de, vAt=st.sgAtac?.[m.cod]??m._atacSug??m.p_atacado, vMl=st.sgMl?.[m.cod]??m._mlSug??m.p_marketplace;
       const sid=esc(m.cod).replace(/[^A-Za-z0-9]/g,'_');
@@ -1016,12 +1023,15 @@ async function renderSugestoes(){
         <td>${nf.format(m._saldo||0)}${m._transito?`<br><span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)} encom.)</span>`:''}</td>
         <td>${nf1.format(m._giro)}</td><td>${m._views?nf.format(m._views):'—'}</td><td>${m._conv!=null?nf1.format(m._conv)+'%':'—'}</td>
         <td>${rf2.format(m.custo)}</td>
+        ${mcCell(m.cod,'001')}
         <td>${m.p_atacado?`<span style="${corOut(m._outA)}">${rf2.format(m.p_atacado)}</span>`:'—'}<br><span class="gr">${m.mk_atacado?'mk '+nf1.format(m.mk_atacado)+'×':''}${m._alvoA?' · alvo '+nf1.format(m._alvoA)+'×':''}</span></td>
         <td><input type="number" step="0.01" min="0" data-atac="${esc(m.cod)}" value="${vAt!=null?(+vAt).toFixed(2):''}" placeholder="—" style="width:100px;text-align:right"><br><span class="gr" id="mka-${sid}">${vAt?'fica mk '+nf1.format(vAt/m.custo)+'×':''}</span></td>
+        ${mcCell(m.cod,'002')}
         <td>${m.p_site_de?rf2.format(m.p_site_de):'—'}</td>
         <td>${m.p_site_por?rf2.format(m.p_site_por):'—'}<br><b style="${corOut(m._outS)}">${rf2.format(m.p_site)}</b> <span class="gr">PIX</span><br><span class="gr">mk ${nf1.format(m.mk_site)}× · alvo ${nf1.format(m._alvo)}×</span></td>
         <td><input type="number" step="0.01" min="0" data-de="${esc(m.cod)}" value="${vDe!=null?(+vDe).toFixed(2):''}" placeholder="—" style="width:100px;text-align:right"><br><span class="gr">manual — nunca recalculo</span></td>
         <td><input type="number" step="0.01" min="0" data-preco="${esc(m.cod)}" value="${(st.sgEdit?.[m.cod]??m._avistaSug).toFixed(2)}" style="width:110px;text-align:right;font-weight:600"><br><span class="gr" id="por-${sid}">publica POR ${rf2.format((st.sgEdit?.[m.cod]??m._avistaSug)/0.95)} · fica mk ${nf1.format((st.sgEdit?.[m.cod]??m._avistaSug)/m.custo)}×</span></td>
+        ${mcCell(m.cod,'005')}
         <td>${m.p_marketplace?`<span style="${corOut(m._outM)}">${rf2.format(m.p_marketplace)}</span>`:'—'}<br><span class="gr">${m.mk_marketplace?'mk líq '+nf1.format(m.mk_marketplace)+'×':''}${m._alvoM?' · alvo '+nf1.format(m._alvoM)+'×':''}</span></td>
         <td><input type="number" step="0.01" min="0" data-ml="${esc(m.cod)}" value="${vMl!=null?(+vMl).toFixed(2):''}" placeholder="—" style="width:100px;text-align:right"><br><span class="gr" id="mkm-${sid}">${vMl?'fica mk líq '+nf1.format((vMl*0.84-20)/m.custo)+'×':''}</span></td>`;
       tb.appendChild(tr);
