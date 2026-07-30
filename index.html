@@ -232,8 +232,8 @@ th.ord .seta{font-size:9px;margin-left:3px}
     <a href="#painel" data-pg="painel">📈 Painel do produto</a>
     <a href="#skus" data-pg="skus">🧩 SKUs</a>
     <div class="navsec">Gestão</div>
+    <a href="#sugestoes" data-pg="sugestoes">🎛️ CTRL ONLINE</a>
     <a href="#precos" data-pg="precos">🏷️ Preços — Markup</a>
-    <a href="#sugestoes" data-pg="sugestoes">✅ Sugestões de preço</a>
     <a href="#radar" data-pg="radar">📡 Radar</a>
     <a href="#produtos" data-pg="produtos">📦 Produtos</a>
     <a href="#compras" data-pg="compras">🚢 Compras &amp; Trânsito</a>
@@ -472,7 +472,7 @@ $('#semaforo').onclick = ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'Sugestões de preço', painel:'Painel do produto', skus:'SKUs', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', painel:'Painel do produto', skus:'SKUs', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
