@@ -1313,7 +1313,7 @@ function svgSerie(pts,{h=210,W=640,tipo='area',cor='var(--ch1)',ref=null,fmt=v=>
   const eixo=Object.entries(meses).filter((_,i,a)=>a.length<=8||i%2===0).map(([m,i])=>`<text x="${X(i)}" y="${h-3}" font-size="9" fill="var(--muted)">${m.slice(5,7)}/${m.slice(2,4)}</text>`).join('');
   let extra='';
   if(id){
-    PN_CH[id]={W, pix:pts.map((p,i)=>p[1]==null?null:[X(i),Y(p[1]),p[0],fmtV(p[1])]).filter(Boolean)};
+    PN_CH[id]={W, pix:pts.map((p,i)=>p[1]==null?null:[X(i),Y(p[1]),p[0],fmtV(p[1]),null,p[1]]).filter(Boolean)};
     extra=`<line id="ch-${id}" y1="10" y2="${h-16}" stroke="var(--muted)" stroke-width="1" opacity="0"/><circle id="mk-${id}" r="4" fill="${cor}" stroke="var(--surface)" stroke-width="1.5" opacity="0"/>`;
   }
   return `<svg ${id?`data-hover="${id}" style="width:100%;height:auto;cursor:crosshair"`:'style="width:100%;height:auto"'} viewBox="0 0 ${W} ${h}" role="img">${grid}${area}<path d="${path}" fill="none" stroke="${cor}" stroke-width="2"/>${refl}${eixo}${extra}</svg>`;
@@ -1347,7 +1347,7 @@ function svgDuplo(A,B,{h=250,W=1320,corA='var(--ch2)',corB='var(--ch3)',ref=null
       const bv=mb[p[0]];
       if(p[1]==null&&bv==null) return null;
       const tt=[p[1]!=null?fmtA(p[1]):null, bv!=null?fmtB(bv):null].filter(Boolean).join(' · ');
-      return [X(i), p[1]!=null?YA(p[1]):null, p[0], tt, bv!=null?YB(bv):null];
+      return [X(i), p[1]!=null?YA(p[1]):null, p[0], tt, bv!=null?YB(bv):null, p[1], bv];
     }).filter(Boolean)};
     extra=`<line id="ch-${id}" y1="10" y2="${h-18}" stroke="var(--muted)" stroke-width="1" opacity="0"/><circle id="mk-${id}" r="4" fill="${corA}" stroke="var(--surface)" stroke-width="1.5" opacity="0"/><circle id="mk2-${id}" r="4" fill="${corB}" stroke="var(--surface)" stroke-width="1.5" opacity="0"/>`;
   }
@@ -1377,6 +1377,14 @@ function bindHoverPainel(){
       tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY-10)+'px'; tip.style.opacity='1';
     };
     svg.onmouseleave=()=>{ tip.style.opacity='0'; ch.setAttribute('opacity','0'); mk.setAttribute('opacity','0'); if(mk2) mk2.setAttribute('opacity','0'); };
+    svg.onclick=e=>{  // clique captura o ponto p/ o simulador do painel (quando ativo)
+      if(!window._pnSimCap) return;
+      const r=svg.getBoundingClientRect();
+      const xv=(e.clientX-r.left)/r.width*d.W;
+      let best=null,bd=1e9;
+      for(const p of d.pix){const dd=Math.abs(p[0]-xv); if(dd<bd){bd=dd;best=p;}}
+      if(best) window._pnSimCap(id,best);
+    };
   });
 }
 function pearson(a,b){
@@ -1463,10 +1471,10 @@ async function renderPainel(){
   if(!st.pnCod) return;
   $('#pnCorpo').innerHTML='<div class="carregando">Carregando série do produto…</div>';
   const ini=new Date(Date.now()-st.pnJan*30.44*86400e3).toISOString().slice(0,10);
-  let conv,vend,med;
+  let conv,vend,med,cus;
   const ehGrupo=st.pnCod.startsWith('@');
   const chave=st.pnCod+'|'+st.pnJan;
-  if(st.pnCache&&st.pnCache.chave===chave){ ({conv,vend,med}=st.pnCache); }
+  if(st.pnCache&&st.pnCache.chave===chave){ ({conv,vend,med,cus}=st.pnCache); }
   else if(ehGrupo){
     const g=st.pnCod.slice(1);
     [conv,vend,med]=await Promise.all([
@@ -1474,15 +1482,17 @@ async function renderPainel(){
       sb.from('vendas_grupo_dia').select('data,qtd_b2c,val_b2c,qtd,valor,lucro_b2c').eq('grupo',g).gte('data',ini).order('data').then(r=>r.data||[]),
       medianaLojaConv(),
     ]);
-    st.pnCache={chave,conv,vend,med};
+    cus=null;
+    st.pnCache={chave,conv,vend,med,cus};
   }
   else {
-    [conv,vend,med]=await Promise.all([
+    [conv,vend,med,cus]=await Promise.all([
       sb.from('fato_conversao').select('data,views,carrinho,compras,receita').eq('cod',st.pnCod).gte('data',ini).order('data').then(r=>r.data||[]),
       sb.from('fato_vendas_diaria').select('data,qtd_b2c,val_b2c,qtd,valor,lucro_b2c').eq('cod',st.pnCod).gte('data',ini).order('data').then(r=>r.data||[]),
       medianaLojaConv(),
+      sb.from('fato_custo').select('custo,snapshot').eq('cod',st.pnCod).order('snapshot',{ascending:false}).limit(1).then(r=>r.data?.[0]?.custo??null),
     ]);
-    st.pnCache={chave,conv,vend,med};
+    st.pnCache={chave,conv,vend,med,cus};
   }
   if(!conv.length&&!vend.length){ $('#pnCorpo').innerHTML='<div class="carregando">Sem dados para este produto na janela.</div>'; return; }
   // séries por dia (preenche buracos com zero p/ views/vendas)
@@ -1613,10 +1623,89 @@ async function renderPainel(){
       <div><div class="eyebrow" style="display:flex;align-items:center;gap:8px">Lucro bruto × acessos${semanal?`<span style="margin-left:auto;font-size:10px;color:var(--muted)">agregação ${agreg==='mes'?'mensal':'semanal'}</span>`:''}</div>${svgDuplo(sLucro,sViews,{W:640,h:210,corA:'var(--ch4)',corB:'var(--ch1)',fmtA:v=>rf.format(v),fmtB:v=>nf.format(Math.round(v)),id:'lucroviews'})}<p class="gr" style="margin:6px 0 0"><span style="color:var(--ch4)">━</span> lucro bruto (R$${unid}, esq.) · <span style="color:var(--ch1)">━</span> acessos (views${unid}, dir.) · eixos independentes</p></div>
       <p class="gr" style="margin:0">Fontes: GA4 (Brasil) + BASE BBDI 2020, diárias, atualizadas às 6h${reconc}.</p>
     </div>
+    ${ehGrupo?'':'<div class="tablecard" id="pnSimCard" style="padding:14px 18px;margin-top:14px"></div>'}
     ${leitura}`;
   document.querySelectorAll('button[data-q]').forEach(b=>b.onclick=()=>{st.pnModo[b.dataset.q]=b.dataset.cm;renderPainel();});
   const bMC=$('#pnMC');
   if(bMC) bMC.onclick=()=>abreMC(st.pnCod, d?{descricao:d.descricao,_saldo:d.estoque_util,_giro:d.media_mes}:null);
+  // ===== Simulador: valeu a pena mudar o preço? (2 pontos preço×conversão no mesmo tráfego) =====
+  if(!ehGrupo){
+    if(st.pnSimCod!==st.pnCod){ st.pnSim={}; st.pnSimCod=st.pnCod; }
+    const S=st.pnSim;
+    const semanas=Math.max(1,dias.length/7);
+    if(S.A==null) S.A=Math.round(tViews/semanas);
+    if(S.C==null&&cus!=null) S.C=+(+cus).toFixed(2);
+    if(S.t==null){
+      let t=0.14;  // fallback: gap médio observado receita→lucro além do CMV
+      const tLucro=vend.reduce((s,x)=>s+(x.lucro_b2c||0),0);
+      if(tVal>0&&S.C!=null&&tQtd>0){ const tt=1-(tLucro+S.C*tQtd)/tVal; if(isFinite(tt)) t=Math.min(0.35,Math.max(0,tt)); }
+      S.t=+(t*100).toFixed(1);
+    }
+    const inp=(k,step,w)=>`<input type="number" step="${step}" value="${S[k]??''}" data-sk="${k}" style="width:${w}px;text-align:right">`;
+    const resSim=()=>{
+      const el=$('#pnSimRes'); if(!el) return;
+      const A=+S.A||0, C=+S.C||0, tx=(+S.t||0)/100;
+      const mg=p=>p*(1-tx)-C;
+      const pts=[1,2].map(i=>{ const p=+S['p'+i], c=+S['c'+i];
+        if(!(p>0)||!(c>0)) return null;
+        const v=A*c/100; return {p,c,v,rec:v*p,luc:v*mg(p)}; });
+      if(!pts[0]||!pts[1]){ el.innerHTML='<p class="gr" style="margin:4px 0">Preencha os DOIS pontos (preço + conversão) — no mesmo tráfego médio, comparo vendas, receita e lucro por semana.</p>'; return; }
+      const [a,b]=pts, dL=b.luc-a.luc, dR=b.rec-a.rec, verde=dL>=0;
+      const be=mg(b.p)>0? a.c*mg(a.p)/mg(b.p) : null;
+      const tdc='padding:5px 10px;white-space:nowrap;';
+      el.innerHTML=`
+        <table style="width:auto;min-width:0">
+          <thead><tr><th style="${tdc}text-align:left"></th><th style="${tdc}">Vendas/sem</th><th style="${tdc}">Receita/sem</th><th style="${tdc}">Lucro/sem</th></tr></thead>
+          <tbody>
+          <tr><td style="${tdc}text-align:left">P1 · ${rf2.format(a.p)} · ${nf1.format(a.c)}%</td><td style="${tdc}">${nf1.format(a.v)}</td><td style="${tdc}">${rf.format(a.rec)}</td><td style="${tdc}">${rf.format(a.luc)}</td></tr>
+          <tr><td style="${tdc}text-align:left">P2 · ${rf2.format(b.p)} · ${nf1.format(b.c)}%</td><td style="${tdc}">${nf1.format(b.v)}</td><td style="${tdc}">${rf.format(b.rec)}</td><td style="${tdc}">${rf.format(b.luc)}</td></tr>
+          <tr><td style="${tdc}text-align:left"><b>Δ (P2 − P1)</b></td><td style="${tdc}">${(b.v-a.v>=0?'+':'')+nf1.format(b.v-a.v)}</td><td style="${tdc}">${(dR>=0?'+':'')+rf.format(dR)}</td><td style="${tdc}font-weight:700;color:${verde?'var(--good)':'var(--crit)'}">${(dL>=0?'+':'')+rf.format(dL)}</td></tr>
+          </tbody></table>
+        <div style="margin-top:8px;padding:8px 12px;border-radius:8px;font-size:13px;background:${verde?'var(--good-soft)':'var(--crit-soft)'};color:${verde?'var(--good)':'var(--crit)'}">
+          ${verde?'✅ VALEU':'❌ NÃO VALEU'} — no mesmo tráfego (${nf.format(A)} acessos/sem), o ponto 2 ${verde?'entrega':'perde'} <b>${rf.format(Math.abs(dL))}/sem de lucro</b>${a.luc?` (${dL>=0?'+':''}${Math.round(dL/Math.abs(a.luc)*100)}%)`:''}${be!=null?` · para EMPATAR o lucro no preço 2, a conversão precisava ser ${nf1.format(be)}% (informada: ${nf1.format(b.c)}%)`:''}
+        </div>`;
+    };
+    const desenhaSim=()=>{
+      const el=$('#pnSimCard'); if(!el) return;
+      el.innerHTML=`
+        <div class="eyebrow" style="display:flex;gap:10px;align-items:center">💰 Simulador — valeu a pena mudar o preço?<span style="margin-left:auto;font-size:10px;color:var(--muted)">CLIQUE no gráfico "Conversão × preço": 1º clique = ponto 1, 2º = ponto 2 (ou capture separado nos gráficos de conversão e preço) · tudo editável</span><button class="kpi" id="pnSimLimpa" style="padding:2px 12px;font-size:11px">limpar</button></div>
+        <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;margin-top:10px">
+          <table style="width:auto;min-width:0">
+            <thead><tr><th style="padding:5px 8px;text-align:left"></th><th style="padding:5px 8px">Preço à vista</th><th style="padding:5px 8px">Conversão %</th><th style="padding:5px 8px">Semana ref.</th></tr></thead>
+            <tbody>
+              <tr><td style="padding:5px 8px;text-align:left"><b>Ponto 1</b></td><td style="padding:5px 8px">${inp('p1','0.01',90)}</td><td style="padding:5px 8px">${inp('c1','0.01',70)}</td><td style="padding:5px 8px" class="gr">${S.w1?S.w1.slice(8,10)+'/'+S.w1.slice(5,7):'—'}</td></tr>
+              <tr><td style="padding:5px 8px;text-align:left"><b>Ponto 2</b></td><td style="padding:5px 8px">${inp('p2','0.01',90)}</td><td style="padding:5px 8px">${inp('c2','0.01',70)}</td><td style="padding:5px 8px" class="gr">${S.w2?S.w2.slice(8,10)+'/'+S.w2.slice(5,7):'—'}</td></tr>
+            </tbody></table>
+          <div style="font-size:12.5px;display:grid;gap:7px">
+            <div>Acessos/semana: ${inp('A','1',80)} <span class="gr">média da janela</span></div>
+            <div>Custo unitário: ${inp('C','0.01',90)} <span class="gr">fato_custo</span></div>
+            <div>Impostos s/ venda: ${inp('t','0.1',60)}% <span class="gr">efetivo do produto</span></div>
+          </div>
+          <div id="pnSimRes" style="flex:1;min-width:320px"></div>
+        </div>`;
+      el.querySelectorAll('input[data-sk]').forEach(i=>i.oninput=()=>{ S[i.dataset.sk]=i.value===''?null:+i.value; resSim(); });
+      el.querySelector('#pnSimLimpa').onclick=()=>{ st.pnSim={}; st.pnSimCod=null; renderPainel(); };
+      resSim();
+    };
+    desenhaSim();
+    window._pnSimCap=(id,best)=>{
+      if(id==='conv'||id==='preco'){
+        const v=best[5]; if(v==null) return;
+        const k=id==='conv'?'c':'p';
+        if(S[k+'1']==null) S[k+'1']=+v.toFixed(2);
+        else if(S[k+'2']==null) S[k+'2']=+v.toFixed(2);
+        else { S[k+'1']=+v.toFixed(2); S[k+'2']=null; }
+        if(k==='c'){ if(S.c2==null) S.w1=best[2]; else S.w2=best[2]; }
+        desenhaSim();
+      } else if(id==='duplo'){
+        const c=best[5], p=best[6];
+        if(S.p1==null&&S.c1==null){ if(c!=null)S.c1=+c.toFixed(2); if(p!=null)S.p1=+p.toFixed(2); S.w1=best[2]; }
+        else if(S.p2==null&&S.c2==null){ if(c!=null)S.c2=+c.toFixed(2); if(p!=null)S.p2=+p.toFixed(2); S.w2=best[2]; }
+        else { S.c1=c!=null?+c.toFixed(2):null; S.p1=p!=null?+p.toFixed(2):null; S.w1=best[2]; S.c2=null; S.p2=null; S.w2=null; }
+        desenhaSim();
+      }
+    };
+  } else window._pnSimCap=null;
   bindHoverPainel();
 }
 
