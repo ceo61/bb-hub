@@ -1422,7 +1422,6 @@ async function renderPainel(){
   $('#pnGrupo').onchange=e=>{st.pnGrupo=e.target.value;renderPainel();};
   const btg=document.getElementById('pnTodoGrupo');
   if(btg) btg.onclick=()=>{st.pnCod='@'+st.pnGrupo;st.pnFocus=false;location.hash='painel/'+encodeURIComponent(st.pnCod);renderPainel();};
-  $('#pnCod').onchange=e=>{st.pnCod=e.target.value.trim().toUpperCase();location.hash='painel/'+encodeURIComponent(st.pnCod);renderPainel();};
   const g2={}; st.radar.forEach(r=>{ if(!g2[r.cod]) g2[r.cod]=r.grupo||'—'; });
   const drop=$('#pnDrop'), inpCod=$('#pnCod');
   const abreLista=filtro=>{
@@ -1444,8 +1443,13 @@ async function renderPainel(){
   inpCod.onmousedown=()=>abreLista('');        // clique: abre a lista do grupo (ou de tudo)
   inpCod.oninput=e=>abreLista(e.target.value); // digitação: filtra por trecho do código
   inpCod.addEventListener('blur',()=>setTimeout(()=>{ if(drop.isConnected) drop.style.display='none'; },120));
-  $('#pnCod').onkeydown=e=>{  // ↑/↓ navegam pela listagem (respeitando o filtro de grupo); Esc fecha a lista
+  $('#pnCod').onkeydown=e=>{  // Enter seleciona o 1º que casa; ↑/↓ navegam; Esc fecha a lista
     if(e.key==='Escape'){ drop.style.display='none'; return; }
+    if(e.key==='Enter'){ e.preventDefault();
+      const f=inpCod.value.trim().toUpperCase(); if(!f) return;
+      st.pnCod=cods.includes(f)?f:(cods.find(c=>c.includes(f))||f);
+      st.pnFocus=false; drop.style.display='none';
+      location.hash='painel/'+encodeURIComponent(st.pnCod); renderPainel(); return; }
     if(e.key!=='ArrowDown'&&e.key!=='ArrowUp') return;
     e.preventDefault();
     if(!cods.length) return;
@@ -1648,9 +1652,13 @@ async function renderSkus(){
   inp.onmousedown=()=>abre('');
   inp.oninput=e=>abre(e.target.value);
   inp.addEventListener('blur',()=>setTimeout(()=>{ if(drop.isConnected) drop.style.display='none'; },120));
-  inp.onchange=e=>{st.skCod=e.target.value.trim().toUpperCase();location.hash='skus/'+encodeURIComponent(st.skCod);renderSkus();};
   inp.onkeydown=e=>{
     if(e.key==='Escape'){ drop.style.display='none'; return; }
+    if(e.key==='Enter'){ e.preventDefault();
+      const f=inp.value.trim().toUpperCase(); if(!f) return;
+      st.skCod=cods.includes(f)?f:(cods.find(c=>c.includes(f))||f);
+      st.skFocus=false; drop.style.display='none';
+      location.hash='skus/'+encodeURIComponent(st.skCod); renderSkus(); return; }
     if(e.key!=='ArrowDown'&&e.key!=='ArrowUp') return;
     e.preventDefault();
     if(!cods.length) return;
