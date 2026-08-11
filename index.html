@@ -1169,14 +1169,13 @@ async function abreExtrato(cod, m){
     <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato semanal — ${NW} semanas fechadas (seg–dom)</span><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
     <div class="tablecard" style="padding:11px 16px;margin:10px 0 12px">
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;font-size:12.5px">
-        <span class="gr" style="align-self:center">Geração <b>${esc(GERLB[m?.geracao]||m?.geracao||'—')}</b> · Hoje: atacado <b>${F.m(m?.p_atacado)}</b> · DE <b>${F.m(m?.p_site_de)}</b> · POR ${F.m(m?.p_site_por)} · PIX <b>${F.m(m?.p_site)}</b> · ML <b>${F.m(m?.p_marketplace)}</b> · custo ${F.m(m?.custo)}</span>
+        <span title="geração do produto (comportamento 12m)" style="align-self:center;flex:none;background:var(--accent-soft);color:var(--accent);font-weight:700;padding:7px 16px;border-radius:99px;font-size:13.5px;letter-spacing:.02em">${esc(GERLB[m?.geracao]||m?.geracao||'—')}</span>
         <span>Atacado novo<br><input type="number" step="0.01" id="xAtac" value="${vAt!=null?(+vAt).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr" id="xMkA"></span></span>
         <span>DE novo<br><input type="number" step="0.01" id="xDe" value="${vDe!=null?(+vDe).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr">manual</span></span>
         <span>À vista novo (PIX)<br><input type="number" step="0.01" id="xAv" value="${vAv!=null?(+vAv).toFixed(2):''}" style="width:100px;text-align:right;font-weight:600"><br><span class="gr" id="xPor"></span></span>
         <span>ML novo<br><input type="number" step="0.01" id="xMl" value="${vMl!=null?(+vMl).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr" id="xMkM"></span></span>
-        <span style="flex:1 1 260px;min-width:220px">Justificativa <span class="gr">(fica no histórico do produto)</span><br><input type="text" id="xJust" maxlength="300" placeholder="por que está mudando? ex.: BGT 8% abaixo e conversão caindo há 3 semanas" style="width:100%"></span>
+        <span style="flex:1 1 320px;min-width:240px">Justificativa <span class="gr">(fica no histórico do produto)</span><br><input type="text" id="xJust" maxlength="300" placeholder="por que está mudando? ex.: BGT 8% abaixo e conversão caindo há 3 semanas" style="width:100%"><br><span class="gr" id="xMsg"></span></span>
         <button class="btn" id="xAprova" style="padding:7px 18px;flex:none">✔ OK — aprovar</button>
-        <span class="gr" id="xMsg"></span>
       </div>
     </div>
     <div class="tscroll" style="max-height:58vh"><table style="width:auto;min-width:0">
