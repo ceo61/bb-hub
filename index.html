@@ -1130,7 +1130,7 @@ async function abreExtrato(cod, m){
   const tdc='padding:5px 8px;white-space:nowrap;font-size:12px;text-align:right;';
   const linhas=mondays.map(w=>{ const a=W[w];
     const g=giro60(w), folga=(a.saldo!=null&&g>0)?a.saldo/g:null;
-    const mkS=(a.por&&a.custo)?a.por/a.custo:null;
+    const mkS=(a.porReal&&a.custo)?a.porReal/a.custo:null;  // mesma régua da 1ª página: à vista PIX ÷ custo
     const mkA=(a.atacTab&&a.custo)?a.atacTab/a.custo:null;
     const mkM=(a.mlTab&&a.custo)?a.mlTab/a.custo:null;
     const prat=a.q2>0?a.v2/a.q2:null, tick=a.q1>0?a.v1/a.q1:null, tickM=a.qm>0?a.vm/a.qm:null;
@@ -1149,7 +1149,8 @@ async function abreExtrato(cod, m){
       <td style="${tdc}${sep}">${F.n(a.q2)}</td>
       <td style="${tdc}color:var(--ch4)">${F.r(a.l2)}</td>
       <td style="${tdc}">${F.m(a.de)}</td>
-      <td style="${tdc}"><b>${F.m(a.por)}</b></td>
+      <td style="${tdc}">${F.m(a.por)}</td>
+      <td style="${tdc}"><b>${F.m(a.porReal)}</b></td>
       <td style="${tdc}">${F.m(prat)}</td>
       <td style="${tdc}color:var(--muted)">${F.m(a.ccav)}</td>
       <td style="${tdc}">${F.d1(mkS)}${mkS?'×':''}</td>
@@ -1168,7 +1169,7 @@ async function abreExtrato(cod, m){
     <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato semanal — ${NW} semanas fechadas (seg–dom)</span><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
     <div class="tablecard" style="padding:11px 16px;margin:10px 0 12px">
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;font-size:12.5px">
-        <span class="gr" style="align-self:center">Hoje: atacado <b>${F.m(m?.p_atacado)}</b> · DE <b>${F.m(m?.p_site_de)}</b> · PIX <b>${F.m(m?.p_site)}</b> · ML <b>${F.m(m?.p_marketplace)}</b> · custo ${F.m(m?.custo)}</span>
+        <span class="gr" style="align-self:center">Hoje: atacado <b>${F.m(m?.p_atacado)}</b> · DE <b>${F.m(m?.p_site_de)}</b> · POR ${F.m(m?.p_site_por)} · PIX <b>${F.m(m?.p_site)}</b> · ML <b>${F.m(m?.p_marketplace)}</b> · custo ${F.m(m?.custo)}</span>
         <span>Atacado novo<br><input type="number" step="0.01" id="xAtac" value="${vAt!=null?(+vAt).toFixed(2):''}" style="width:92px;text-align:right"></span>
         <span>DE novo<br><input type="number" step="0.01" id="xDe" value="${vDe!=null?(+vDe).toFixed(2):''}" style="width:92px;text-align:right"></span>
         <span>À vista novo<br><input type="number" step="0.01" id="xAv" value="${vAv!=null?(+vAv).toFixed(2):''}" style="width:96px;text-align:right;font-weight:600"></span>
@@ -1183,12 +1184,12 @@ async function abreExtrato(cod, m){
       <tr><th rowspan="2" style="padding:7px 8px;text-align:left;position:sticky;left:0;top:0;background:var(--surface);z-index:3;vertical-align:bottom">Semana</th>
         <th colspan="3" style="padding:5px 8px;text-align:center;letter-spacing:.1em">GERAIS</th>
         <th colspan="6" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair)">BBDI — ATACADO (001)</th>
-        <th colspan="11" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair);color:var(--accent)">BBB — SITE (002)</th>
+        <th colspan="12" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair);color:var(--accent)">BBB — SITE (002)</th>
         <th colspan="5" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair)">ML (005)</th></tr>
       <tr>
         ${th('Saldo','estoque útil no fim da semana (snapshot; histórico desde 15/07/26)')}${th('Folga','saldo ÷ giro 60d÷2 (aprox — total c/ lotões)')}${th('Custo','custo unitário (desde 16/07/26)')}
         ${th('7dd','unidades atacado na semana',1)}${th('MC 001','lucro bruto da semana no Atacado (campo do BI)')}${th('Tab','preço tabela 001 (real; desde 15/07/26)')}${th('Ticket','ticket médio atacado')}${th('BGT','concorrente B2B cash (desde 13/06/26)')}${th('Mkup','tabela 001 ÷ custo')}
-        ${th('7dd','unidades site na semana',1)}${th('MC 002','lucro bruto da semana no Site (campo do BI)')}${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('POR','preço POR tabela 002')}${th('Prat.','preço praticado site')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('Mkup','POR ÷ custo')}${th('Conv','qtd 002 ÷ views')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS','faturado 002 ÷ Ads')}
+        ${th('7dd','unidades site na semana',1)}${th('MC 002','lucro bruto da semana no Site (campo do BI)')}${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('POR','preço POR publicado (tabela 002)')}${th('PIX','preço FINAL à vista = POR×0,95 — o que o cliente paga (mesma régua da 1ª página)')}${th('Prat.','preço praticado site')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('Mkup','PIX (à vista real) ÷ custo — mesmo mk da 1ª página')}${th('Conv','qtd 002 ÷ views')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS','faturado 002 ÷ Ads')}
         ${th('7dd','unidades Mercado Livre',1)}${th('MC 005','lucro bruto da semana no ML (campo do BI)')}${th('Tab','preço tabela 401')}${th('Ticket','ticket médio ML')}${th('Mkup','tabela 401 ÷ custo')}</tr>
       </thead>
       <tbody>${linhas}</tbody></table></div>
