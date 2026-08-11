@@ -1248,9 +1248,15 @@ async function renderSugestoes(){
   await carregaMarkup();
   const {data:pend}=await sb.from('acoes_preco').select('*').in('status',['aprovado','executar','erro']).order('criado_em',{ascending:false});
   const {data:feitas}=await sb.from('acoes_preco').select('*').eq('status','executado').gte('executado_em',new Date(Date.now()-86400e3).toISOString()).order('executado_em',{ascending:false});
-  const jaTem=new Set([...(pend||[]),...(feitas||[])].map(a=>a.cod));
+  const pendSet=new Set((pend||[]).map(a=>a.cod));
   const {data:revs}=await sb.from('acoes_preco').select('id,cod,criado_em,aprovado_por').eq('status','revisado').gte('criado_em',new Date(Date.now()-7*86400e3).toISOString()).order('criado_em',{ascending:false});
   const revMap={}; (revs||[]).forEach(r=>{ if(!revMap[r.cod]) revMap[r.cod]=r; });
+  // regra de reavaliação MISTA: produto mexido/revisado só volta após 7 dias E +200 views acumuladas desde a movimentação
+  const {data:revp}=await sb.from('revisao_pendente').select('cod,mov_em,views_desde');
+  const ocultosMov={}; (revp||[]).forEach(r=>{
+    const dias=(Date.now()-new Date(r.mov_em).getTime())/864e5;
+    if(dias<7||(+r.views_desde||0)<200) ocultosMov[r.cod]=r;
+  });
   const {data:execs}=await sb.from('acoes_preco').select('cod,preco_atual,preco_sugerido,atac_atual,atac_sugerido,ml_atual,ml_sugerido,executado_em,aprovado_por,justificativa').eq('status','executado').gte('executado_em',new Date(Date.now()-30*86400e3).toISOString()).order('executado_em',{ascending:false});
   const execMap={}; (execs||[]).forEach(r=>{ if(!execMap[r.cod]) execMap[r.cod]=r; });
   const aprA=(pend||[]).filter(a=>a.status==='aprovado'), emExec=(pend||[]).filter(a=>a.status==='executar'), comErro=(pend||[]).filter(a=>a.status==='erro');
@@ -1259,7 +1265,9 @@ async function renderSugestoes(){
   const {out,medConv}=montaSugestoes();
   const lista=st.sgVerExec ? out.filter(m=>execMap[m.cod])
             : st.sgVerRev ? out.filter(m=>revMap[m.cod])
-            : out.filter(m=>!jaTem.has(m.cod)&&!revMap[m.cod]);
+            : st.sgVerTudo ? out.filter(m=>!pendSet.has(m.cod))
+            : out.filter(m=>!pendSet.has(m.cod)&&!ocultosMov[m.cod]);
+  const nAguardando=out.filter(m=>ocultosMov[m.cod]).length;
   const cOut={site:0,atac:0,ml:0}; lista.forEach(m=>{if(m._outS===2)cOut.site++;if(m._outA===2)cOut.atac++;if(m._outM===2)cOut.ml++;});
   st.sgSel=st.sgSel||new Set();
   $('#conteudo').innerHTML=`
@@ -1287,7 +1295,8 @@ async function renderSugestoes(){
       <select id="sgG"><option value="">Todos os grupos</option>${[...new Set(lista.map(m=>m.grupo||'—'))].sort().map(g=>`<option ${st.sgG===g?'selected':''} value="${esc(g)}">${esc(g)}</option>`).join('')}</select>
       <select id="sgGer"><option value="">Todas as gerações</option>${GERORD.filter(g=>lista.some(m=>m.geracao===g)).map(g=>`<option ${st.sgGer===g?'selected':''} value="${esc(g)}">${GERLB[g]||g}</option>`).join('')}</select>
       ${[['site','Site'],['atac','Atacado'],['ml','ML']].map(([k,lb])=>`<button class="kpi" data-out="${k}" style="padding:7px 14px;${st.sgOut===k?'border-color:var(--crit);box-shadow:inset 0 0 0 1px var(--crit)':''}"><span style="color:var(--crit)">●</span> ${lb} fora 2σ (${nf.format(cOut[k])})</button>`).join('')}
-      <button class="kpi" id="sgRev" title="produtos conferidos e marcados OK — ficam 7 dias fora da lista (contagem individual, a partir do clique); clique para ver e desfazer" style="padding:7px 14px;${st.sgVerRev?'border-color:var(--good);box-shadow:inset 0 0 0 1px var(--good)':''}"><span style="color:var(--good)">✓</span> OK 7d (${Object.keys(revMap).length})</button>
+      <button class="kpi" id="sgModo" title="🎯 necessários: produto mexido/revisado só volta após 7 dias E +200 views acumuladas desde a movimentação (pouco tráfego = espera juntar amostra); lista ordenada por giro/mês. 👁 tudo: mostra inclusive os aguardando, na ordem por impacto." style="padding:7px 14px;${st.sgVerTudo?'':'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)'}">${st.sgVerTudo?'👁 tudo':'🎯 necessários'} <span class="gr">(${nf.format(nAguardando)} aguardando)</span></button>
+      <button class="kpi" id="sgRev" title="produtos conferidos e marcados OK nos últimos 7 dias; clique para ver e desfazer (a volta à lista segue a regra 7 dias + 200 views)" style="padding:7px 14px;${st.sgVerRev?'border-color:var(--good);box-shadow:inset 0 0 0 1px var(--good)':''}"><span style="color:var(--good)">✓</span> OK 7d (${Object.keys(revMap).length})</button>
       <button class="kpi" id="sgExecV" title="produtos com preço ALTERADO (executado no ERP) nos últimos 30 dias — clique para ver o de→para" style="padding:7px 14px;${st.sgVerExec?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}"><span style="color:var(--accent)">⚡</span> Mexidos 30d (${Object.keys(execMap).length})</button>
       <button class="btn" id="sgAprovar">Aprovar selecionados (<span id="sgN">0</span>)</button>
       <button class="kpi" id="sgAta" style="padding:7px 14px" title="suas anotações de análise de hoje">🗒 Ata do dia</button>
@@ -1300,6 +1309,7 @@ async function renderSugestoes(){
   $('#sgAta').onclick=abreAta;
   $('#sgRev').onclick=()=>{st.sgVerRev=!st.sgVerRev;st.sgVerExec=false;renderSugestoes();};
   $('#sgExecV').onclick=()=>{st.sgVerExec=!st.sgVerExec;st.sgVerRev=false;renderSugestoes();};
+  $('#sgModo').onclick=()=>{st.sgVerTudo=!st.sgVerTudo;st.sgVerRev=false;st.sgVerExec=false;st.sgShown=150;renderSugestoes();};
   const corOut=l=>l===2?'color:var(--crit);font-weight:800':l===1?'color:var(--lar)':'';
   const desenha=()=>{
     const rows=lista.filter(m=>{
@@ -1315,6 +1325,7 @@ async function renderSugestoes(){
       if(st.sgCol==='cod') return (st.sgDir||1)*String(a.cod).localeCompare(String(b.cod));
       return (st.sgDir||-1)*(((a[st.sgCol]??-1e18))-((b[st.sgCol]??-1e18)));
     });
+    else if(!st.sgVerTudo&&!st.sgVerRev&&!st.sgVerExec) rows.sort((a,b)=>(b._giro||0)-(a._giro||0));  // modo necessários: por giro/mês
     document.querySelectorAll('#conteudo th.ord').forEach(th=>{
       const s=th.querySelector('.seta'); if(s) s.textContent = th.dataset.c===st.sgCol ? (st.sgDir>0?'▲':'▼') : '';
     });
