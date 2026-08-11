@@ -1107,10 +1107,10 @@ async function abreExtrato(cod, m){
   ]);
   const wk=d=>{ const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); return dt.toISOString().slice(0,10); };
   const qtdDia={}; vd.forEach(r=>{ qtdDia[r.data]=+r.qtd||0; });
-  const W={}; mondays.forEach(w=>W[w]={q2:0,v2:0,l2:0,qm:0,q1:0,v1:0,l1:0,lm:0,vw:0,ads:0,saldo:null,de:null,por:null,porReal:null,atacTab:null,mlTab:null,custo:null,ccav:null,ccbb:null});
+  const W={}; mondays.forEach(w=>W[w]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,ads:0,saldo:null,de:null,por:null,porReal:null,atacTab:null,mlTab:null,custo:null,ccav:null,ccbb:null});
   vd.forEach(r=>{ const a=W[wk(r.data)]; if(!a) return;
     a.q2+=+r.qtd_b2c||0; a.v2+=+r.val_b2c||0; a.l2+=+r.lucro_b2c||0;
-    a.qm+=+r.qtd_ml||0; a.lm+=+r.lucro_ml||0;
+    a.qm+=+r.qtd_ml||0; a.vm+=+r.val_ml||0; a.lm+=+r.lucro_ml||0;
     a.q1+=+r.qtd_atac||0; a.v1+=+r.val_atac||0; a.l1+=+r.lucro_atac||0; });
   cv.forEach(r=>{ const a=W[wk(r.data)]; if(a) a.vw+=+r.views||0; });
   ad.forEach(r=>{ const a=W[wk(r.data)]; if(a) a.ads+=+r.custo||0; });
@@ -1130,32 +1130,38 @@ async function abreExtrato(cod, m){
   const tdc='padding:5px 8px;white-space:nowrap;font-size:12px;text-align:right;';
   const linhas=mondays.map(w=>{ const a=W[w];
     const g=giro60(w), folga=(a.saldo!=null&&g>0)?a.saldo/g:null;
-    const mkup=(a.porReal&&a.custo)?a.porReal/a.custo:null;
-    const prat=a.q2>0?a.v2/a.q2:null, tick=a.q1>0?a.v1/a.q1:null;
+    const mkS=(a.por&&a.custo)?a.por/a.custo:null;
+    const mkA=(a.atacTab&&a.custo)?a.atacTab/a.custo:null;
+    const mkM=(a.mlTab&&a.custo)?a.mlTab/a.custo:null;
+    const prat=a.q2>0?a.v2/a.q2:null, tick=a.q1>0?a.v1/a.q1:null, tickM=a.qm>0?a.vm/a.qm:null;
     const conv=a.vw>0?a.q2/a.vw*100:null, roas=a.ads>0?a.v2/a.ads:null;
-    const lucro=a.l2+a.l1+a.lm;
     const sep='border-left:2px solid var(--hair);';
     return `<tr><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${w.slice(8,10)}/${w.slice(5,7)}</b></td>
       <td style="${tdc}">${a.saldo!=null?nf.format(a.saldo):'—'}</td>
       <td style="${tdc}${corF(folga)}">${F.d1(folga)}</td>
       <td style="${tdc}">${F.m(a.custo)}</td>
-      <td style="${tdc}color:var(--ch4)">${F.r(lucro)}</td>
-      <td style="${tdc}${sep}">${F.m(a.de)}</td>
+      <td style="${tdc}${sep}">${F.n(a.q1)}</td>
+      <td style="${tdc}color:var(--ch4)">${F.r(a.l1)}</td>
+      <td style="${tdc}">${F.m(a.atacTab)}</td>
+      <td style="${tdc}">${F.m(tick)}</td>
+      <td style="${tdc}color:var(--muted)">${F.m(a.ccbb)}</td>
+      <td style="${tdc}">${F.d1(mkA)}${mkA?'×':''}</td>
+      <td style="${tdc}${sep}">${F.n(a.q2)}</td>
+      <td style="${tdc}color:var(--ch4)">${F.r(a.l2)}</td>
+      <td style="${tdc}">${F.m(a.de)}</td>
       <td style="${tdc}"><b>${F.m(a.por)}</b></td>
-      <td style="${tdc}">${F.d1(mkup)}${mkup?'×':''}</td>
-      <td style="${tdc}color:var(--muted)">${F.m(a.ccav)}</td>
-      <td style="${tdc}">${F.n(a.q2)}</td>
       <td style="${tdc}">${F.m(prat)}</td>
+      <td style="${tdc}color:var(--muted)">${F.m(a.ccav)}</td>
+      <td style="${tdc}">${F.d1(mkS)}${mkS?'×':''}</td>
       <td style="${tdc}">${F.p(conv)}</td>
       <td style="${tdc}color:var(--ch1)">${F.n(a.vw)}</td>
       <td style="${tdc}">${F.r(a.ads)}</td>
       <td style="${tdc}">${F.d1(roas)}</td>
-      <td style="${tdc}${sep}">${F.m(a.mlTab)}</td>
-      <td style="${tdc}">${F.n(a.qm)}</td>
-      <td style="${tdc}${sep}">${F.m(a.atacTab)}</td>
-      <td style="${tdc}color:var(--muted)">${F.m(a.ccbb)}</td>
-      <td style="${tdc}">${F.n(a.q1)}</td>
-      <td style="${tdc}">${F.m(tick)}</td></tr>`; }).join('');
+      <td style="${tdc}${sep}">${F.n(a.qm)}</td>
+      <td style="${tdc}color:var(--ch4)">${F.r(a.lm)}</td>
+      <td style="${tdc}">${F.m(a.mlTab)}</td>
+      <td style="${tdc}">${F.m(tickM)}</td>
+      <td style="${tdc}">${F.d1(mkM)}${mkM?'×':''}</td></tr>`; }).join('');
   const th=(t,tip,sep)=>`<th style="padding:6px 8px;text-align:right;white-space:nowrap;top:29px;${sep?'border-left:2px solid var(--hair);':''}"${tip?` title="${tip}"`:''}>${t}</th>`;
   const vAt=m?._atacSug??m?.p_atacado, vAv=m?._avistaSug, vDe=m?.p_site_de, vMl=m?._mlSug??m?.p_marketplace;
   ov.querySelector('.aclcard').innerHTML=`
@@ -1175,15 +1181,15 @@ async function abreExtrato(cod, m){
     <div class="tscroll" style="max-height:58vh"><table style="width:auto;min-width:0">
       <thead>
       <tr><th rowspan="2" style="padding:7px 8px;text-align:left;position:sticky;left:0;top:0;background:var(--surface);z-index:3;vertical-align:bottom">Semana</th>
-        <th colspan="4" style="padding:5px 8px;text-align:center;letter-spacing:.1em">GERAIS</th>
-        <th colspan="10" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair);color:var(--accent)">BBB — SITE (002)</th>
-        <th colspan="2" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair)">ML (005)</th>
-        <th colspan="4" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair)">BBDI — ATACADO (001)</th></tr>
+        <th colspan="3" style="padding:5px 8px;text-align:center;letter-spacing:.1em">GERAIS</th>
+        <th colspan="6" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair)">BBDI — ATACADO (001)</th>
+        <th colspan="11" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair);color:var(--accent)">BBB — SITE (002)</th>
+        <th colspan="5" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair)">ML (005)</th></tr>
       <tr>
-        ${th('Saldo','estoque útil no fim da semana (snapshot; histórico desde 15/07/26)')}${th('Folga','saldo ÷ giro 60d÷2 (aprox — total c/ lotões)')}${th('Custo','custo unitário (desde 16/07/26)')}${th('Lucro','lucro bruto da semana, TODOS os canais (campo do BI)')}
-        ${th('DE','preço DE tabela 002 (desde 15/07/26)',1)}${th('POR','preço POR tabela 002')}${th('Mkup','POR real ÷ custo')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('7dd','unidades site na semana')}${th('Prat.','preço praticado site')}${th('Conv','qtd 002 ÷ views')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS','faturado 002 ÷ Ads')}
-        ${th('Tab','preço tabela 401',1)}${th('7dd','unidades Mercado Livre')}
-        ${th('Tab','preço tabela 001 (real)',1)}${th('BGT','concorrente B2B cash')}${th('7dd','unidades atacado')}${th('Ticket','ticket médio atacado')}</tr>
+        ${th('Saldo','estoque útil no fim da semana (snapshot; histórico desde 15/07/26)')}${th('Folga','saldo ÷ giro 60d÷2 (aprox — total c/ lotões)')}${th('Custo','custo unitário (desde 16/07/26)')}
+        ${th('7dd','unidades atacado na semana',1)}${th('MC 001','lucro bruto da semana no Atacado (campo do BI)')}${th('Tab','preço tabela 001 (real; desde 15/07/26)')}${th('Ticket','ticket médio atacado')}${th('BGT','concorrente B2B cash (desde 13/06/26)')}${th('Mkup','tabela 001 ÷ custo')}
+        ${th('7dd','unidades site na semana',1)}${th('MC 002','lucro bruto da semana no Site (campo do BI)')}${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('POR','preço POR tabela 002')}${th('Prat.','preço praticado site')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('Mkup','POR ÷ custo')}${th('Conv','qtd 002 ÷ views')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS','faturado 002 ÷ Ads')}
+        ${th('7dd','unidades Mercado Livre',1)}${th('MC 005','lucro bruto da semana no ML (campo do BI)')}${th('Tab','preço tabela 401')}${th('Ticket','ticket médio ML')}${th('Mkup','tabela 401 ÷ custo')}</tr>
       </thead>
       <tbody>${linhas}</tbody></table></div>
     <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom. Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões). Preencha o preço novo em cima e OK — entra na MESMA fila de execução do Aprovar.</p>`;
