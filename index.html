@@ -1096,7 +1096,7 @@ async function abreExtrato(cod, m){
   const mondays=[]; for(let i=NW;i>=1;i--){ const d=new Date(seg); d.setDate(d.getDate()-7*i); mondays.push(d.toISOString().slice(0,10)); }
   const ini=mondays[0];
   const d0=new Date(mondays[0]+'T12:00:00'); d0.setDate(d0.getDate()-62); const ini0=d0.toISOString().slice(0,10);
-  const [vd,cv,ad,pr,es,cu,cc]=await Promise.all([
+  const [vd,cv,ad,pr,es,cu,cc,hist]=await Promise.all([
     sb.from('fato_vendas_diaria').select('data,qtd,qtd_b2c,val_b2c,lucro_b2c,qtd_ml,val_ml,lucro_ml,qtd_atac,val_atac,lucro_atac').eq('cod',cod).gte('data',ini0).order('data').then(r=>r.data||[]),
     sb.from('fato_conversao').select('data,views').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
     sb.from('fato_ads').select('data,custo').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
@@ -1104,6 +1104,7 @@ async function abreExtrato(cod, m){
     sb.from('fato_estoque').select('snapshot,estoque_util').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
     sb.from('fato_custo').select('snapshot,custo').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
     sb.from('fato_concorrencia').select('data,cc_avista,cc_b2b').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
+    sb.from('acoes_preco').select('criado_em,status,aprovado_por,preco_atual,preco_sugerido,de_sugerido,atac_sugerido,ml_sugerido,justificativa,obs').eq('cod',cod).in('status',['aprovado','executar','executado','erro','revisado']).order('criado_em',{ascending:false}).limit(12).then(r=>r.data||[]),
   ]);
   const wk=d=>{ const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); return dt.toISOString().slice(0,10); };
   const qtdDia={}; vd.forEach(r=>{ qtdDia[r.data]=+r.qtd||0; });
@@ -1173,7 +1174,8 @@ async function abreExtrato(cod, m){
         <span>DE novo<br><input type="number" step="0.01" id="xDe" value="${vDe!=null?(+vDe).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr">manual</span></span>
         <span>À vista novo (PIX)<br><input type="number" step="0.01" id="xAv" value="${vAv!=null?(+vAv).toFixed(2):''}" style="width:100px;text-align:right;font-weight:600"><br><span class="gr" id="xPor"></span></span>
         <span>ML novo<br><input type="number" step="0.01" id="xMl" value="${vMl!=null?(+vMl).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr" id="xMkM"></span></span>
-        <button class="btn" id="xAprova" style="padding:7px 18px">✔ OK — aprovar</button>
+        <span style="flex:1 1 260px;min-width:220px">Justificativa <span class="gr">(fica no histórico do produto)</span><br><input type="text" id="xJust" maxlength="300" placeholder="por que está mudando? ex.: BGT 8% abaixo e conversão caindo há 3 semanas" style="width:100%"></span>
+        <button class="btn" id="xAprova" style="padding:7px 18px;flex:none">✔ OK — aprovar</button>
         <span class="gr" id="xMsg"></span>
       </div>
     </div>
@@ -1191,7 +1193,17 @@ async function abreExtrato(cod, m){
         ${th('7dd','unidades Mercado Livre',1)}${th('MC 005','lucro bruto da semana no ML (campo do BI)')}${th('Tab','preço tabela 401')}${th('Ticket','ticket médio ML')}${th('Mkup','tabela 401 ÷ custo')}</tr>
       </thead>
       <tbody>${linhas}</tbody></table></div>
-    <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom. Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões). Preencha o preço novo em cima e OK — entra na MESMA fila de execução do Aprovar.</p>`;
+    ${(hist&&hist.length)?`<div class="tablecard" style="padding:11px 16px;margin-top:12px"><div class="eyebrow" style="margin-bottom:7px">🗂 Histórico de alterações e revisões deste produto</div>
+      <div style="display:grid;gap:5px;font-size:12.5px;max-height:170px;overflow:auto">${hist.map(h=>{
+        const dt=new Date(h.criado_em).toLocaleDateString('pt-BR');
+        const badge=h.status==='revisado'?'<span style="color:var(--good);font-weight:700">✓ revisado OK</span>':h.status==='executado'?'<span style="color:var(--accent);font-weight:700">⚡ executado</span>':h.status==='erro'?'<span style="color:var(--crit);font-weight:700">erro</span>':'<span style="color:var(--warn);font-weight:700">na fila</span>';
+        const mud=[h.preco_sugerido!=null?('site '+rf2.format(h.preco_atual||0)+'→'+rf2.format(h.preco_sugerido)):null,
+                   h.atac_sugerido!=null?('atac→'+rf2.format(h.atac_sugerido)):null,
+                   h.ml_sugerido!=null?('ML→'+rf2.format(h.ml_sugerido)):null,
+                   h.de_sugerido!=null?('DE→'+rf2.format(h.de_sugerido)):null].filter(Boolean).join(' · ');
+        return `<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><span class="gr" style="flex:none">${dt}</span>${badge}<span class="gr" style="flex:none">${esc((h.aprovado_por||'').split('@')[0])}</span><span style="flex:none">${mud}</span>${h.justificativa?`<span style="flex:1;color:var(--ink2)">“${esc(h.justificativa)}”</span>`:''}</div>`;
+      }).join('')}</div></div>`:''}
+    <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom. Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões). Preencha o preço novo em cima, JUSTIFIQUE e OK — entra na MESMA fila de execução do Aprovar.</p>`;
   ov.querySelector('#mcX').onclick=()=>ov.remove();
   const C0=+m?.custo||0, alvoA=m?._alvoA, alvoS=m?._alvo, alvoM=m?._alvoM;
   const hint=(v,alvo,liq)=>{ const alvoTx=alvo?'alvo '+nf1.format(alvo)+'×':'';
@@ -1212,6 +1224,8 @@ async function abreExtrato(cod, m){
     const dif=(a,b)=>a!=null&&a>0&&(b==null||Math.abs(a-b)>0.015);
     const chAv=dif(av,m?.p_site), chDe=dif(de,m?.p_site_de), chAt=dif(at,m?.p_atacado), chMl=dif(ml,m?.p_marketplace);
     if(!chAv&&!chDe&&!chAt&&!chMl){ ov.querySelector('#xMsg').textContent='nenhum preço mudou — nada enviado'; return; }
+    const just=ov.querySelector('#xJust').value.trim();
+    if(!just){ ov.querySelector('#xMsg').textContent='escreva a justificativa da mudança'; ov.querySelector('#xJust').focus(); return; }
     const {data:{user}}=await sb.auth.getUser();
     const partes=[];
     if(chAv) partes.push('POR a gravar: '+(+(av/0.95).toFixed(2)));
@@ -1224,7 +1238,7 @@ async function abreExtrato(cod, m){
       de_atual:m?.p_site_de??null,     de_sugerido:chDe?+de.toFixed(2):null,
       atac_atual:m?.p_atacado??null,   atac_sugerido:chAt?+at.toFixed(2):null,
       ml_atual:m?.p_marketplace??null, ml_sugerido:chMl?+ml.toFixed(2):null,
-      aprovado_por:user?.email||'?', obs:partes.join(' · ')+' (via extrato semanal)'});
+      aprovado_por:user?.email||'?', justificativa:just, obs:partes.join(' · ')+' (via extrato semanal)'});
     if(error){ ov.querySelector('#xMsg').textContent='Erro: '+error.message; return; }
     ov.querySelector('#xMsg').textContent='✅ aprovado ('+[chAv&&'site',chDe&&'DE',chAt&&'atacado',chMl&&'ML'].filter(Boolean).join(', ')+') — na fila de execução';
     setTimeout(()=>{ document.getElementById('mcModal')?.remove(); renderSugestoes(); }, 900);
@@ -1238,7 +1252,7 @@ async function renderSugestoes(){
   const jaTem=new Set([...(pend||[]),...(feitas||[])].map(a=>a.cod));
   const {data:revs}=await sb.from('acoes_preco').select('id,cod,criado_em,aprovado_por').eq('status','revisado').gte('criado_em',new Date(Date.now()-7*86400e3).toISOString()).order('criado_em',{ascending:false});
   const revMap={}; (revs||[]).forEach(r=>{ if(!revMap[r.cod]) revMap[r.cod]=r; });
-  const {data:execs}=await sb.from('acoes_preco').select('cod,preco_atual,preco_sugerido,atac_atual,atac_sugerido,ml_atual,ml_sugerido,executado_em,aprovado_por').eq('status','executado').gte('executado_em',new Date(Date.now()-30*86400e3).toISOString()).order('executado_em',{ascending:false});
+  const {data:execs}=await sb.from('acoes_preco').select('cod,preco_atual,preco_sugerido,atac_atual,atac_sugerido,ml_atual,ml_sugerido,executado_em,aprovado_por,justificativa').eq('status','executado').gte('executado_em',new Date(Date.now()-30*86400e3).toISOString()).order('executado_em',{ascending:false});
   const execMap={}; (execs||[]).forEach(r=>{ if(!execMap[r.cod]) execMap[r.cod]=r; });
   const aprA=(pend||[]).filter(a=>a.status==='aprovado'), emExec=(pend||[]).filter(a=>a.status==='executar'), comErro=(pend||[]).filter(a=>a.status==='erro');
   if(!st.mcAll){ st.mcAll={}; (await tudo('fato_mc',{select:'cod,un,mc30,mc365,sem1',eq:[]})).forEach(r=>st.mcAll[r.cod+'|'+r.un]=r); }
@@ -1326,7 +1340,7 @@ async function renderSugestoes(){
       tr.innerHTML=`<td style="text-align:center"><input type="checkbox" data-cod="${esc(m.cod)}" ${st.sgSel.has(m.cod)?'checked':''} style="width:16px;height:16px"></td>
         <td style="text-align:left;white-space:nowrap"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span> <span data-ext="${esc(m.cod)}" title="extrato semanal completo — 26 semanas (saldo, folga, preços, BGT, vendas, conversão, ads, lucro) + preço novo" style="cursor:pointer;opacity:.7">📊</span> <span data-nota="${esc(m.cod)}" title="anotar na ata do dia" style="cursor:pointer;opacity:.65">📝</span> ${st.sgVerRev
           ?`<span data-undorev="${revMap[m.cod]?.id||''}" title="revisado por ${esc(revMap[m.cod]?.aprovado_por||'')} em ${revMap[m.cod]?new Date(revMap[m.cod].criado_em).toLocaleDateString('pt-BR'):''} — clique para DESFAZER (volta pra lista)" style="cursor:pointer;color:var(--warn);font-weight:700">↩</span>`
-          :`<span data-rev="${esc(m.cod)}" title="conferi e está OK — sai da lista por 7 dias" style="cursor:pointer;color:var(--good);font-weight:700;opacity:.75">✓</span>`}<br><span class="gr">${esc(m.grupo||'')}</span>${(st.sgVerExec&&execMap[m.cod])?(e=>`<br><span class="gr" style="color:var(--accent)">⚡ ${e.preco_sugerido!=null?rf2.format(e.preco_atual)+'→'+rf2.format(e.preco_sugerido):''}${e.atac_sugerido!=null?' · atac→'+rf2.format(e.atac_sugerido):''}${e.ml_sugerido!=null?' · ml→'+rf2.format(e.ml_sugerido):''} · ${new Date(e.executado_em).toLocaleDateString('pt-BR').slice(0,5)}</span>`)(execMap[m.cod]):''}</td>
+          :`<span data-rev="${esc(m.cod)}" title="conferi e está OK — sai da lista por 7 dias" style="cursor:pointer;color:var(--good);font-weight:700;opacity:.75">✓</span>`}<br><span class="gr">${esc(m.grupo||'')}</span>${(st.sgVerExec&&execMap[m.cod])?(e=>`<br><span class="gr" style="color:var(--accent)"${e.justificativa?` title="${esc(e.justificativa)} — ${esc(e.aprovado_por||'')}"`:''}>⚡ ${e.preco_sugerido!=null?rf2.format(e.preco_atual)+'→'+rf2.format(e.preco_sugerido):''}${e.atac_sugerido!=null?' · atac→'+rf2.format(e.atac_sugerido):''}${e.ml_sugerido!=null?' · ml→'+rf2.format(e.ml_sugerido):''} · ${new Date(e.executado_em).toLocaleDateString('pt-BR').slice(0,5)}</span>${e.justificativa?`<br><span class="gr" style="font-style:italic">“${esc(e.justificativa.slice(0,70))}${e.justificativa.length>70?'…':''}”</span>`:''}`)(execMap[m.cod]):''}</td>
         <td><span class="gr">${GERLB[m.geracao]||m.geracao}</span></td>
         <td>${nf.format(m._saldo||0)}${m._transito?`<br><span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}</td>
         <td>${nf1.format(m._giro)}</td>
