@@ -1134,28 +1134,29 @@ async function abreExtrato(cod, m){
     const prat=a.q2>0?a.v2/a.q2:null, tick=a.q1>0?a.v1/a.q1:null;
     const conv=a.vw>0?a.q2/a.vw*100:null, roas=a.ads>0?a.v2/a.ads:null;
     const lucro=a.l2+a.l1+a.lm;
+    const sep='border-left:2px solid var(--hair);';
     return `<tr><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${w.slice(8,10)}/${w.slice(5,7)}</b></td>
       <td style="${tdc}">${a.saldo!=null?nf.format(a.saldo):'—'}</td>
       <td style="${tdc}${corF(folga)}">${F.d1(folga)}</td>
       <td style="${tdc}">${F.m(a.custo)}</td>
-      <td style="${tdc}">${F.d1(mkup)}${mkup?'×':''}</td>
-      <td style="${tdc}">${F.m(a.de)}</td>
+      <td style="${tdc}color:var(--ch4)">${F.r(lucro)}</td>
+      <td style="${tdc}${sep}">${F.m(a.de)}</td>
       <td style="${tdc}"><b>${F.m(a.por)}</b></td>
-      <td style="${tdc}">${F.m(a.atacTab)}</td>
-      <td style="${tdc}">${F.m(a.mlTab)}</td>
+      <td style="${tdc}">${F.d1(mkup)}${mkup?'×':''}</td>
       <td style="${tdc}color:var(--muted)">${F.m(a.ccav)}</td>
-      <td style="${tdc}color:var(--muted)">${F.m(a.ccbb)}</td>
       <td style="${tdc}">${F.n(a.q2)}</td>
       <td style="${tdc}">${F.m(prat)}</td>
       <td style="${tdc}">${F.p(conv)}</td>
       <td style="${tdc}color:var(--ch1)">${F.n(a.vw)}</td>
       <td style="${tdc}">${F.r(a.ads)}</td>
       <td style="${tdc}">${F.d1(roas)}</td>
-      <td style="${tdc}">${F.n(a.q1)}</td>
-      <td style="${tdc}">${F.m(tick)}</td>
+      <td style="${tdc}${sep}">${F.m(a.mlTab)}</td>
       <td style="${tdc}">${F.n(a.qm)}</td>
-      <td style="${tdc}color:var(--ch4)">${F.r(lucro)}</td></tr>`; }).join('');
-  const th=(t,tip)=>`<th style="padding:7px 8px;text-align:right;white-space:nowrap"${tip?` title="${tip}"`:''}>${t}</th>`;
+      <td style="${tdc}${sep}">${F.m(a.atacTab)}</td>
+      <td style="${tdc}color:var(--muted)">${F.m(a.ccbb)}</td>
+      <td style="${tdc}">${F.n(a.q1)}</td>
+      <td style="${tdc}">${F.m(tick)}</td></tr>`; }).join('');
+  const th=(t,tip,sep)=>`<th style="padding:6px 8px;text-align:right;white-space:nowrap;top:29px;${sep?'border-left:2px solid var(--hair);':''}"${tip?` title="${tip}"`:''}>${t}</th>`;
   const vAt=m?._atacSug??m?.p_atacado, vAv=m?._avistaSug, vDe=m?.p_site_de, vMl=m?._mlSug??m?.p_marketplace;
   ov.querySelector('.aclcard').innerHTML=`
     <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato semanal — ${NW} semanas fechadas (seg–dom)</span><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
@@ -1172,12 +1173,18 @@ async function abreExtrato(cod, m){
       </div>
     </div>
     <div class="tscroll" style="max-height:58vh"><table style="width:auto;min-width:0">
-      <thead><tr><th style="padding:7px 8px;text-align:left;position:sticky;left:0;background:var(--surface);z-index:2">Semana</th>
-        ${th('Saldo','estoque útil no fim da semana (snapshot; histórico desde 15/07/26)')}${th('Folga','saldo ÷ giro 60d÷2 (aprox — total c/ lotões)')}${th('Custo','custo unitário (desde 16/07/26)')}${th('Mkup','POR real ÷ custo')}
-        ${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('POR','preço POR tabela 002')}${th('Atac','tabela 001 (real)')}${th('ML tab','tabela 401')}
-        ${th('BGT av','concorrente à vista B2C (desde 13/06/26)')}${th('BGT B2B','concorrente B2B cash')}
-        ${th('002 7dd','unidades site na semana')}${th('Prat 002','preço praticado site')}${th('Conv','qtd 002 ÷ views')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS','faturado 002 ÷ Ads')}
-        ${th('001 7dd','unidades atacado')}${th('Tick 001','ticket médio atacado')}${th('ML 7dd','unidades Mercado Livre')}${th('Lucro','lucro bruto da semana, todos os canais (campo do BI)')}</tr></thead>
+      <thead>
+      <tr><th rowspan="2" style="padding:7px 8px;text-align:left;position:sticky;left:0;top:0;background:var(--surface);z-index:3;vertical-align:bottom">Semana</th>
+        <th colspan="4" style="padding:5px 8px;text-align:center;letter-spacing:.1em">GERAIS</th>
+        <th colspan="10" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair);color:var(--accent)">BBB — SITE (002)</th>
+        <th colspan="2" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair)">ML (005)</th>
+        <th colspan="4" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair)">BBDI — ATACADO (001)</th></tr>
+      <tr>
+        ${th('Saldo','estoque útil no fim da semana (snapshot; histórico desde 15/07/26)')}${th('Folga','saldo ÷ giro 60d÷2 (aprox — total c/ lotões)')}${th('Custo','custo unitário (desde 16/07/26)')}${th('Lucro','lucro bruto da semana, TODOS os canais (campo do BI)')}
+        ${th('DE','preço DE tabela 002 (desde 15/07/26)',1)}${th('POR','preço POR tabela 002')}${th('Mkup','POR real ÷ custo')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('7dd','unidades site na semana')}${th('Prat.','preço praticado site')}${th('Conv','qtd 002 ÷ views')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS','faturado 002 ÷ Ads')}
+        ${th('Tab','preço tabela 401',1)}${th('7dd','unidades Mercado Livre')}
+        ${th('Tab','preço tabela 001 (real)',1)}${th('BGT','concorrente B2B cash')}${th('7dd','unidades atacado')}${th('Ticket','ticket médio atacado')}</tr>
+      </thead>
       <tbody>${linhas}</tbody></table></div>
     <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom. Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões). Preencha o preço novo em cima e OK — entra na MESMA fila de execução do Aprovar.</p>`;
   ov.querySelector('#mcX').onclick=()=>ov.remove();
