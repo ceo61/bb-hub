@@ -1083,6 +1083,126 @@ async function abreAta(){
   if(bc) bc.onclick=()=>{ navigator.clipboard.writeText(`ATA ${new Date().toLocaleDateString('pt-BR')} — ${user.email}\n`+rows.map(r=>`${hh(r.criado_em)} · ${r.cod} · ${r.texto}`).join('\n')); bc.textContent='copiado ✓'; };
   ov.querySelectorAll('[data-del]').forEach(el=>el.onclick=async()=>{ await sb.from('bb_nota_produto').delete().eq('id',el.dataset.del); abreAta(); });
 }
+async function abreExtrato(cod, m){
+  // EXTRATO SEMANAL completo do produto (26 semanas fechadas) + preço novo no topo (mesmo fluxo do Aprovar)
+  let ov=document.getElementById('mcModal');
+  if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
+  ov.className='aclov';
+  ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
+  if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
+  ov.innerHTML='<div class="aclcard" style="width:min(1760px,97vw)"><div class="carregando">Montando extrato semanal…</div></div>';
+  const NW=26;
+  const seg=new Date(); seg.setHours(12,0,0,0); seg.setDate(seg.getDate()-((seg.getDay()+6)%7));
+  const mondays=[]; for(let i=NW;i>=1;i--){ const d=new Date(seg); d.setDate(d.getDate()-7*i); mondays.push(d.toISOString().slice(0,10)); }
+  const ini=mondays[0];
+  const d0=new Date(mondays[0]+'T12:00:00'); d0.setDate(d0.getDate()-62); const ini0=d0.toISOString().slice(0,10);
+  const [vd,cv,ad,pr,es,cu,cc]=await Promise.all([
+    sb.from('fato_vendas_diaria').select('data,qtd,qtd_b2c,val_b2c,lucro_b2c,qtd_ml,val_ml,lucro_ml,qtd_atac,val_atac,lucro_atac').eq('cod',cod).gte('data',ini0).order('data').then(r=>r.data||[]),
+    sb.from('fato_conversao').select('data,views').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
+    sb.from('fato_ads').select('data,custo').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
+    sb.from('fato_precos').select('snapshot,codtab,filial,preco_de,preco_por,preco_real').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
+    sb.from('fato_estoque').select('snapshot,estoque_util').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
+    sb.from('fato_custo').select('snapshot,custo').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
+    sb.from('fato_concorrencia').select('data,cc_avista,cc_b2b').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
+  ]);
+  const wk=d=>{ const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); return dt.toISOString().slice(0,10); };
+  const qtdDia={}; vd.forEach(r=>{ qtdDia[r.data]=+r.qtd||0; });
+  const W={}; mondays.forEach(w=>W[w]={q2:0,v2:0,l2:0,qm:0,q1:0,v1:0,l1:0,lm:0,vw:0,ads:0,saldo:null,de:null,por:null,porReal:null,atacTab:null,mlTab:null,custo:null,ccav:null,ccbb:null});
+  vd.forEach(r=>{ const a=W[wk(r.data)]; if(!a) return;
+    a.q2+=+r.qtd_b2c||0; a.v2+=+r.val_b2c||0; a.l2+=+r.lucro_b2c||0;
+    a.qm+=+r.qtd_ml||0; a.lm+=+r.lucro_ml||0;
+    a.q1+=+r.qtd_atac||0; a.v1+=+r.val_atac||0; a.l1+=+r.lucro_atac||0; });
+  cv.forEach(r=>{ const a=W[wk(r.data)]; if(a) a.vw+=+r.views||0; });
+  ad.forEach(r=>{ const a=W[wk(r.data)]; if(a) a.ads+=+r.custo||0; });
+  es.forEach(r=>{ const a=W[wk(r.snapshot)]; if(a) a.saldo=+r.estoque_util; });
+  cu.forEach(r=>{ const a=W[wk(r.snapshot)]; if(a) a.custo=+r.custo; });
+  cc.forEach(r=>{ const a=W[wk(r.data)]; if(a){ if(r.cc_avista!=null)a.ccav=+r.cc_avista; if(r.cc_b2b!=null)a.ccbb=+r.cc_b2b; } });
+  pr.forEach(r=>{ const a=W[wk(r.snapshot)]; if(!a) return;
+    const f=(r.filial||'').trim();
+    if(r.codtab==='002'&&f==='10'){ a.de=+r.preco_de||null; a.por=+r.preco_por||null; a.porReal=+r.preco_real||null; }
+    else if(r.codtab==='001'){ a.atacTab=+r.preco_real||null; }
+    else if(r.codtab==='401'){ a.mlTab=+r.preco_real||null; } });
+  const giro60=w=>{ const dom=new Date(w+'T12:00:00'); dom.setDate(dom.getDate()+6); let s=0;
+    for(let i=0;i<60;i++){ const d=new Date(dom); d.setDate(d.getDate()-i); s+=qtdDia[d.toISOString().slice(0,10)]||0; } return s/2; };
+  const F={m:v=>v!=null&&isFinite(v)?rf2.format(v):'—', r:v=>v?rf.format(v):'—', n:v=>v?nf.format(Math.round(v)):'—',
+           d1:v=>v!=null&&isFinite(v)?nf1.format(v):'—', p:v=>v!=null&&isFinite(v)?nf1.format(v)+'%':'—'};
+  const corF=x=>x==null?'':x<0?'color:var(--crit);font-weight:700':x<1?'color:var(--warn);font-weight:700':'color:var(--good)';
+  const tdc='padding:5px 8px;white-space:nowrap;font-size:12px;text-align:right;';
+  const linhas=mondays.map(w=>{ const a=W[w];
+    const g=giro60(w), folga=(a.saldo!=null&&g>0)?a.saldo/g:null;
+    const mkup=(a.porReal&&a.custo)?a.porReal/a.custo:null;
+    const prat=a.q2>0?a.v2/a.q2:null, tick=a.q1>0?a.v1/a.q1:null;
+    const conv=a.vw>0?a.q2/a.vw*100:null, roas=a.ads>0?a.v2/a.ads:null;
+    const lucro=a.l2+a.l1+a.lm;
+    return `<tr><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${w.slice(8,10)}/${w.slice(5,7)}</b></td>
+      <td style="${tdc}">${a.saldo!=null?nf.format(a.saldo):'—'}</td>
+      <td style="${tdc}${corF(folga)}">${F.d1(folga)}</td>
+      <td style="${tdc}">${F.m(a.custo)}</td>
+      <td style="${tdc}">${F.d1(mkup)}${mkup?'×':''}</td>
+      <td style="${tdc}">${F.m(a.de)}</td>
+      <td style="${tdc}"><b>${F.m(a.por)}</b></td>
+      <td style="${tdc}">${F.m(a.atacTab)}</td>
+      <td style="${tdc}">${F.m(a.mlTab)}</td>
+      <td style="${tdc}color:var(--muted)">${F.m(a.ccav)}</td>
+      <td style="${tdc}color:var(--muted)">${F.m(a.ccbb)}</td>
+      <td style="${tdc}">${F.n(a.q2)}</td>
+      <td style="${tdc}">${F.m(prat)}</td>
+      <td style="${tdc}">${F.p(conv)}</td>
+      <td style="${tdc}color:var(--ch1)">${F.n(a.vw)}</td>
+      <td style="${tdc}">${F.r(a.ads)}</td>
+      <td style="${tdc}">${F.d1(roas)}</td>
+      <td style="${tdc}">${F.n(a.q1)}</td>
+      <td style="${tdc}">${F.m(tick)}</td>
+      <td style="${tdc}">${F.n(a.qm)}</td>
+      <td style="${tdc}color:var(--ch4)">${F.r(lucro)}</td></tr>`; }).join('');
+  const th=(t,tip)=>`<th style="padding:7px 8px;text-align:right;white-space:nowrap"${tip?` title="${tip}"`:''}>${t}</th>`;
+  const vAt=m?._atacSug??m?.p_atacado, vAv=m?._avistaSug, vDe=m?.p_site_de, vMl=m?._mlSug??m?.p_marketplace;
+  ov.querySelector('.aclcard').innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato semanal — ${NW} semanas fechadas (seg–dom)</span><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
+    <div class="tablecard" style="padding:11px 16px;margin:10px 0 12px">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;font-size:12.5px">
+        <span class="gr" style="align-self:center">Hoje: atacado <b>${F.m(m?.p_atacado)}</b> · DE <b>${F.m(m?.p_site_de)}</b> · PIX <b>${F.m(m?.p_site)}</b> · ML <b>${F.m(m?.p_marketplace)}</b> · custo ${F.m(m?.custo)}</span>
+        <span>Atacado novo<br><input type="number" step="0.01" id="xAtac" value="${vAt!=null?(+vAt).toFixed(2):''}" style="width:92px;text-align:right"></span>
+        <span>DE novo<br><input type="number" step="0.01" id="xDe" value="${vDe!=null?(+vDe).toFixed(2):''}" style="width:92px;text-align:right"></span>
+        <span>À vista novo<br><input type="number" step="0.01" id="xAv" value="${vAv!=null?(+vAv).toFixed(2):''}" style="width:96px;text-align:right;font-weight:600"></span>
+        <span>ML novo<br><input type="number" step="0.01" id="xMl" value="${vMl!=null?(+vMl).toFixed(2):''}" style="width:92px;text-align:right"></span>
+        <button class="btn" id="xAprova" style="padding:7px 18px">✔ OK — aprovar</button>
+        <span class="gr" id="xPor">${vAv?'POR '+rf2.format(vAv/0.95)+(m?.custo?' · mk '+nf1.format(vAv/m.custo)+'×':''):''}</span>
+        <span class="gr" id="xMsg"></span>
+      </div>
+    </div>
+    <div class="tscroll" style="max-height:58vh"><table style="width:auto;min-width:0">
+      <thead><tr><th style="padding:7px 8px;text-align:left;position:sticky;left:0;background:var(--surface);z-index:2">Semana</th>
+        ${th('Saldo','estoque útil no fim da semana (snapshot; histórico desde 15/07/26)')}${th('Folga','saldo ÷ giro 60d÷2 (aprox — total c/ lotões)')}${th('Custo','custo unitário (desde 16/07/26)')}${th('Mkup','POR real ÷ custo')}
+        ${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('POR','preço POR tabela 002')}${th('Atac','tabela 001 (real)')}${th('ML tab','tabela 401')}
+        ${th('BGT av','concorrente à vista B2C (desde 13/06/26)')}${th('BGT B2B','concorrente B2B cash')}
+        ${th('002 7dd','unidades site na semana')}${th('Prat 002','preço praticado site')}${th('Conv','qtd 002 ÷ views')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS','faturado 002 ÷ Ads')}
+        ${th('001 7dd','unidades atacado')}${th('Tick 001','ticket médio atacado')}${th('ML 7dd','unidades Mercado Livre')}${th('Lucro','lucro bruto da semana, todos os canais (campo do BI)')}</tr></thead>
+      <tbody>${linhas}</tbody></table></div>
+    <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom. Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões). Preencha o preço novo em cima e OK — entra na MESMA fila de execução do Aprovar.</p>`;
+  ov.querySelector('#mcX').onclick=()=>ov.remove();
+  const xa=ov.querySelector('#xAv');
+  xa.oninput=()=>{ const v=+xa.value; ov.querySelector('#xPor').textContent=v>0?('POR '+rf2.format(v/0.95)+(m?.custo?' · mk '+nf1.format(v/m.custo)+'×':'')):''; };
+  ov.querySelector('#xAprova').onclick=async()=>{
+    const av=+ov.querySelector('#xAv').value; if(!(av>0)){ ov.querySelector('#xMsg').textContent='informe o preço à vista'; return; }
+    const de=+ov.querySelector('#xDe').value||null, at=+ov.querySelector('#xAtac').value||null, ml=+ov.querySelector('#xMl').value||null;
+    const {data:{user}}=await sb.auth.getUser();
+    const dif=(a,b)=>a!=null&&a>0&&(b==null||Math.abs(a-b)>0.005);
+    const extras=[];
+    if(dif(de,m?.p_site_de)) extras.push('DE '+de.toFixed(2));
+    if(dif(at,m?.p_atacado)) extras.push('atacado '+at.toFixed(2));
+    if(dif(ml,m?.p_marketplace)) extras.push('ML '+ml.toFixed(2));
+    const {error}=await sb.from('acoes_preco').insert({cod, canal:'002', preco_atual:m?.p_site??null, preco_sugerido:+av.toFixed(2),
+      markup_atual:m?.mk_site??null, markup_alvo:m?._alvo??null, diagnostico:'extrato semanal',
+      de_atual:m?.p_site_de??null,     de_sugerido:dif(de,m?.p_site_de)?+de.toFixed(2):null,
+      atac_atual:m?.p_atacado??null,   atac_sugerido:dif(at,m?.p_atacado)?+at.toFixed(2):null,
+      ml_atual:m?.p_marketplace??null, ml_sugerido:dif(ml,m?.p_marketplace)?+ml.toFixed(2):null,
+      aprovado_por:user?.email||'?', obs:'POR a gravar: '+(+(av/0.95).toFixed(2))+' (via extrato semanal)'+(extras.length?' · também: '+extras.join(', '):'')});
+    if(error){ ov.querySelector('#xMsg').textContent='Erro: '+error.message; return; }
+    ov.querySelector('#xMsg').textContent='✅ aprovado — na fila de execução';
+    setTimeout(()=>{ document.getElementById('mcModal')?.remove(); renderSugestoes(); }, 800);
+  };
+}
 async function renderSugestoes(){
   $('#conteudo').innerHTML='<div class="carregando">Montando sugestões…</div>';
   await carregaMarkup();
@@ -1177,7 +1297,7 @@ async function renderSugestoes(){
       const sid=esc(m.cod).replace(/[^A-Za-z0-9]/g,'_');
       const tr=document.createElement('tr');
       tr.innerHTML=`<td style="text-align:center"><input type="checkbox" data-cod="${esc(m.cod)}" ${st.sgSel.has(m.cod)?'checked':''} style="width:16px;height:16px"></td>
-        <td style="text-align:left;white-space:nowrap"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span> <span data-nota="${esc(m.cod)}" title="anotar na ata do dia" style="cursor:pointer;opacity:.65">📝</span> ${st.sgVerRev
+        <td style="text-align:left;white-space:nowrap"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span> <span data-ext="${esc(m.cod)}" title="extrato semanal completo — 26 semanas (saldo, folga, preços, BGT, vendas, conversão, ads, lucro) + preço novo" style="cursor:pointer;opacity:.7">📊</span> <span data-nota="${esc(m.cod)}" title="anotar na ata do dia" style="cursor:pointer;opacity:.65">📝</span> ${st.sgVerRev
           ?`<span data-undorev="${revMap[m.cod]?.id||''}" title="revisado por ${esc(revMap[m.cod]?.aprovado_por||'')} em ${revMap[m.cod]?new Date(revMap[m.cod].criado_em).toLocaleDateString('pt-BR'):''} — clique para DESFAZER (volta pra lista)" style="cursor:pointer;color:var(--warn);font-weight:700">↩</span>`
           :`<span data-rev="${esc(m.cod)}" title="conferi e está OK — sai da lista por 7 dias" style="cursor:pointer;color:var(--good);font-weight:700;opacity:.75">✓</span>`}<br><span class="gr">${esc(m.grupo||'')}</span>${(st.sgVerExec&&execMap[m.cod])?(e=>`<br><span class="gr" style="color:var(--accent)">⚡ ${e.preco_sugerido!=null?rf2.format(e.preco_atual)+'→'+rf2.format(e.preco_sugerido):''}${e.atac_sugerido!=null?' · atac→'+rf2.format(e.atac_sugerido):''}${e.ml_sugerido!=null?' · ml→'+rf2.format(e.ml_sugerido):''} · ${new Date(e.executado_em).toLocaleDateString('pt-BR').slice(0,5)}</span>`)(execMap[m.cod]):''}</td>
         <td><span class="gr">${GERLB[m.geracao]||m.geracao}</span></td>
@@ -1228,6 +1348,7 @@ async function renderSugestoes(){
     document.querySelectorAll('#sgRows .cod[data-mc]').forEach(el=>el.onclick=e=>{e.stopPropagation();abreMC(el.dataset.mc, MB[el.dataset.mc]);});
     document.querySelectorAll('#sgRows [data-ph]').forEach(el=>el.onclick=e=>{e.stopPropagation();const [cod,un]=el.dataset.ph.split('|');abrePreco(cod, un, MB[cod]);});
     document.querySelectorAll('#sgRows [data-nota]').forEach(el=>el.onclick=e=>{e.stopPropagation();abreNota(el.dataset.nota, MB[el.dataset.nota]);});
+    document.querySelectorAll('#sgRows [data-ext]').forEach(el=>el.onclick=e=>{e.stopPropagation();abreExtrato(el.dataset.ext, MB[el.dataset.ext]);});
     document.querySelectorAll('#sgRows [data-rev]').forEach(el=>el.onclick=async e=>{e.stopPropagation();
       const cod=el.dataset.rev, m=MB[cod]||{};
       const {data:{user}}=await sb.auth.getUser();
