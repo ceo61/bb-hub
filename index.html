@@ -1263,9 +1263,11 @@ async function renderSugestoes(){
   if(!st.mcAll){ st.mcAll={}; (await tudo('fato_mc',{select:'cod,un,mc30,mc365,sem1',eq:[]})).forEach(r=>st.mcAll[r.cod+'|'+r.un]=r); }
   if(!st.ccMap){ st.ccMap={}; (await tudo('concorrencia_atual',{select:'cod,data,cc_avista,cc_b2b',eq:[]})).forEach(r=>st.ccMap[r.cod]=r); }
   const {out,medConv}=montaSugestoes();
-  const lista=st.sgVerExec ? out.filter(m=>execMap[m.cod])
-            : st.sgVerRev ? out.filter(m=>revMap[m.cod])
-            : st.sgVerTudo ? out.filter(m=>!pendSet.has(m.cod))
+  const VER=st.sgVer||'avaliar';  // estágio do funil: avaliar | aguardando | revisados | mexidos | tudo
+  const lista=VER==='mexidos' ? out.filter(m=>execMap[m.cod])
+            : VER==='revisados' ? out.filter(m=>revMap[m.cod])
+            : VER==='aguardando' ? out.filter(m=>ocultosMov[m.cod])
+            : VER==='tudo' ? out.filter(m=>!pendSet.has(m.cod))
             : out.filter(m=>!pendSet.has(m.cod)&&!ocultosMov[m.cod]);
   const nAguardando=out.filter(m=>ocultosMov[m.cod]).length;
   const cOut={site:0,atac:0,ml:0}; lista.forEach(m=>{if(m._outS===2)cOut.site++;if(m._outA===2)cOut.atac++;if(m._outM===2)cOut.ml++;});
@@ -1295,9 +1297,13 @@ async function renderSugestoes(){
       <select id="sgG"><option value="">Todos os grupos</option>${[...new Set(lista.map(m=>m.grupo||'—'))].sort().map(g=>`<option ${st.sgG===g?'selected':''} value="${esc(g)}">${esc(g)}</option>`).join('')}</select>
       <select id="sgGer"><option value="">Todas as gerações</option>${GERORD.filter(g=>lista.some(m=>m.geracao===g)).map(g=>`<option ${st.sgGer===g?'selected':''} value="${esc(g)}">${GERLB[g]||g}</option>`).join('')}</select>
       ${[['site','Site'],['atac','Atacado'],['ml','ML']].map(([k,lb])=>`<button class="kpi" data-out="${k}" style="padding:7px 14px;${st.sgOut===k?'border-color:var(--crit);box-shadow:inset 0 0 0 1px var(--crit)':''}"><span style="color:var(--crit)">●</span> ${lb} fora 2σ (${nf.format(cOut[k])})</button>`).join('')}
-      <button class="kpi" id="sgModo" title="🎯 necessários: produto mexido/revisado só volta após 7 dias E +200 views acumuladas desde a movimentação (pouco tráfego = espera juntar amostra); lista ordenada por giro/mês. 👁 tudo: mostra inclusive os aguardando, na ordem por impacto." style="padding:7px 14px;${st.sgVerTudo?'':'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)'}">${st.sgVerTudo?'👁 tudo':'🎯 necessários'} <span class="gr">(${nf.format(nAguardando)} aguardando)</span></button>
-      <button class="kpi" id="sgRev" title="produtos conferidos e marcados OK nos últimos 7 dias; clique para ver e desfazer (a volta à lista segue a regra 7 dias + 200 views)" style="padding:7px 14px;${st.sgVerRev?'border-color:var(--good);box-shadow:inset 0 0 0 1px var(--good)':''}"><span style="color:var(--good)">✓</span> OK 7d (${Object.keys(revMap).length})</button>
-      <button class="kpi" id="sgExecV" title="produtos com preço ALTERADO (executado no ERP) nos últimos 30 dias — clique para ver o de→para" style="padding:7px 14px;${st.sgVerExec?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}"><span style="color:var(--accent)">⚡</span> Mexidos 30d (${Object.keys(execMap).length})</button>
+      <span style="display:inline-flex;border:1px solid var(--hair);border-radius:10px;overflow:hidden;flex:none">${[
+        ['avaliar','🎯 Para avaliar',null,'a fila de trabalho: sem pendência e com evidência suficiente — ordenada por giro/mês'],
+        ['aguardando','⏳ Aguardando',nAguardando,'mexidos/revisados juntando amostra: voltam à fila após 7 dias E +200 views desde a movimentação — cada linha mostra o progresso'],
+        ['revisados','✓ Revisados',Object.keys(revMap).length,'conferidos e marcados OK nos últimos 7 dias — ↩ desfaz'],
+        ['mexidos','⚡ Mexidos 30d',Object.keys(execMap).length,'preço alterado (executado no ERP) nos últimos 30 dias — com de→para e justificativa'],
+        ['tudo','👁 Tudo',null,'lista completa (menos a fila de execução), na ordem por impacto'],
+      ].map(([id,lb,n,tip])=>`<button data-ver="${id}" title="${tip}" style="padding:7px 13px;border:none;border-right:1px solid var(--hair);font-size:12.5px;${VER===id?'background:var(--accent-soft);color:var(--accent);font-weight:700':'background:var(--surface);color:var(--ink2)'}">${lb}${n!=null?' ('+nf.format(n)+')':''}</button>`).join('')}</span>
       <button class="btn" id="sgAprovar">Aprovar selecionados (<span id="sgN">0</span>)</button>
       <button class="kpi" id="sgAta" style="padding:7px 14px" title="suas anotações de análise de hoje">🗒 Ata do dia</button>
       <span class="count" id="sgCount"></span>
@@ -1307,9 +1313,7 @@ async function renderSugestoes(){
       <tbody id="sgRows"></tbody></table></div><button class="more hide" id="sgMore"></button></div>`;
   document.querySelectorAll('.kpi[data-out]').forEach(b=>b.onclick=()=>{st.sgOut=st.sgOut===b.dataset.out?null:b.dataset.out;renderSugestoes();});
   $('#sgAta').onclick=abreAta;
-  $('#sgRev').onclick=()=>{st.sgVerRev=!st.sgVerRev;st.sgVerExec=false;renderSugestoes();};
-  $('#sgExecV').onclick=()=>{st.sgVerExec=!st.sgVerExec;st.sgVerRev=false;renderSugestoes();};
-  $('#sgModo').onclick=()=>{st.sgVerTudo=!st.sgVerTudo;st.sgVerRev=false;st.sgVerExec=false;st.sgShown=150;renderSugestoes();};
+  document.querySelectorAll('button[data-ver]').forEach(b=>b.onclick=()=>{st.sgVer=b.dataset.ver;st.sgShown=150;renderSugestoes();});
   const corOut=l=>l===2?'color:var(--crit);font-weight:800':l===1?'color:var(--lar)':'';
   const desenha=()=>{
     const rows=lista.filter(m=>{
@@ -1325,7 +1329,7 @@ async function renderSugestoes(){
       if(st.sgCol==='cod') return (st.sgDir||1)*String(a.cod).localeCompare(String(b.cod));
       return (st.sgDir||-1)*(((a[st.sgCol]??-1e18))-((b[st.sgCol]??-1e18)));
     });
-    else if(!st.sgVerTudo&&!st.sgVerRev&&!st.sgVerExec) rows.sort((a,b)=>(b._giro||0)-(a._giro||0));  // modo necessários: por giro/mês
+    else if(VER==='avaliar') rows.sort((a,b)=>(b._giro||0)-(a._giro||0));  // fila de trabalho: por giro/mês
     document.querySelectorAll('#conteudo th.ord').forEach(th=>{
       const s=th.querySelector('.seta'); if(s) s.textContent = th.dataset.c===st.sgCol ? (st.sgDir>0?'▲':'▼') : '';
     });
@@ -1349,9 +1353,9 @@ async function renderSugestoes(){
       const sid=esc(m.cod).replace(/[^A-Za-z0-9]/g,'_');
       const tr=document.createElement('tr');
       tr.innerHTML=`<td style="text-align:center"><input type="checkbox" data-cod="${esc(m.cod)}" ${st.sgSel.has(m.cod)?'checked':''} style="width:16px;height:16px"></td>
-        <td style="text-align:left;white-space:nowrap"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span> <span data-ext="${esc(m.cod)}" title="extrato semanal completo — 26 semanas (saldo, folga, preços, BGT, vendas, conversão, ads, lucro) + preço novo" style="cursor:pointer;opacity:.7">📊</span> <span data-nota="${esc(m.cod)}" title="anotar na ata do dia" style="cursor:pointer;opacity:.65">📝</span> ${st.sgVerRev
-          ?`<span data-undorev="${revMap[m.cod]?.id||''}" title="revisado por ${esc(revMap[m.cod]?.aprovado_por||'')} em ${revMap[m.cod]?new Date(revMap[m.cod].criado_em).toLocaleDateString('pt-BR'):''} — clique para DESFAZER (volta pra lista)" style="cursor:pointer;color:var(--warn);font-weight:700">↩</span>`
-          :`<span data-rev="${esc(m.cod)}" title="conferi e está OK — sai da lista por 7 dias" style="cursor:pointer;color:var(--good);font-weight:700;opacity:.75">✓</span>`}<br><span class="gr">${esc(m.grupo||'')}</span>${(st.sgVerExec&&execMap[m.cod])?(e=>`<br><span class="gr" style="color:var(--accent)"${e.justificativa?` title="${esc(e.justificativa)} — ${esc(e.aprovado_por||'')}"`:''}>⚡ ${e.preco_sugerido!=null?rf2.format(e.preco_atual)+'→'+rf2.format(e.preco_sugerido):''}${e.atac_sugerido!=null?' · atac→'+rf2.format(e.atac_sugerido):''}${e.ml_sugerido!=null?' · ml→'+rf2.format(e.ml_sugerido):''} · ${new Date(e.executado_em).toLocaleDateString('pt-BR').slice(0,5)}</span>${e.justificativa?`<br><span class="gr" style="font-style:italic">“${esc(e.justificativa.slice(0,70))}${e.justificativa.length>70?'…':''}”</span>`:''}`)(execMap[m.cod]):''}</td>
+        <td style="text-align:left;white-space:nowrap"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span> <span data-ext="${esc(m.cod)}" title="extrato semanal completo — 26 semanas (saldo, folga, preços, BGT, vendas, conversão, ads, lucro) + preço novo" style="cursor:pointer;opacity:.7">📊</span> <span data-nota="${esc(m.cod)}" title="anotar na ata do dia" style="cursor:pointer;opacity:.65">📝</span> ${VER==='revisados'
+          ?`<span data-undorev="${revMap[m.cod]?.id||''}" title="revisado por ${esc(revMap[m.cod]?.aprovado_por||'')} em ${revMap[m.cod]?new Date(revMap[m.cod].criado_em).toLocaleDateString('pt-BR'):''} — clique para DESFAZER (volta pra fila)" style="cursor:pointer;color:var(--warn);font-weight:700">↩</span>`
+          :`<span data-rev="${esc(m.cod)}" title="conferi e está OK — volta à fila após 7 dias e +200 views" style="cursor:pointer;color:var(--good);font-weight:700;opacity:.75">✓</span>`}<br><span class="gr">${esc(m.grupo||'')}</span>${(VER==='mexidos'&&execMap[m.cod])?(e=>`<br><span class="gr" style="color:var(--accent)"${e.justificativa?` title="${esc(e.justificativa)} — ${esc(e.aprovado_por||'')}"`:''}>⚡ ${e.preco_sugerido!=null?rf2.format(e.preco_atual)+'→'+rf2.format(e.preco_sugerido):''}${e.atac_sugerido!=null?' · atac→'+rf2.format(e.atac_sugerido):''}${e.ml_sugerido!=null?' · ml→'+rf2.format(e.ml_sugerido):''} · ${new Date(e.executado_em).toLocaleDateString('pt-BR').slice(0,5)}</span>${e.justificativa?`<br><span class="gr" style="font-style:italic">“${esc(e.justificativa.slice(0,70))}${e.justificativa.length>70?'…':''}”</span>`:''}`)(execMap[m.cod]):''}${(VER==='aguardando'&&ocultosMov[m.cod])?(r=>{const dias=Math.floor((Date.now()-new Date(r.mov_em).getTime())/864e5);return `<br><span class="gr" style="color:var(--warn)" title="volta à fila quando completar 7 dias E 200 views desde a movimentação">⏳ ${nf.format(r.views_desde)}/200 views · ${nf.format(dias)}/7 dias</span>`;})(ocultosMov[m.cod]):''}</td>
         <td><span class="gr">${GERLB[m.geracao]||m.geracao}</span></td>
         <td>${nf.format(m._saldo||0)}${m._transito?`<br><span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}</td>
         <td>${nf1.format(m._giro)}</td>
