@@ -953,43 +953,48 @@ async function abreMC(cod, m){
 }
 async function abrePreco(cod, un, m){
   // evolução de preço 90d, semanal, por canal: praticado (vendas) × tabela (snapshots fato_precos)
-  const CH={'001':{tab:'001',fil:'01',lb:'Atacado (001)',q:'qtd_atac',v:'val_atac',l:'lucro_atac'},
-            '002':{tab:'002',fil:'10',lb:'Site (002)',q:'qtd_b2c',v:'val_b2c',l:'lucro_b2c'},
-            '005':{tab:'401',fil:'10',lb:'Mercado Livre (005)',q:'qtd_ml',v:'val_ml',l:'lucro_ml'}};
+  const CH={'001':{tab:'001',fil:'01',lb:'Atacado (001)',q:'qtd_atac',v:'val_atac',l:'lucro_atac',cc:'cc_b2b'},
+            '002':{tab:'002',fil:'10',lb:'Site (002)',q:'qtd_b2c',v:'val_b2c',l:'lucro_b2c',cc:'cc_avista'},
+            '005':{tab:'401',fil:'10',lb:'Mercado Livre (005)',q:'qtd_ml',v:'val_ml',l:'lucro_ml',cc:null}};
   const c=CH[un]; if(!c) return;
   const ehSite=un==='002';  // GA4 (views) e Google Ads só existem para o site
   let ov=document.getElementById('mcModal');
   if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
   ov.className='aclov';
-  ov.innerHTML=`<div class="aclcard" style="width:min(${ehSite?1260:1120}px,96vw)"><div class="carregando">Carregando preços…</div></div>`;
+  ov.innerHTML=`<div class="aclcard" style="width:min(${ehSite?1300:(un==='001'?1180:1120)}px,96vw)"><div class="carregando">Carregando preços…</div></div>`;
   ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
   if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
   const ini=new Date(Date.now()-90*86400e3).toISOString().slice(0,10);
-  const [{data:vd},{data:pr},{data:cv},{data:ad}]=await Promise.all([
+  const [{data:vd},{data:pr},{data:cv},{data:ad},{data:ccr}]=await Promise.all([
     sb.from('fato_vendas_diaria').select('data,'+c.q+','+c.v+','+c.l).eq('cod',cod).gte('data',ini).order('data'),
     sb.from('fato_precos').select('snapshot,preco_real').eq('cod',cod).eq('codtab',c.tab).eq('filial',c.fil).gte('snapshot',ini).order('snapshot'),
     ehSite?sb.from('fato_conversao').select('data,views').eq('cod',cod).gte('data',ini).order('data'):Promise.resolve({data:[]}),
     ehSite?sb.from('fato_ads').select('data,custo').eq('cod',cod).gte('data',ini).order('data'):Promise.resolve({data:[]}),
+    c.cc?sb.from('fato_concorrencia').select('data,'+c.cc).eq('cod',cod).gte('data',ini).order('data'):Promise.resolve({data:[]}),
   ]);
   const wk=d=>{ const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); return dt.toISOString().slice(0,10); };
-  const sem={}, novo=()=>({q:0,v:0,l:0,vw:0,ads:0,tab:null});
+  const sem={}, novo=()=>({q:0,v:0,l:0,vw:0,ads:0,tab:null,cc:null});
   (vd||[]).forEach(r=>{ const w=wk(r.data); const a=sem[w]=sem[w]||novo();
     a.q+=(+r[c.q]||0); a.v+=(+r[c.v]||0); a.l+=(+r[c.l]||0); });
   (pr||[]).forEach(r=>{ const w=wk(r.snapshot); (sem[w]=sem[w]||novo()).tab=(+r.preco_real||null); });
   (cv||[]).forEach(r=>{ const w=wk(r.data); (sem[w]=sem[w]||novo()).vw+=(+r.views||0); });
   (ad||[]).forEach(r=>{ const w=wk(r.data); (sem[w]=sem[w]||novo()).ads+=(+r.custo||0); });
+  (ccr||[]).forEach(r=>{ const w=wk(r.data); const v=+r[c.cc]; if(v) (sem[w]=sem[w]||novo()).cc=v; });
   const ws=Object.keys(sem).sort();
   const sPrat=ws.map(w=>[w, sem[w].q>0?sem[w].v/sem[w].q:null]);
   const sTab=ws.map(w=>[w, sem[w].tab]);
-  const temTab=sTab.some(p=>p[1]!=null), temPrat=sPrat.some(p=>p[1]!=null);
-  const vals=[...sPrat,...sTab].map(p=>p[1]).filter(v=>v!=null);
+  const sCc=ws.map(w=>[w, sem[w].cc]);
+  const temTab=sTab.some(p=>p[1]!=null), temPrat=sPrat.some(p=>p[1]!=null), temCc=sCc.some(p=>p[1]!=null);
+  const vals=[...sPrat,...sTab,...sCc].map(p=>p[1]).filter(v=>v!=null);
   let graf='<div class="carregando" style="padding:30px">sem venda nem preço registrado na janela</div>';
   if(vals.length){
     const lo=Math.min(...vals), hi=Math.max(...vals), pad=(hi-lo)||hi||1;
     const dom=[Math.max(0,lo-pad*0.15), hi+pad*0.12];
     graf = (temTab&&temPrat)
-      ? svgDuplo(sPrat,sTab,{W:640,h:260,corA:'var(--ch3)',corB:'var(--ch1)',fmtA:v=>rf2.format(v),fmtB:v=>rf2.format(v),dominioA:dom,dominioB:dom})
-      : svgSerie(temPrat?sPrat:sTab,{W:640,h:260,tipo:'linha',cor:temPrat?'var(--ch3)':'var(--ch1)',fmt:v=>rf2.format(v),zeroBase:false});
+      ? svgDuplo(sPrat,sTab,{W:640,h:260,corA:'var(--ch3)',corB:'var(--ch1)',fmtA:v=>rf2.format(v),fmtB:v=>rf2.format(v),dominioA:dom,dominioB:dom,C:temCc?sCc:null})
+      : (temPrat&&temCc)
+      ? svgDuplo(sPrat,sCc,{W:640,h:260,corA:'var(--ch3)',corB:'var(--muted)',fmtA:v=>rf2.format(v),fmtB:v=>rf2.format(v),dominioA:dom,dominioB:dom})
+      : svgSerie(temPrat?sPrat:(temTab?sTab:sCc),{W:640,h:260,tipo:'linha',cor:temPrat?'var(--ch3)':(temTab?'var(--ch1)':'var(--muted)'),fmt:v=>rf2.format(v),zeroBase:false});
   }
   const ontem=new Date(Date.now()-86400e3).toISOString().slice(0,10);
   const fimSem=w=>{ const dt=new Date(w+'T12:00:00'); dt.setDate(dt.getDate()+6); return dt.toISOString().slice(0,10); };
@@ -1003,6 +1008,7 @@ async function abrePreco(cod, un, m){
     const tdc='padding:6px 10px;white-space:nowrap;font-size:12.5px;';
     return `<tr><td style="${tdc}text-align:left">${w.slice(8,10)}/${w.slice(5,7)}</td>
       <td style="${tdc}text-align:right">${s0.tab!=null?rf2.format(s0.tab):'—'}</td>
+      ${c.cc?`<td style="${tdc}text-align:right;color:var(--muted)">${s0.cc!=null?rf2.format(s0.cc):'—'}</td>`:''}
       <td style="${tdc}"><b>${pm!=null?rf2.format(pm):'—'}</b></td>
       <td style="${tdc}${forte?'color:var(--accent);font-weight:700':''}">${d!=null?(d>0?'+':'')+nf1.format(d)+'%':'—'}</td>
       <td style="${tdc}">${nf.format(s0.q)}</td>
@@ -1013,12 +1019,12 @@ async function abrePreco(cod, un, m){
   }).join('');
   ov.querySelector('.aclcard').innerHTML=`
     <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')}</span><span style="cursor:pointer;font-size:20px" id="mcX">✕</span></div>
-    <p class="gr" style="margin:6px 0 10px"><b>${esc(c.lb)}</b> · evolução de preço — 90 dias, semanal. <span style="color:var(--ch3)">━</span> preço médio <b>praticado</b> (faturado ÷ un da semana) · <span style="color:var(--ch1)">━</span> preço de <b>tabela</b> (snapshot diário; histórico acumula desde 15/07/26) · mesma escala nos dois eixos.</p>
+    <p class="gr" style="margin:6px 0 10px"><b>${esc(c.lb)}</b> · evolução de preço — 90 dias, semanal. <span style="color:var(--ch3)">━</span> preço médio <b>praticado</b> (faturado ÷ un da semana) · <span style="color:var(--ch1)">━</span> preço de <b>tabela</b> (snapshot diário; histórico desde 15/07/26)${c.cc?' · <span style="color:var(--muted)">╌╌</span> <b>concorrente BGT</b> ('+(ehSite?'à vista B2C':'B2B cash')+', coleta ~semanal desde 13/06/26)':''} · mesma escala.</p>
     <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
       <div style="flex:1 1 480px;min-width:0">${graf}</div>
       <div class="tscroll" style="flex:1 1 440px;min-width:0;max-height:320px"><table style="width:auto;min-width:0">
-        <thead><tr><th style="text-align:left;padding:8px 10px">Semana</th><th style="text-align:right;padding:8px 10px">Tabela</th><th style="text-align:right;padding:8px 10px">Praticado</th><th style="text-align:right;padding:8px 10px">Δ prat.</th><th style="text-align:right;padding:8px 10px">Qtd</th><th style="text-align:right;padding:8px 10px">Lucro</th><th style="text-align:right;padding:8px 10px">Marg.</th>${ehSite?'<th style="text-align:right;padding:8px 10px">Views</th><th style="text-align:right;padding:8px 10px">Ads</th>':''}</tr></thead>
-        <tbody>${linhas||`<tr><td colspan="${ehSite?9:7}" class="gr">sem dados</td></tr>`}</tbody></table></div>
+        <thead><tr><th style="text-align:left;padding:8px 10px">Semana</th><th style="text-align:right;padding:8px 10px">Tabela</th>${c.cc?'<th style="text-align:right;padding:8px 10px" title="preço do concorrente (BGT) na semana">BGT</th>':''}<th style="text-align:right;padding:8px 10px">Praticado</th><th style="text-align:right;padding:8px 10px">Δ prat.</th><th style="text-align:right;padding:8px 10px">Qtd</th><th style="text-align:right;padding:8px 10px">Lucro</th><th style="text-align:right;padding:8px 10px">Marg.</th>${ehSite?'<th style="text-align:right;padding:8px 10px">Views</th><th style="text-align:right;padding:8px 10px">Ads</th>':''}</tr></thead>
+        <tbody>${linhas||`<tr><td colspan="${ehSite?10:(c.cc?8:7)}" class="gr">sem dados</td></tr>`}</tbody></table></div>
     </div>
     <p class="gr" style="margin:10px 0 0">Δ prat. = variação do praticado vs semana anterior; <b style="color:var(--accent)">destacado</b> quando ≥3% — provável mudança de preço (ou mix de desconto). Praticado ≠ tabela = desconto/negociação. <span style="color:var(--ch4)">Lucro</span> = campo "Lucro Bruto" do BI (receita − impostos − CMV) no canal; Marg. = lucro ÷ faturado.${ehSite?' <span style="color:var(--ch1)">Views</span> = acessos GA4 · Ads = investimento Google Ads no produto (Shopping/PMax) — lucro caiu com views caindo = tráfego; views estável = preço/conversão.':''} A semana corrente (incompleta) fica fora da tabela.</p>`;
   ov.querySelector('#mcX').onclick=()=>ov.remove();
@@ -1089,6 +1095,7 @@ async function renderSugestoes(){
   const execMap={}; (execs||[]).forEach(r=>{ if(!execMap[r.cod]) execMap[r.cod]=r; });
   const aprA=(pend||[]).filter(a=>a.status==='aprovado'), emExec=(pend||[]).filter(a=>a.status==='executar'), comErro=(pend||[]).filter(a=>a.status==='erro');
   if(!st.mcAll){ st.mcAll={}; (await tudo('fato_mc',{select:'cod,un,mc30,mc365,sem1',eq:[]})).forEach(r=>st.mcAll[r.cod+'|'+r.un]=r); }
+  if(!st.ccMap){ st.ccMap={}; (await tudo('concorrencia_atual',{select:'cod,data,cc_avista,cc_b2b',eq:[]})).forEach(r=>st.ccMap[r.cod]=r); }
   const {out,medConv}=montaSugestoes();
   const lista=st.sgVerExec ? out.filter(m=>execMap[m.cod])
             : st.sgVerRev ? out.filter(m=>revMap[m.cod])
@@ -1180,11 +1187,11 @@ async function renderSugestoes(){
         <td>${m._views?nf.format(m._views):'—'}</td><td>${m._conv!=null?nf1.format(m._conv)+'%':'—'}</td>
         <td>${rf2.format(m.custo)}</td>
         ${mcCell(m.cod,'001')}
-        <td>${m.p_atacado?`<span data-ph="${esc(m.cod)}|001" title="clique: evolução de preço 90d — Atacado" style="cursor:pointer;border-bottom:1px dotted var(--muted);${corOut(m._outA)}">${rf2.format(m.p_atacado)}</span>`:'—'}<br><span class="gr">${m.mk_atacado?'mk '+nf1.format(m.mk_atacado)+'×':''}${m._alvoA?' · alvo '+nf1.format(m._alvoA)+'×':''}</span></td>
+        <td>${m.p_atacado?`<span data-ph="${esc(m.cod)}|001" title="clique: evolução de preço 90d — Atacado" style="cursor:pointer;border-bottom:1px dotted var(--muted);${corOut(m._outA)}">${rf2.format(m.p_atacado)}</span>`:'—'}<br><span class="gr">${m.mk_atacado?'mk '+nf1.format(m.mk_atacado)+'×':''}${m._alvoA?' · alvo '+nf1.format(m._alvoA)+'×':''}</span>${(cc=>cc&&cc.cc_b2b?`<br><span title="concorrente BGT (B2B cash) em ${new Date(cc.data+'T12:00:00').toLocaleDateString('pt-BR')}" style="font-size:11px;font-weight:600;color:${m.p_atacado&&+m.p_atacado>+cc.cc_b2b?'var(--crit)':'var(--good)'}">BGT ${rf2.format(cc.cc_b2b)}</span>`:'')(st.ccMap[m.cod])}</td>
         <td><input type="number" step="0.01" min="0" data-atac="${esc(m.cod)}" value="${vAt!=null?(+vAt).toFixed(2):''}" placeholder="—" style="width:84px;text-align:right"><br><span class="gr" id="mka-${sid}">${vAt?'mk '+nf1.format(vAt/m.custo)+'×':''}</span></td>
         ${mcCell(m.cod,'002')}
         <td>${m.p_site_de?rf2.format(m.p_site_de):'—'}</td>
-        <td><span data-ph="${esc(m.cod)}|002" title="clique: evolução de preço 90d — Site" style="cursor:pointer">${m.p_site_por?rf2.format(m.p_site_por):'—'}<br><b style="border-bottom:1px dotted var(--muted);${corOut(m._outS)}">${rf2.format(m.p_site)}</b> <span class="gr">PIX</span></span><br><span class="gr">mk ${nf1.format(m.mk_site)}× · alvo ${nf1.format(m._alvo)}×</span></td>
+        <td><span data-ph="${esc(m.cod)}|002" title="clique: evolução de preço 90d — Site" style="cursor:pointer">${m.p_site_por?rf2.format(m.p_site_por):'—'}<br><b style="border-bottom:1px dotted var(--muted);${corOut(m._outS)}">${rf2.format(m.p_site)}</b> <span class="gr">PIX</span></span><br><span class="gr">mk ${nf1.format(m.mk_site)}× · alvo ${nf1.format(m._alvo)}×</span>${(cc=>cc&&cc.cc_avista?`<br><span title="concorrente BGT (à vista B2C) em ${new Date(cc.data+'T12:00:00').toLocaleDateString('pt-BR')}" style="font-size:11px;font-weight:600;color:${m.p_site&&+m.p_site>+cc.cc_avista?'var(--crit)':'var(--good)'}">BGT ${rf2.format(cc.cc_avista)}</span>`:'')(st.ccMap[m.cod])}</td>
         <td><input type="number" step="0.01" min="0" data-de="${esc(m.cod)}" value="${vDe!=null?(+vDe).toFixed(2):''}" placeholder="—" style="width:84px;text-align:right"><br><span class="gr">manual</span></td>
         <td><input type="number" step="0.01" min="0" data-preco="${esc(m.cod)}" value="${(st.sgEdit?.[m.cod]??m._avistaSug).toFixed(2)}" style="width:92px;text-align:right;font-weight:600"><br><span class="gr" id="por-${sid}">POR ${rf2.format((st.sgEdit?.[m.cod]??m._avistaSug)/0.95)} · mk ${nf1.format((st.sgEdit?.[m.cod]??m._avistaSug)/m.custo)}×</span></td>
         ${mcCell(m.cod,'005')}
@@ -1327,7 +1334,7 @@ function svgSerie(pts,{h=210,W=640,tipo='area',cor='var(--ch1)',ref=null,fmt=v=>
   }
   return `<svg ${id?`data-hover="${id}" style="width:100%;height:auto;cursor:crosshair"`:'style="width:100%;height:auto"'} viewBox="0 0 ${W} ${h}" role="img">${grid}${area}<path d="${path}" fill="none" stroke="${cor}" stroke-width="2"/>${refl}${eixo}${extra}</svg>`;
 }
-function svgDuplo(A,B,{h=250,W=1320,corA='var(--ch2)',corB='var(--ch3)',ref=null,fmtA=v=>nf1.format(v)+'%',fmtB=v=>rf2.format(v),id=null,dominioA=null,dominioB=null}={}){
+function svgDuplo(A,B,{h=250,W=1320,corA='var(--ch2)',corB='var(--ch3)',ref=null,fmtA=v=>nf1.format(v)+'%',fmtB=v=>rf2.format(v),id=null,dominioA=null,dominioB=null,C=null,corC='var(--muted)'}={}){
   // duas séries no MESMO gráfico, dois eixos (A esq., B dir.)
   const P=48,PR=64;
   const va=A.map(p=>p[1]).filter(v=>v!=null), vb=B.map(p=>p[1]).filter(v=>v!=null);
@@ -1360,7 +1367,8 @@ function svgDuplo(A,B,{h=250,W=1320,corA='var(--ch2)',corB='var(--ch3)',ref=null
     }).filter(Boolean)};
     extra=`<line id="ch-${id}" y1="10" y2="${h-18}" stroke="var(--muted)" stroke-width="1" opacity="0"/><circle id="mk-${id}" r="4" fill="${corA}" stroke="var(--surface)" stroke-width="1.5" opacity="0"/><circle id="mk2-${id}" r="4" fill="${corB}" stroke="var(--surface)" stroke-width="1.5" opacity="0"/>`;
   }
-  return `<svg ${id?`data-hover="${id}" style="width:100%;height:auto;cursor:crosshair"`:'style="width:100%;height:auto"'} viewBox="0 0 ${W} ${h}" role="img">${grid}${refl}<path d="${linha(A,YA)}" fill="none" stroke="${corA}" stroke-width="2"/><path d="${linha(B,YB)}" fill="none" stroke="${corB}" stroke-width="2"/>${eixo}${extra}</svg>`;
+  const pC=(C&&C.some(p=>p[1]!=null))?`<path d="${linha(C,YB)}" fill="none" stroke="${corC}" stroke-width="2" stroke-dasharray="6 4"/>`:'';
+  return `<svg ${id?`data-hover="${id}" style="width:100%;height:auto;cursor:crosshair"`:'style="width:100%;height:auto"'} viewBox="0 0 ${W} ${h}" role="img">${grid}${refl}${pC}<path d="${linha(A,YA)}" fill="none" stroke="${corA}" stroke-width="2"/><path d="${linha(B,YB)}" fill="none" stroke="${corB}" stroke-width="2"/>${eixo}${extra}</svg>`;
 }
 function bindHoverPainel(){
   let tip=document.getElementById('pnTip');
