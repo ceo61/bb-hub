@@ -1318,7 +1318,8 @@ async function renderSugestoes(){
     document.querySelectorAll('#conteudo th.ord').forEach(th=>{
       const s=th.querySelector('.seta'); if(s) s.textContent = th.dataset.c===st.sgCol ? (st.sgDir>0?'▲':'▼') : '';
     });
-    $('#sgCount').textContent=nf.format(rows.length)+' sugestões';
+    const shown=st.sgShown||150;
+    $('#sgCount').textContent=nf.format(rows.length)+' sugestões'+(rows.length>shown?' · exibindo '+nf.format(shown):'');
     const tb=$('#sgRows'); tb.innerHTML='';
     const MB={}; rows.forEach(x=>MB[x.cod]=x);
     const fmtP=p=>p!=null?nf.format(Math.round(p))+'%':'—';
@@ -1332,7 +1333,7 @@ async function renderSugestoes(){
       if(!r) return '<td style="text-align:right"><span class="gr">—</span></td>';
       const p1=mcRel(r.sem1,7,r.mc365), p30=mcRel(r.mc30,30,r.mc365);
       return `<td style="text-align:right;white-space:nowrap;font-size:12px"><span style="${mcCor(p1)}">${fmtP(p1)}</span><br><span style="${mcCor(p30)}">${fmtP(p30)}</span></td>`; };
-    for(const m of rows.slice(0,150)){
+    for(const m of rows.slice(0,shown)){
       const vDe=st.sgDe?.[m.cod]??m.p_site_de, vAt=st.sgAtac?.[m.cod]??m._atacSug??m.p_atacado, vMl=st.sgMl?.[m.cod]??m._mlSug??m.p_marketplace;
       const sid=esc(m.cod).replace(/[^A-Za-z0-9]/g,'_');
       const tr=document.createElement('tr');
@@ -1401,6 +1402,9 @@ async function renderSugestoes(){
       if(!el.dataset.undorev) return;
       await sb.from('acoes_preco').update({status:'rev_desfeita'}).eq('id',el.dataset.undorev);
       renderSugestoes();});
+    const bm=$('#sgMore');
+    if(rows.length>shown){ bm.classList.remove('hide'); bm.textContent='mostrar mais 300 — exibindo '+nf.format(shown)+' de '+nf.format(rows.length); bm.onclick=()=>{st.sgShown=(st.sgShown||150)+300;desenha();}; }
+    else bm.classList.add('hide');
     document.querySelectorAll('#sgRows input[type=checkbox]').forEach(cb=>cb.onchange=()=>{
       cb.checked?st.sgSel.add(cb.dataset.cod):st.sgSel.delete(cb.dataset.cod);
       $('#sgN').textContent=st.sgSel.size;
@@ -1423,9 +1427,9 @@ async function renderSugestoes(){
   });
   clearTimeout(st._sgT);
   if(emExec.length) st._sgT=setTimeout(()=>{ if(st.pg==='sugestoes') renderSugestoes(); },30000);
-  let sgt; $('#sgQ').oninput=e=>{clearTimeout(sgt);sgt=setTimeout(()=>{st.sgQ=e.target.value.trim().toUpperCase();desenha();},200);};
-  $('#sgG').onchange=e=>{st.sgG=e.target.value;desenha();};
-  $('#sgGer').onchange=e=>{st.sgGer=e.target.value;desenha();};
+  let sgt; $('#sgQ').oninput=e=>{clearTimeout(sgt);sgt=setTimeout(()=>{st.sgQ=e.target.value.trim().toUpperCase();st.sgShown=150;desenha();},200);};
+  $('#sgG').onchange=e=>{st.sgG=e.target.value;st.sgShown=150;desenha();};
+  $('#sgGer').onchange=e=>{st.sgGer=e.target.value;st.sgShown=150;desenha();};
   document.querySelectorAll('#conteudo th.ord').forEach(th=>th.onclick=()=>{
     const c=th.dataset.c;
     if(st.sgCol===c) st.sgDir=-st.sgDir;               // 2º clique inverte
