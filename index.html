@@ -774,29 +774,33 @@ async function renderPrecos(){
   const cont={}; for(const m of st.markup) for(const f of m._flags) cont[f]=(cont[f]||0)+1;
   const grupos={}; st.markup.forEach(m=>{const g=m.grupo||'—'; grupos[g]=(grupos[g]||0)+1;});
   const gers={}; st.markup.forEach(m=>{gers[m.geracao]=(gers[m.geracao]||0)+1;});
-  // ===== matriz grupo × geração: markup praticado + checagem de consistência entre estágios =====
-  const mkPop=st.markup.filter(m=>m.mk_site>1&&m.mk_site<15);
+  // ===== matrizes grupo × geração: markup praticado + checagem de consistência entre estágios =====
   const med=v=>{const s=[...v].sort((a,b)=>a-b);return s[Math.floor(s.length/2)];};
   const qq=(v,p)=>{const s=[...v].sort((a,b)=>a-b);return s[Math.floor((s.length-1)*p)];};
-  const porGG={};
-  mkPop.forEach(m=>{const g=m.grupo||'—'; (porGG[g]=porGG[g]||{}); (porGG[g][m.geracao]=porGG[g][m.geracao]||[]).push(+m.mk_site);});
-  const celula=(linha,ger,idx)=>{
-    const v=linha[ger]||[];
-    if(v.length<5) return '<td style="text-align:right;padding:7px 10px;color:var(--muted)">—</td>';
-    const m0=med(v);
-    const refGer=['no pico','crescendo','rampa'].find(x=>linha[x]&&linha[x].length>=5);
-    const ref=refGer?med(linha[refGer]):null;
-    const inc=idx>=3&&ref!=null&&m0>ref*1.05;  // estágio tardio acima do auge do grupo = inconsistência
-    const tip=`mediana ${nf1.format(m0)}× · p25–p75 ${nf1.format(qq(v,.25))}–${nf1.format(qq(v,.75))} · ${v.length} produtos`+(inc?` · ⚠ ACIMA do auge do grupo (${GERLB[refGer]} ${nf1.format(ref)}×) — inconsistência a revisar`:'');
-    return `<td title="${tip}" style="text-align:right;padding:7px 10px;${inc?'background:var(--warn-soft);color:var(--warn);font-weight:700':''}"><b>${nf1.format(m0)}×</b><br><span class="gr">${v.length}</span></td>`;
-  };
-  const gruposM=Object.entries(porGG).map(([g,l])=>[g,Object.values(l).reduce((s,v)=>s+v.length,0)]).filter(([,n])=>n>=10).sort((a,b)=>b[1]-a[1]);
-  const linhaTodos={}; mkPop.forEach(m=>{(linhaTodos[m.geracao]=linhaTodos[m.geracao]||[]).push(+m.mk_site);});
-  const matrizHtml=`<div class="tablecard" style="margin:0 0 14px"><div class="tscroll"><table style="width:auto;min-width:0">
-    <thead><tr><th style="text-align:left;padding:8px 12px">Markup praticado — mediana × nº produtos<br><span class="gr">site à vista ÷ custo · passe o mouse p/ p25–p75</span></th>${GERORD.map(g=>`<th style="text-align:right;padding:8px 10px">${GERLB[g]}</th>`).join('')}</tr></thead>
-    <tbody><tr style="border-bottom:1px solid var(--hair)"><td style="text-align:left;padding:7px 12px"><b>TODOS</b> <span class="gr">${mkPop.length}</span></td>${GERORD.map((g,i)=>celula(linhaTodos,g,i)).join('')}</tr>
+  const matrizDe=(campo,titulo,sub)=>{
+    const pop=st.markup.filter(m=>m[campo]>1&&m[campo]<15);
+    const porGG={};
+    pop.forEach(m=>{const g=m.grupo||'—'; (porGG[g]=porGG[g]||{}); (porGG[g][m.geracao]=porGG[g][m.geracao]||[]).push(+m[campo]);});
+    const celula=(linha,ger,idx)=>{
+      const v=linha[ger]||[];
+      if(v.length<5) return '<td style="text-align:right;padding:7px 10px;color:var(--muted)">—</td>';
+      const m0=med(v);
+      const refGer=['no pico','crescendo','rampa'].find(x=>linha[x]&&linha[x].length>=5);
+      const ref=refGer?med(linha[refGer]):null;
+      const inc=idx>=3&&ref!=null&&m0>ref*1.05;  // estágio tardio acima do auge do grupo = inconsistência
+      const tip=`mediana ${nf1.format(m0)}× · p25–p75 ${nf1.format(qq(v,.25))}–${nf1.format(qq(v,.75))} · ${v.length} produtos`+(inc?` · ⚠ ACIMA do auge do grupo (${GERLB[refGer]} ${nf1.format(ref)}×) — inconsistência a revisar`:'');
+      return `<td title="${tip}" style="text-align:right;padding:7px 10px;${inc?'background:var(--warn-soft);color:var(--warn);font-weight:700':''}"><b>${nf1.format(m0)}×</b><br><span class="gr">${v.length}</span></td>`;
+    };
+    const gruposM=Object.entries(porGG).map(([g,l])=>[g,Object.values(l).reduce((s,v)=>s+v.length,0)]).filter(([,n])=>n>=10).sort((a,b)=>b[1]-a[1]);
+    const linhaTodos={}; pop.forEach(m=>{(linhaTodos[m.geracao]=linhaTodos[m.geracao]||[]).push(+m[campo]);});
+    return `<div class="tablecard" style="margin:0 0 14px"><div class="tscroll"><table style="width:auto;min-width:0">
+    <thead><tr><th style="text-align:left;padding:8px 12px">${titulo}<br><span class="gr">${sub} · passe o mouse p/ p25–p75</span></th>${GERORD.map(g=>`<th style="text-align:right;padding:8px 10px">${GERLB[g]}</th>`).join('')}</tr></thead>
+    <tbody><tr style="border-bottom:1px solid var(--hair)"><td style="text-align:left;padding:7px 12px"><b>TODOS</b> <span class="gr">${pop.length}</span></td>${GERORD.map((g,i)=>celula(linhaTodos,g,i)).join('')}</tr>
     ${gruposM.map(([g,n])=>`<tr><td style="text-align:left;padding:7px 12px"><b>${esc(g)}</b> <span class="gr">${n}</span></td>${GERORD.map((ger,i)=>celula(porGG[g],ger,i)).join('')}</tr>`).join('')}</tbody></table></div>
     <p class="gr" style="padding:2px 14px 10px;margin:0">⚠ âmbar = estágio TARDIO (declínio em diante) com markup acima do auge do próprio grupo (rampa/crescendo/no pico) — deveria haver consistência decrescente ao longo do ciclo de vida. População: markup entre 1× e 15×; célula exige ≥5 produtos.</p></div>`;
+  };
+  const matrizHtml=matrizDe('mk_site','Markup praticado — SITE (002) · mediana × nº produtos','site à vista ÷ custo')
+                  +matrizDe('mk_atacado','Markup praticado — ATACADO (001) · mediana × nº produtos','preço atacado ÷ custo');
   $('#conteudo').innerHTML = `
     <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Markup = preço ÷ custo médio da importadora (0101) · site à vista (−5%) · <b>ML sobre o líquido</b> (preço −16% comissão −R$ 20 frete). Geração = posição na curva de maturação (rampa · crescendo · no pico · declínio · cauda · novo parado · morto). "Fora da curva" compara com a mediana do <b>grupo × geração</b>.</p>
     ${matrizHtml}
