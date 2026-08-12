@@ -1123,8 +1123,9 @@ async function abreAta(){
   if(bc) bc.onclick=()=>{ navigator.clipboard.writeText(`ATA ${new Date().toLocaleDateString('pt-BR')} — ${user.email}\n`+rows.map(r=>`${hh(r.criado_em)} · ${r.cod} · ${r.texto}`).join('\n')); bc.textContent='copiado ✓'; };
   ov.querySelectorAll('[data-del]').forEach(el=>el.onclick=async()=>{ await sb.from('bb_nota_produto').delete().eq('id',el.dataset.del); abreAta(); });
 }
-async function abreExtrato(cod, m){
-  // EXTRATO SEMANAL completo do produto (26 semanas fechadas) + preço novo no topo (mesmo fluxo do Aprovar)
+async function abreExtrato(cod, m, acao){
+  // EXTRATO SEMANAL completo do produto (26 semanas fechadas) + preço novo no topo (mesmo fluxo do Aprovar).
+  // Com `acao` (vindo da página Aprovações): topo vira DISPLAY fiel da sugestão do analista — sem inputs.
   let ov=document.getElementById('mcModal');
   if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
   ov.className='aclov';
@@ -1205,17 +1206,39 @@ async function abreExtrato(cod, m){
       <td style="${tdc}">${F.d1(mkM)}${mkM?'×':''}</td></tr>`; }).join('');
   const th=(t,tip,sep)=>`<th style="padding:6px 8px;text-align:right;white-space:nowrap;top:29px;${sep?'border-left:2px solid var(--hair);':''}"${tip?` title="${tip}"`:''}>${t}</th>`;
   const vAt=m?._atacSug??m?.p_atacado, vAv=m?._avistaSug, vDe=m?.p_site_de, vMl=m?._mlSug??m?.p_marketplace;
+  const C0=+m?.custo||0, alvoA=m?._alvoA, alvoS=m?._alvo, alvoM=m?._alvoM;
+  const hint=(v,alvo,liq)=>{ const alvoTx=alvo?'alvo '+nf1.format(alvo)+'×':'';
+    if(!(v>0)||!C0) return alvoTx;
+    const mk=liq?(v*0.84-20)/C0:v/C0;
+    return 'mk '+nf1.format(mk)+'×'+(alvoTx?' · '+alvoTx:''); };
+  const pillGer=`<span title="geração = posição na curva de maturação (vida toda): nível vs pico histórico e quando ele aconteceu" style="align-self:center;flex:none;background:var(--accent-soft);color:var(--accent);font-weight:700;padding:7px 16px;border-radius:99px;font-size:13.5px;letter-spacing:.02em">${esc(GERLB[m?.geracao]||m?.geracao||'—')}${m?.nivel_pico!=null?`<span style="font-weight:500;opacity:.85"> · ${Math.round(m.nivel_pico*100)}% do pico${m.pico_ha>0?` · auge há ${m.pico_ha}m`:' · auge AGORA'}</span>`:''}</span>`;
+  let topoHtml;
+  if(acao){
+    const roCh=(rot,atual,novo,alvo,liq,pref)=>{
+      const h=hint(+(novo??atual)||0, alvo, liq);
+      return `<span>${rot}<br><span style="font-size:14.5px">${atual!=null?rf2.format(atual):'—'}${novo!=null?` → <b>${rf2.format(novo)}</b>`:' <span class="gr">mantém</span>'}</span><br><span class="gr">${novo!=null?(pref||'')+'fica ':'hoje: '}${h||'—'}</span></span>`;
+    };
+    const stLb={aprovado:'🕐 aguardando SUA revisão',executar:'🔄 em aplicação no ERP',erro:'⚠️ erro na aplicação',executado:'✅ aplicada',cancelado:'✖ devolvida'}[acao.status]||acao.status;
+    topoHtml=`${pillGer}
+      ${roCh('Atacado', m?.p_atacado, acao.atac_sugerido, alvoA)}
+      ${roCh('DE', m?.p_site_de, acao.de_sugerido, null)}
+      ${roCh('À vista (PIX)', m?.p_site, acao.preco_sugerido, alvoS, false, acao.preco_sugerido?('POR '+rf2.format(acao.preco_sugerido/0.95)+' · '):'')}
+      ${roCh('ML', m?.p_marketplace, acao.ml_sugerido, alvoM, true)}
+      <span style="flex:1 1 300px;min-width:240px">Justificativa<br><span style="font-size:13.5px;color:var(--ink)">“${esc(acao.justificativa||'sem justificativa (fluxo antigo)')}”</span><br><span class="gr">${esc((acao.aprovado_por||'?').split('@')[0])} · ${new Date(acao.criado_em).toLocaleDateString('pt-BR')} ${new Date(acao.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} · ${stLb}</span></span>`;
+  } else {
+    topoHtml=`${pillGer}
+      <span>Atacado novo<br><input type="number" step="0.01" id="xAtac" value="${vAt!=null?(+vAt).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr" id="xMkA"></span></span>
+      <span>DE novo<br><input type="number" step="0.01" id="xDe" value="${vDe!=null?(+vDe).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr">manual</span></span>
+      <span>À vista novo (PIX)<br><input type="number" step="0.01" id="xAv" value="${vAv!=null?(+vAv).toFixed(2):''}" style="width:100px;text-align:right;font-weight:600"><br><span class="gr" id="xPor"></span></span>
+      <span>ML novo<br><input type="number" step="0.01" id="xMl" value="${vMl!=null?(+vMl).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr" id="xMkM"></span></span>
+      <span style="flex:1 1 320px;min-width:240px">Justificativa <span class="gr">(fica no histórico do produto)</span><br><input type="text" id="xJust" maxlength="300" placeholder="por que está mudando? ex.: BGT 8% abaixo e conversão caindo há 3 semanas" style="width:100%"><br><span class="gr" id="xMsg"></span></span>
+      <button class="btn" id="xAprova" style="padding:7px 18px;flex:none">✔ OK — aprovar</button>`;
+  }
   ov.querySelector('.aclcard').innerHTML=`
     <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato semanal — ${NW} semanas fechadas (seg–dom)</span><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
     <div class="tablecard" style="padding:11px 16px;margin:10px 0 12px">
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;font-size:12.5px">
-        <span title="geração = posição na curva de maturação (vida toda): nível vs pico histórico e quando ele aconteceu" style="align-self:center;flex:none;background:var(--accent-soft);color:var(--accent);font-weight:700;padding:7px 16px;border-radius:99px;font-size:13.5px;letter-spacing:.02em">${esc(GERLB[m?.geracao]||m?.geracao||'—')}${m?.nivel_pico!=null?`<span style="font-weight:500;opacity:.85"> · ${Math.round(m.nivel_pico*100)}% do pico${m.pico_ha>0?` · auge há ${m.pico_ha}m`:' · auge AGORA'}</span>`:''}</span>
-        <span>Atacado novo<br><input type="number" step="0.01" id="xAtac" value="${vAt!=null?(+vAt).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr" id="xMkA"></span></span>
-        <span>DE novo<br><input type="number" step="0.01" id="xDe" value="${vDe!=null?(+vDe).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr">manual</span></span>
-        <span>À vista novo (PIX)<br><input type="number" step="0.01" id="xAv" value="${vAv!=null?(+vAv).toFixed(2):''}" style="width:100px;text-align:right;font-weight:600"><br><span class="gr" id="xPor"></span></span>
-        <span>ML novo<br><input type="number" step="0.01" id="xMl" value="${vMl!=null?(+vMl).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr" id="xMkM"></span></span>
-        <span style="flex:1 1 320px;min-width:240px">Justificativa <span class="gr">(fica no histórico do produto)</span><br><input type="text" id="xJust" maxlength="300" placeholder="por que está mudando? ex.: BGT 8% abaixo e conversão caindo há 3 semanas" style="width:100%"><br><span class="gr" id="xMsg"></span></span>
-        <button class="btn" id="xAprova" style="padding:7px 18px;flex:none">✔ OK — aprovar</button>
+        ${topoHtml}
       </div>
     </div>
     <div class="tscroll" style="max-height:58vh"><table style="width:auto;min-width:0">
@@ -1242,19 +1265,15 @@ async function abreExtrato(cod, m){
                    h.de_sugerido!=null?('DE→'+rf2.format(h.de_sugerido)):null].filter(Boolean).join(' · ');
         return `<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><span class="gr" style="flex:none">${dt}</span>${badge}<span class="gr" style="flex:none">${esc((h.aprovado_por||'').split('@')[0])}</span><span style="flex:none">${mud}</span>${h.justificativa?`<span style="flex:1;color:var(--ink2)">“${esc(h.justificativa)}”</span>`:''}</div>`;
       }).join('')}</div></div>`:''}
-    <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom. Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões). Preencha o preço novo em cima, JUSTIFIQUE e OK — entra na MESMA fila de execução do Aprovar.</p>`;
+    <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom. Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões). ${acao?'Topo = a sugestão do analista exatamente como registrada (era → fica, markup resultante e alvo que ele viu); aplicar/devolver é na página Aprovações.':'Preencha o preço novo em cima, JUSTIFIQUE e OK — entra na MESMA fila de execução do Aprovar.'}</p>`;
   ov.querySelector('#mcX').onclick=()=>ov.remove();
-  const C0=+m?.custo||0, alvoA=m?._alvoA, alvoS=m?._alvo, alvoM=m?._alvoM;
-  const hint=(v,alvo,liq)=>{ const alvoTx=alvo?'alvo '+nf1.format(alvo)+'×':'';
-    if(!(v>0)||!C0) return alvoTx;
-    const mk=liq?(v*0.84-20)/C0:v/C0;
-    return 'fica mk '+nf1.format(mk)+'×'+(alvoTx?' · '+alvoTx:''); };
+  if(!acao){
   const xAt=ov.querySelector('#xAtac'), xDe=ov.querySelector('#xDe'), xa=ov.querySelector('#xAv'), xMl2=ov.querySelector('#xMl');
   const atualiza=()=>{
-    ov.querySelector('#xMkA').textContent=hint(+xAt.value, alvoA);
+    ov.querySelector('#xMkA').textContent=(+xAt.value>0?'fica ':'')+hint(+xAt.value, alvoA);
     const v=+xa.value;
-    ov.querySelector('#xPor').textContent=(v>0?'POR '+rf2.format(v/0.95)+' · ':'')+hint(v, alvoS);
-    ov.querySelector('#xMkM').textContent=hint(+xMl2.value, alvoM, true);
+    ov.querySelector('#xPor').textContent=(v>0?'POR '+rf2.format(v/0.95)+' · fica ':'')+hint(v, alvoS);
+    ov.querySelector('#xMkM').textContent=(+xMl2.value>0?'fica ':'')+hint(+xMl2.value, alvoM, true);
   };
   [xAt,xa,xMl2].forEach(i=>i.oninput=atualiza); atualiza();
   ov.querySelector('#xAprova').onclick=async()=>{
@@ -1282,6 +1301,7 @@ async function abreExtrato(cod, m){
     ov.querySelector('#xMsg').textContent='✅ aprovado ('+[chAv&&'site',chDe&&'DE',chAt&&'atacado',chMl&&'ML'].filter(Boolean).join(', ')+') — na fila de execução';
     setTimeout(()=>{ document.getElementById('mcModal')?.remove(); renderSugestoes(); }, 900);
   };
+  }
 }
 async function renderAprovacoes(){
   // etapa de REVISÃO FINAL: relatório das sugestões dos analistas antes de aplicar no ERP
@@ -1319,7 +1339,7 @@ async function renderAprovacoes(){
         <td style="${tdc}text-align:center"><input type="checkbox" data-apid="${a.id}" ${st.apSel.has(a.id)?'checked':''} style="width:16px;height:16px"></td>
         <td style="${tdc}white-space:nowrap">${dh(a.criado_em)}</td>
         <td style="${tdc}">${quem(a.aprovado_por)}</td>
-        <td style="${tdc}"><span class="cod" data-apx="${esc(a.cod)}" title="abrir extrato semanal completo" style="cursor:pointer;border-bottom:1px dotted var(--muted)">${esc(a.cod)}</span><br><span class="gr">${esc((m?.descricao||'').slice(0,34))}${m?.grupo?' · '+esc(m.grupo):''}</span></td>
+        <td style="${tdc}"><span class="cod" data-apx="${esc(a.cod)}" data-apiid="${a.id}" title="abrir extrato completo com a sugestão do analista como ele viu" style="cursor:pointer;border-bottom:1px dotted var(--muted)">${esc(a.cod)}</span><br><span class="gr">${esc((m?.descricao||'').slice(0,34))}${m?.grupo?' · '+esc(m.grupo):''}</span></td>
         <td style="${tdc}">${mud(a)}</td>
         <td style="${tdc};max-width:300px">${a.justificativa?`“${esc(a.justificativa)}”`:'<span class="gr">sem justificativa (fluxo antigo)</span>'}</td>
         <td style="${tdc}"><span class="gr">${esc(a.diagnostico||'—')}</span></td>
@@ -1331,7 +1351,7 @@ async function renderAprovacoes(){
     ${comErro.length?`<div class="banner" style="margin-top:14px;background:var(--crit-soft);color:var(--crit)">⚠️ <b>${comErro.length} com erro:</b> ${comErro.map(a=>`<div style="font-weight:400;font-size:12.5px;margin-top:4px"><b>${esc(a.cod)}</b> <span style="opacity:.8">${esc((a.obs||'').slice(-100))}</span> ${st.admin?`<button data-apre="${a.id}" style="border:1px solid var(--hair);border-radius:6px;padding:2px 10px;margin-left:8px">tentar de novo</button><button data-apnao="${a.id}" style="border:1px solid var(--hair);border-radius:6px;padding:2px 10px;margin-left:6px">cancelar</button>`:''}</div>`).join('')}</div>`:''}
     ${(feitas||[]).length?`<div class="tablecard" style="margin-top:14px;padding:12px 16px"><div class="eyebrow" style="margin-bottom:7px">✅ Aplicadas nas últimas 48h</div>
       <div style="display:grid;gap:5px;font-size:12.5px">${feitas.map(a=>`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:baseline"><span class="gr">${dh(a.executado_em)}</span><b>${esc(a.cod)}</b><span>${mud(a)}</span><span class="gr">${quem(a.aprovado_por)}</span>${a.justificativa?`<span style="flex:1;color:var(--ink2)">“${esc(a.justificativa)}”</span>`:''}</div>`).join('')}</div></div>`:''}`;
-  document.querySelectorAll('[data-apx]').forEach(el=>el.onclick=()=>abreExtrato(el.dataset.apx, MB[el.dataset.apx]));
+  document.querySelectorAll('[data-apx]').forEach(el=>el.onclick=()=>abreExtrato(el.dataset.apx, MB[el.dataset.apx], aprA.find(x=>x.id===+el.dataset.apiid)||null));
   const atFila=()=>{const n=document.getElementById('apN'); if(n) n.textContent=st.apSel.size;};
   document.querySelectorAll('input[data-apid]').forEach(cb=>cb.onchange=()=>{ cb.checked?st.apSel.add(+cb.dataset.apid):st.apSel.delete(+cb.dataset.apid); atFila(); });
   const tAll=document.getElementById('apTodos');
