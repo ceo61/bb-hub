@@ -236,6 +236,7 @@ th.ord .seta{font-size:9px;margin-left:3px}
     <a href="#skus" data-pg="skus">🧩 SKUs</a>
     <div class="navsec">Gestão</div>
     <a href="#sugestoes" data-pg="sugestoes">🎛️ CTRL ONLINE</a>
+    <a href="#aprovacoes" data-pg="aprovacoes">🔍 Aprovações</a>
     <a href="#precos" data-pg="precos">🏷️ Preços — Markup</a>
     <a href="#radar" data-pg="radar">📡 Radar</a>
     <a href="#produtos" data-pg="produtos">📦 Produtos</a>
@@ -475,7 +476,7 @@ $('#semaforo').onclick = ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', painel:'Painel do produto', skus:'SKUs', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', painel:'Painel do produto', skus:'SKUs', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -491,6 +492,7 @@ function navega(pg){
   else if(pg==='compras') renderCompras();
   else if(pg==='precos') renderPrecos();
   else if(pg==='sugestoes') renderSugestoes();
+  else if(pg==='aprovacoes') renderAprovacoes();
   else if(pg==='painel') renderPainel();
   else if(pg==='skus') renderSkus();
   else if(pg==='config') renderConfig();
@@ -1281,6 +1283,86 @@ async function abreExtrato(cod, m){
     setTimeout(()=>{ document.getElementById('mcModal')?.remove(); renderSugestoes(); }, 900);
   };
 }
+async function renderAprovacoes(){
+  // etapa de REVISÃO FINAL: relatório das sugestões dos analistas antes de aplicar no ERP
+  $('#conteudo').innerHTML='<div class="carregando">Carregando fila de aprovações…</div>';
+  await carregaMarkup();
+  const MB={}; st.markup.forEach(m=>{ if(!MB[m.cod]) MB[m.cod]=m; });
+  const [{data:pend},{data:feitas}]=await Promise.all([
+    sb.from('acoes_preco').select('*').in('status',['aprovado','executar','erro']).order('criado_em',{ascending:false}),
+    sb.from('acoes_preco').select('*').eq('status','executado').gte('executado_em',new Date(Date.now()-48*3600e3).toISOString()).order('executado_em',{ascending:false}),
+  ]);
+  const aprA=(pend||[]).filter(a=>a.status==='aprovado'), emExec=(pend||[]).filter(a=>a.status==='executar'), comErro=(pend||[]).filter(a=>a.status==='erro');
+  st.apSel=st.apSel||new Set();
+  for(const id of [...st.apSel]) if(!aprA.some(a=>a.id===id)) st.apSel.delete(id);
+  const dh=t=>{const d=new Date(t);return d.toLocaleDateString('pt-BR').slice(0,5)+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});};
+  const quem=e=>esc((e||'?').split('@')[0]);
+  const mud=a=>{
+    const p=[];
+    if(a.preco_sugerido!=null) p.push(`<b>site</b> ${a.preco_atual!=null?rf2.format(a.preco_atual):'—'} → <b>${rf2.format(a.preco_sugerido)}</b> <span class="gr">à vista · POR ${rf2.format(a.preco_sugerido/0.95)}</span>`);
+    if(a.de_sugerido!=null) p.push(`<b>DE</b> ${a.de_atual!=null?rf2.format(a.de_atual):'—'} → <b>${rf2.format(a.de_sugerido)}</b>`);
+    if(a.atac_sugerido!=null) p.push(`<b>atacado</b> ${a.atac_atual!=null?rf2.format(a.atac_atual):'—'} → <b>${rf2.format(a.atac_sugerido)}</b>`);
+    if(a.ml_sugerido!=null) p.push(`<b>ML</b> ${a.ml_atual!=null?rf2.format(a.ml_atual):'—'} → <b>${rf2.format(a.ml_sugerido)}</b>`);
+    return p.join('<br>')||'<span class="gr">—</span>';
+  };
+  const tdc='padding:9px 10px;vertical-align:top;text-align:left;white-space:normal;';
+  $('#conteudo').innerHTML=`
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Segunda etapa de conferência: o que os analistas aprovaram <b>só vai pro ERP depois do OK daqui</b>. Clique no código do produto para o extrato completo (curvas, MC, concorrente, histórico) antes de decidir. Aplicar move para a fila do executor (roda a cada 2 min); devolver cancela com motivo — o analista vê no histórico do produto.</p>
+    ${aprA.length?`<div class="toolbar">
+      <label style="display:flex;align-items:center;gap:7px;font-size:12.5px"><input type="checkbox" id="apTodos" style="width:16px;height:16px"> selecionar todas</label>
+      ${st.admin?`<button class="btn" id="apAplica">✔ Aplicar selecionadas (<span id="apN">${st.apSel.size}</span>)</button>`:'<span class="gr">aplicação restrita ao administrador</span>'}
+      <span class="count">${aprA.length} aguardando revisão</span>
+    </div>
+    <div class="tablecard"><div class="tscroll"><table style="min-width:1000px">
+      <thead><tr><th style="width:34px"></th><th style="text-align:left">Quando</th><th style="text-align:left">Analista</th><th style="text-align:left">Produto</th><th style="text-align:left">Mudança (era → fica)</th><th style="text-align:left">Justificativa</th><th style="text-align:left">Origem</th>${st.admin?'<th></th>':''}</tr></thead>
+      <tbody>${aprA.map(a=>{const m=MB[a.cod];return `<tr>
+        <td style="${tdc}text-align:center"><input type="checkbox" data-apid="${a.id}" ${st.apSel.has(a.id)?'checked':''} style="width:16px;height:16px"></td>
+        <td style="${tdc}white-space:nowrap">${dh(a.criado_em)}</td>
+        <td style="${tdc}">${quem(a.aprovado_por)}</td>
+        <td style="${tdc}"><span class="cod" data-apx="${esc(a.cod)}" title="abrir extrato semanal completo" style="cursor:pointer;border-bottom:1px dotted var(--muted)">${esc(a.cod)}</span><br><span class="gr">${esc((m?.descricao||'').slice(0,34))}${m?.grupo?' · '+esc(m.grupo):''}</span></td>
+        <td style="${tdc}">${mud(a)}</td>
+        <td style="${tdc};max-width:300px">${a.justificativa?`“${esc(a.justificativa)}”`:'<span class="gr">sem justificativa (fluxo antigo)</span>'}</td>
+        <td style="${tdc}"><span class="gr">${esc(a.diagnostico||'—')}</span></td>
+        ${st.admin?`<td style="${tdc}white-space:nowrap"><button data-apok="${a.id}" title="aplicar SÓ esta no ERP" style="color:var(--good);font-weight:700;border:1px solid var(--hair);border-radius:6px;padding:3px 12px">✔</button>
+          <button data-apnao="${a.id}" title="devolver (cancela com motivo)" style="color:var(--crit);font-weight:700;border:1px solid var(--hair);border-radius:6px;padding:3px 12px">✖</button></td>`:''}
+      </tr>`;}).join('')}</tbody></table></div></div>`
+    :'<div class="banner" style="background:var(--good-soft);color:var(--good)">✅ Nenhuma sugestão aguardando revisão.</div>'}
+    ${emExec.length?`<div class="banner ambar" style="margin-top:14px">🔄 <b>${emExec.length} em aplicação no ERP</b> (executor roda a cada 2 min — esta tela atualiza sozinha): ${emExec.map(a=>`<b>${esc(a.cod)}</b>`).join(', ')}</div>`:''}
+    ${comErro.length?`<div class="banner" style="margin-top:14px;background:var(--crit-soft);color:var(--crit)">⚠️ <b>${comErro.length} com erro:</b> ${comErro.map(a=>`<div style="font-weight:400;font-size:12.5px;margin-top:4px"><b>${esc(a.cod)}</b> <span style="opacity:.8">${esc((a.obs||'').slice(-100))}</span> ${st.admin?`<button data-apre="${a.id}" style="border:1px solid var(--hair);border-radius:6px;padding:2px 10px;margin-left:8px">tentar de novo</button><button data-apnao="${a.id}" style="border:1px solid var(--hair);border-radius:6px;padding:2px 10px;margin-left:6px">cancelar</button>`:''}</div>`).join('')}</div>`:''}
+    ${(feitas||[]).length?`<div class="tablecard" style="margin-top:14px;padding:12px 16px"><div class="eyebrow" style="margin-bottom:7px">✅ Aplicadas nas últimas 48h</div>
+      <div style="display:grid;gap:5px;font-size:12.5px">${feitas.map(a=>`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:baseline"><span class="gr">${dh(a.executado_em)}</span><b>${esc(a.cod)}</b><span>${mud(a)}</span><span class="gr">${quem(a.aprovado_por)}</span>${a.justificativa?`<span style="flex:1;color:var(--ink2)">“${esc(a.justificativa)}”</span>`:''}</div>`).join('')}</div></div>`:''}`;
+  document.querySelectorAll('[data-apx]').forEach(el=>el.onclick=()=>abreExtrato(el.dataset.apx, MB[el.dataset.apx]));
+  const atFila=()=>{const n=document.getElementById('apN'); if(n) n.textContent=st.apSel.size;};
+  document.querySelectorAll('input[data-apid]').forEach(cb=>cb.onchange=()=>{ cb.checked?st.apSel.add(+cb.dataset.apid):st.apSel.delete(+cb.dataset.apid); atFila(); });
+  const tAll=document.getElementById('apTodos');
+  if(tAll) tAll.onchange=()=>{ st.apSel=new Set(tAll.checked?aprA.map(a=>a.id):[]); document.querySelectorAll('input[data-apid]').forEach(cb=>cb.checked=tAll.checked); atFila(); };
+  const bAp=document.getElementById('apAplica');
+  if(bAp) bAp.onclick=async()=>{
+    if(!st.apSel.size) return;
+    if(!confirm(`Aplicar ${st.apSel.size} ação(ões) no ERP (DA1060)? Os preços mudam de verdade nos canais indicados.`)) return;
+    const {error}=await sb.from('acoes_preco').update({status:'executar'}).in('id',[...st.apSel]);
+    if(error){ alert('Erro: '+error.message); return; }
+    st.apSel.clear(); renderAprovacoes();
+  };
+  document.querySelectorAll('button[data-apok]').forEach(b=>b.onclick=async()=>{
+    const a=aprA.find(x=>x.id===+b.dataset.apok);
+    if(!confirm(`Aplicar ${a.cod} no ERP agora?`)) return;
+    await sb.from('acoes_preco').update({status:'executar'}).eq('id',b.dataset.apok);
+    renderAprovacoes();
+  });
+  document.querySelectorAll('button[data-apnao]').forEach(b=>b.onclick=async()=>{
+    const motivo=prompt('Motivo da devolução (fica no histórico do produto):')||'';
+    const {data:atu}=await sb.from('acoes_preco').select('obs').eq('id',b.dataset.apnao).single();
+    await sb.from('acoes_preco').update({status:'cancelado', obs:((atu?.obs||'')+' | DEVOLVIDA na revisão: '+motivo).trim()}).eq('id',b.dataset.apnao);
+    renderAprovacoes();
+  });
+  document.querySelectorAll('button[data-apre]').forEach(b=>b.onclick=async()=>{
+    await sb.from('acoes_preco').update({status:'executar'}).eq('id',b.dataset.apre);
+    renderAprovacoes();
+  });
+  clearTimeout(st._apT);
+  if(emExec.length) st._apT=setTimeout(()=>{ if(st.pg==='aprovacoes') renderAprovacoes(); },30000);
+}
 async function renderSugestoes(){
   $('#conteudo').innerHTML='<div class="carregando">Montando sugestões…</div>';
   await carregaMarkup();
@@ -1311,7 +1393,7 @@ async function renderSugestoes(){
   $('#conteudo').innerHTML=`
     <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>As caixas de Atacado e ML vêm preenchidas com a sugestão do canal</b> (fora da banda → alvo×custo; dentro → preço atual) e mostram o markup efetivo enquanto você digita; <b>o DE é sempre manual</b> (eu não recalculo DE). Ao aprovar, entra na ação o que estiver nas caixas e for diferente do preço de hoje. Alvos = mediana do markup por canal (UN) × grupo × geração — site, atacado e ML têm alvos próprios · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — a decisão é do analista (o campo de preço é editável em qualquer linha). <b style="color:var(--crit)">Preço em vermelho</b> = markup daquele canal a mais de 2 desvios-padrão da distribuição do grupo×geração no mesmo canal; <b style="color:var(--lar)">laranja</b> = entre 1σ e 2σ. Clique nos títulos das colunas para ordenar (2º clique inverte). Clique no <b>código do produto</b> para o raio-X de MC: lucro bruto 365dd e o ritmo 90/60/30 dias e semanas, por canal — é ele que diz se o preço atual está entregando. Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
     ${((pend||[]).length||(feitas||[]).length)?`<div class="banner ambar" style="display:grid;gap:6px">
-      ${aprA.length?`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">⏳ <b>${aprA.length} ação(ões) aprovadas na fila.</b>${st.admin?`<button class="btn" id="sgExec" style="padding:5px 16px">▶ Aplicar no ERP agora</button>`:`<span style="font-weight:400">aguardando aplicação pelo administrador</span>`}</div>`:''}
+      ${aprA.length?`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">⏳ <b>${aprA.length} ação(ões) aprovadas na fila.</b>${st.admin?`<a class="btn" href="#aprovacoes" style="padding:5px 16px;text-decoration:none">🔍 Revisar e aplicar</a>`:`<span style="font-weight:400">aguardando revisão final do administrador</span>`}</div>`:''}
       ${aprA.map(a=>`<div style="display:flex;align-items:center;gap:10px;font-weight:400;font-size:12.5px">
         <b>${esc(a.cod)}</b> ${rf2.format(a.preco_atual)} → <b>${rf2.format(a.preco_sugerido)}</b>${a.de_sugerido?` · DE→${rf2.format(a.de_sugerido)}`:''}${a.atac_sugerido?` · Atac→${rf2.format(a.atac_sugerido)}`:''}${a.ml_sugerido?` · ML→${rf2.format(a.ml_sugerido)}`:''}
         <span style="color:var(--muted)">${esc(a.diagnostico||'')} · ${new Date(a.criado_em).toLocaleDateString('pt-BR')}</span>
@@ -1464,12 +1546,6 @@ async function renderSugestoes(){
     await sb.from('acoes_preco').update({status:'cancelado',obs:'cancelada pelo usuário na tela'}).eq('id',b.dataset.cancela);
     renderSugestoes();
   });
-  const btnEx=document.getElementById('sgExec');
-  if(btnEx) btnEx.onclick=async ()=>{
-    if(!confirm(`Aplicar ${aprA.length} ação(ões) no ERP (DA1060)? Os preços mudam de verdade nos canais indicados.`)) return;
-    const {error}=await sb.from('acoes_preco').update({status:'executar'}).in('id',aprA.map(a=>a.id));
-    if(error) alert('Erro: '+error.message); else renderSugestoes();
-  };
   document.querySelectorAll('button[data-retenta]').forEach(b=>b.onclick=async ()=>{
     await sb.from('acoes_preco').update({status:'executar'}).eq('id',b.dataset.retenta);
     renderSugestoes();
