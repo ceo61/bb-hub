@@ -789,9 +789,11 @@ async function renderPrecos(){
     const v=(linha||{})[ger]||[];
     if(v.length<5) return null;
     const m0=med(v);
-    const refGer=['no pico','crescendo','rampa'].find(x=>linha[x]&&linha[x].length>=5);
+    // inconsistência: SÓ declínio/cauda/morto acima do AUGE (no pico ou crescendo).
+    // rampa e novo parado ficam fora dos dois lados: são novidade — prêmio de lançamento é esperado.
+    const refGer=['no pico','crescendo'].find(x=>linha[x]&&linha[x].length>=5);
     const ref=refGer?med(linha[refGer]):null;
-    const inc=idx>=3&&ref!=null&&m0>ref*1.05;
+    const inc=['declínio','cauda','morto'].includes(ger)&&ref!=null&&m0>ref*1.05;
     return {m0, inc, tip:`mediana ${nf1.format(m0)}× · p25–p75 ${nf1.format(qq(v,.25))}–${nf1.format(qq(v,.75))} · ${v.length} produtos`+(inc?` · ⚠ acima do auge (${GERLB[refGer]} ${nf1.format(ref)}×)`:'')};
   };
   const cel2=(lA,lS,ger,idx)=>{
@@ -808,7 +810,7 @@ async function renderPrecos(){
     <thead><tr><th style="text-align:left;padding:8px 12px">Markup praticado — mediana por grupo × geração<br><span class="gr">1ª linha ATACADO (001) · <b>2ª linha SITE à vista (002)</b> · hover: p25–p75 e nº produtos</span></th>${GERORD.map(g=>`<th style="text-align:right;padding:8px 10px">${GERLB[g]}</th>`).join('')}</tr></thead>
     <tbody><tr style="border-bottom:1px solid var(--hair)"><td style="text-align:left;padding:6px 12px"><b>TODOS</b></td>${GERORD.map((g,i)=>cel2(A.todos,S.todos,g,i)).join('')}</tr>
     ${gruposM.map(([g])=>`<tr><td style="text-align:left;padding:6px 12px"><b>${esc(g)}</b></td>${GERORD.map((ger,i)=>cel2(A.porGG[g],S.porGG[g],ger,i)).join('')}</tr>`).join('')}</tbody></table></div>
-    <p class="gr" style="padding:2px 14px 10px;margin:0">⚠ âmbar = estágio TARDIO (declínio em diante) com markup acima do auge do próprio grupo (rampa/crescendo/no pico) no MESMO canal — deveria haver consistência decrescente ao longo do ciclo de vida. População: markup entre 1× e 15×; valor exige ≥5 produtos no canal.</p></div>`;
+    <p class="gr" style="padding:2px 14px 10px;margin:0">⚠ âmbar = <b>declínio, cauda ou morto</b> com markup acima do auge do próprio grupo (<b>no pico/crescendo</b>) no mesmo canal — produto passado do auge não deveria custar mais que o auge. Rampa e novo parado ficam de fora da checagem: são novidade, prêmio de lançamento é esperado. População: markup entre 1× e 15×; valor exige ≥5 produtos no canal.</p></div>`;
   $('#conteudo').innerHTML = `
     <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Markup = preço ÷ custo médio da importadora (0101) · site à vista (−5%) · <b>ML sobre o líquido</b> (preço −16% comissão −R$ 20 frete). Geração = posição na curva de maturação (rampa · crescendo · no pico · declínio · cauda · novo parado · morto). "Fora da curva" compara com a mediana do <b>grupo × geração</b>.</p>
     ${matrizHtml}
