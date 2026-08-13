@@ -237,6 +237,7 @@ th.ord .seta{font-size:9px;margin-left:3px}
     <div class="navsec">Gestão</div>
     <a href="#sugestoes" data-pg="sugestoes">🎛️ CTRL ONLINE</a>
     <a href="#aprovacoes" data-pg="aprovacoes">🔍 Aprovações</a>
+    <a href="#revisoes" data-pg="revisoes">📮 Revisões</a>
     <a href="#precos" data-pg="precos">🏷️ Preços — Markup</a>
     <a href="#radar" data-pg="radar">📡 Radar</a>
     <a href="#produtos" data-pg="produtos">📦 Produtos</a>
@@ -476,7 +477,7 @@ $('#semaforo').onclick = ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', painel:'Painel do produto', skus:'SKUs', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -493,6 +494,7 @@ function navega(pg){
   else if(pg==='precos') renderPrecos();
   else if(pg==='sugestoes') renderSugestoes();
   else if(pg==='aprovacoes') renderAprovacoes();
+  else if(pg==='revisoes') renderRevisoes();
   else if(pg==='painel') renderPainel();
   else if(pg==='skus') renderSkus();
   else if(pg==='config') renderConfig();
@@ -1302,6 +1304,66 @@ async function abreExtrato(cod, m, acao){
     setTimeout(()=>{ document.getElementById('mcModal')?.remove(); renderSugestoes(); }, 900);
   };
   }
+}
+async function renderRevisoes(){
+  // devolutiva pro ANALISTA: o que aconteceu com cada sugestão (aplicada / devolvida com motivo / em revisão)
+  $('#conteudo').innerHTML='<div class="carregando">Carregando resultado das sugestões…</div>';
+  await carregaMarkup();
+  const MB={}; st.markup.forEach(m=>{ if(!MB[m.cod]) MB[m.cod]=m; });
+  const {data:{user}}=await sb.auth.getUser();
+  const {data:acs}=await sb.from('acoes_preco').select('*')
+    .in('status',['aprovado','executar','erro','executado','cancelado'])
+    .gte('criado_em',new Date(Date.now()-30*86400e3).toISOString())
+    .order('criado_em',{ascending:false});
+  const todas=(acs||[]).filter(a=>a.status!=='revisado'&&a.status!=='rev_desfeita');
+  if(st.rvMin==null) st.rvMin=!st.admin;  // analista abre vendo as próprias; admin vê todas
+  const minhas=todas.filter(a=>a.aprovado_por===user?.email);
+  const base=st.rvMin?minhas:todas;
+  const motivoDe=a=>{const m=(a.obs||'').split('DEVOLVIDA na revisão:')[1];return m?m.trim():null;};
+  const catDe=a=>a.status==='executado'?'aplicada':a.status==='cancelado'?(motivoDe(a)?'devolvida':'cancelada'):(a.status==='erro'?'erro':'em revisão');
+  const nCat={}; base.forEach(a=>{const c=catDe(a);nCat[c]=(nCat[c]||0)+1;});
+  const lista=st.rvCat?base.filter(a=>catDe(a)===st.rvCat):base;
+  const dh=t=>{const d=new Date(t);return d.toLocaleDateString('pt-BR').slice(0,5)+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});};
+  const quem=e=>esc((e||'?').split('@')[0]);
+  const mud=a=>{
+    const p=[];
+    if(a.preco_sugerido!=null) p.push(`<b>site</b> ${a.preco_atual!=null?rf2.format(a.preco_atual):'—'} → <b>${rf2.format(a.preco_sugerido)}</b>`);
+    if(a.de_sugerido!=null) p.push(`<b>DE</b> → <b>${rf2.format(a.de_sugerido)}</b>`);
+    if(a.atac_sugerido!=null) p.push(`<b>atacado</b> ${a.atac_atual!=null?rf2.format(a.atac_atual):'—'} → <b>${rf2.format(a.atac_sugerido)}</b>`);
+    if(a.ml_sugerido!=null) p.push(`<b>ML</b> ${a.ml_atual!=null?rf2.format(a.ml_atual):'—'} → <b>${rf2.format(a.ml_sugerido)}</b>`);
+    return p.join('<br>')||'<span class="gr">—</span>';
+  };
+  const resultado=a=>{
+    const c=catDe(a);
+    if(c==='aplicada') return `<span style="color:var(--good);font-weight:700">✅ APLICADA</span><br><span class="gr">${a.executado_em?dh(a.executado_em):''}</span>`;
+    if(c==='devolvida') return `<span style="color:var(--crit);font-weight:700">✖ DEVOLVIDA</span><br><span style="color:var(--ink2)">“${esc(motivoDe(a))}”</span>`;
+    if(c==='cancelada') return '<span class="gr">✖ cancelada (pelo próprio time)</span>';
+    if(c==='erro') return '<span style="color:var(--crit)">⚠ erro na aplicação</span>';
+    return a.status==='executar'?'<span style="color:var(--accent)">🔄 aplicando…</span>':'<span style="color:var(--warn);font-weight:600">🕐 em revisão</span>';
+  };
+  const chip=(id,lb,cor)=>`<button class="kpi" data-rvcat="${id}" style="padding:7px 14px;${st.rvCat===id?`border-color:${cor};box-shadow:inset 0 0 0 1px ${cor}`:''}"><span style="color:${cor}">●</span> ${lb} (${nf.format(nCat[id]||0)})</button>`;
+  const tdc='padding:9px 10px;vertical-align:top;text-align:left;white-space:normal;';
+  $('#conteudo').innerHTML=`
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">O destino de cada sugestão de preço dos últimos 30 dias. <b>✖ Devolvida</b> traz o motivo do revisor — leia antes de sugerir de novo no mesmo produto. Clique no código para o extrato com a sugestão exatamente como registrada.</p>
+    <div class="toolbar">
+      <button class="kpi" id="rvMin" style="padding:7px 14px;${st.rvMin?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">👤 só as minhas (${nf.format(minhas.length)})</button>
+      ${chip('aplicada','aplicadas','var(--good)')}${chip('devolvida','devolvidas','var(--crit)')}${chip('em revisão','em revisão','var(--warn)')}
+      <span class="count">${nf.format(lista.length)} sugestões</span>
+    </div>
+    ${lista.length?`<div class="tablecard"><div class="tscroll"><table style="min-width:980px">
+      <thead><tr><th style="text-align:left">Quando</th><th style="text-align:left">Analista</th><th style="text-align:left">Produto</th><th style="text-align:left">Mudança pedida</th><th style="text-align:left">Sua justificativa</th><th style="text-align:left">Resultado</th></tr></thead>
+      <tbody>${lista.slice(0,200).map(a=>{const m=MB[a.cod];return `<tr>
+        <td style="${tdc}white-space:nowrap">${dh(a.criado_em)}</td>
+        <td style="${tdc}">${quem(a.aprovado_por)}</td>
+        <td style="${tdc}"><span class="cod" data-rvx="${esc(a.cod)}" data-rvid="${a.id}" style="cursor:pointer;border-bottom:1px dotted var(--muted)">${esc(a.cod)}</span><br><span class="gr">${esc((m?.descricao||'').slice(0,32))}</span></td>
+        <td style="${tdc}">${mud(a)}</td>
+        <td style="${tdc};max-width:260px">${a.justificativa?`“${esc(a.justificativa)}”`:'<span class="gr">—</span>'}</td>
+        <td style="${tdc};max-width:280px">${resultado(a)}</td>
+      </tr>`;}).join('')}</tbody></table></div></div>`
+    :'<div class="banner" style="background:var(--surface2)">Nenhuma sugestão no recorte.</div>'}`;
+  $('#rvMin').onclick=()=>{st.rvMin=!st.rvMin;renderRevisoes();};
+  document.querySelectorAll('[data-rvcat]').forEach(b=>b.onclick=()=>{st.rvCat=st.rvCat===b.dataset.rvcat?null:b.dataset.rvcat;renderRevisoes();});
+  document.querySelectorAll('[data-rvx]').forEach(el=>el.onclick=()=>abreExtrato(el.dataset.rvx, MB[el.dataset.rvx], todas.find(x=>x.id===+el.dataset.rvid)||null));
 }
 async function renderAprovacoes(){
   // etapa de REVISÃO FINAL: relatório das sugestões dos analistas antes de aplicar no ERP
