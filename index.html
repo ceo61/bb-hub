@@ -954,8 +954,8 @@ function montaSugestoes(){
     const dS=st.mkDist[m.grupo+'|'+m.geracao]??st.mkDist[m.grupo];
     const dA=st.mkDistA[m.grupo+'|'+m.geracao]??st.mkDistA[m.grupo];
     const dM=st.mkDistM[m.grupo+'|'+m.geracao]??st.mkDistM[m.grupo];
-    out.push({...m,_diag:diag,_alvo:alvo,_porSug:por,_avistaSug:avista,
-      _alvoA:alvoA,_alvoM:alvoM,_atacSug:atacSug,_mlSug:mlSug,
+    out.push({...m,_diag:diag,_alvo:alvo,_porSug:+(m.p_site/0.95).toFixed(2),_avistaSug:m.p_site,
+      _alvoA:alvoA,_alvoM:alvoM,_atacSug:m.p_atacado??null,_mlSug:m.p_marketplace??null,
       _outS:(dS&&m.mk_site)?(Math.abs(m.mk_site-dS.m)>2*dS.s?2:(Math.abs(m.mk_site-dS.m)>dS.s?1:0)):0,
       _outA:(dA&&m.mk_atacado)?(Math.abs(m.mk_atacado-dA.m)>2*dA.s?2:(Math.abs(m.mk_atacado-dA.m)>dA.s?1:0)):0,
       _outM:(dM&&m.mk_marketplace)?(Math.abs(m.mk_marketplace-dM.m)>2*dM.s?2:(Math.abs(m.mk_marketplace-dM.m)>dM.s?1:0)):0,
@@ -1508,7 +1508,7 @@ async function renderSugestoes(){
       <span class="count" id="sgCount"></span>
     </div>
     <div class="tablecard"><div class="tscroll"><table class="fix2">
-      <thead><tr><th></th><th class="ord" data-c="cod">Produto<span class="seta"></span></th><th class="ord" data-c="_meses">Geração<span class="seta"></span></th><th class="ord" data-c="_saldo" title="estoque útil">EST<span class="seta"></span></th><th class="ord" data-c="_giro">Giro<span class="seta"></span><br><span class="gr">/mês</span></th><th title="FOLGA em meses: estoque útil ÷ giro mês (1ª linha); 2ª linha soma o encomendado (POs abertos em trânsito)">Folga</th><th class="ord" data-c="_views">Views<span class="seta"></span><br><span class="gr">28d</span></th><th class="ord" data-c="_conv">Conv.<span class="seta"></span></th><th class="ord" data-c="custo">Custo<span class="seta"></span></th><th title="ritmo de MC do Atacado (001): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 001<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_atacado">Atacado hoje<span class="seta"></span></th><th class="ord" data-c="_atacSug">Atacado novo<span class="seta"></span><br><span class="gr">editável</span></th><th title="ritmo de MC do Site (002): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 002<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_site_de">DE hoje<span class="seta"></span></th><th class="ord" data-c="p_site">POR/PIX hoje<span class="seta"></span></th><th>DE novo<br><span class="gr">manual</span></th><th class="ord" data-c="_avistaSug">À vista novo<span class="seta"></span><br><span class="gr">editável</span></th><th title="ritmo de MC do ML (005): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 005<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_marketplace">ML hoje<span class="seta"></span></th><th class="ord" data-c="_mlSug">ML novo<span class="seta"></span><br><span class="gr">editável</span></th></tr></thead>
+      <thead><tr><th></th><th class="ord" data-c="cod">Produto<span class="seta"></span></th><th class="ord" data-c="_meses">Geração<span class="seta"></span></th><th class="ord" data-c="_saldo" title="estoque útil">EST<span class="seta"></span></th><th class="ord" data-c="_giro">Giro<span class="seta"></span><br><span class="gr">/mês</span></th><th title="FOLGA em meses: estoque útil ÷ giro mês (1ª linha); 2ª linha soma o encomendado (POs abertos em trânsito)">Folga</th><th class="ord" data-c="_views">Views<span class="seta"></span><br><span class="gr">28d</span></th><th class="ord" data-c="_conv">Conv.<span class="seta"></span></th><th class="ord" data-c="custo">Custo<span class="seta"></span></th><th title="ritmo de MC do Atacado (001): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 001<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_atacado">Atacado hoje<span class="seta"></span></th><th title="ritmo de MC do Site (002): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 002<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_site_de">DE hoje<span class="seta"></span></th><th class="ord" data-c="p_site">POR/PIX hoje<span class="seta"></span></th><th title="ritmo de MC do ML (005): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 005<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_marketplace">ML hoje<span class="seta"></span></th></tr></thead>
       <tbody id="sgRows"></tbody></table></div><button class="more hide" id="sgMore"></button></div>`;
   document.querySelectorAll('.kpi[data-out]').forEach(b=>b.onclick=()=>{st.sgOut=st.sgOut===b.dataset.out?null:b.dataset.out;renderSugestoes();});
   $('#sgAta').onclick=abreAta;
@@ -1563,43 +1563,16 @@ async function renderSugestoes(){
         <td>${rf2.format(m.custo)}</td>
         ${mcCell(m.cod,'001')}
         <td>${m.p_atacado?`<span data-ph="${esc(m.cod)}|001" title="clique: evolução de preço 90d — Atacado" style="cursor:pointer;border-bottom:1px dotted var(--muted);${corOut(m._outA)}">${rf2.format(m.p_atacado)}</span>`:'—'}<br><span class="gr">${m.mk_atacado?'mk '+nf1.format(m.mk_atacado)+'×':''}${m._alvoA?' · alvo '+nf1.format(m._alvoA)+'×':''}</span>${(cc=>cc&&cc.cc_b2b?`<br><span title="concorrente BGT (B2B cash) em ${new Date(cc.data+'T12:00:00').toLocaleDateString('pt-BR')}" style="font-size:11px;font-weight:600;color:${m.p_atacado&&+m.p_atacado>+cc.cc_b2b?'var(--crit)':'var(--good)'}">BGT ${rf2.format(cc.cc_b2b)}</span>`:'')(st.ccMap[m.cod])}</td>
-        <td><input type="number" step="0.01" min="0" data-atac="${esc(m.cod)}" value="${vAt!=null?(+vAt).toFixed(2):''}" placeholder="—" style="width:84px;text-align:right"><br><span class="gr" id="mka-${sid}">${vAt?'mk '+nf1.format(vAt/m.custo)+'×':''}</span></td>
         ${mcCell(m.cod,'002')}
         <td>${m.p_site_de?rf2.format(m.p_site_de):'—'}</td>
         <td><span data-ph="${esc(m.cod)}|002" title="clique: evolução de preço 90d — Site" style="cursor:pointer">${m.p_site_por?rf2.format(m.p_site_por):'—'}<br><b style="border-bottom:1px dotted var(--muted);${corOut(m._outS)}">${rf2.format(m.p_site)}</b> <span class="gr">PIX</span></span><br><span class="gr">mk ${nf1.format(m.mk_site)}× · alvo ${nf1.format(m._alvo)}×</span>${(cc=>cc&&cc.cc_avista?`<br><span title="concorrente BGT (à vista B2C) em ${new Date(cc.data+'T12:00:00').toLocaleDateString('pt-BR')}" style="font-size:11px;font-weight:600;color:${m.p_site&&+m.p_site>+cc.cc_avista?'var(--crit)':'var(--good)'}">BGT ${rf2.format(cc.cc_avista)}</span>`:'')(st.ccMap[m.cod])}</td>
-        <td><input type="number" step="0.01" min="0" data-de="${esc(m.cod)}" value="${vDe!=null?(+vDe).toFixed(2):''}" placeholder="—" style="width:84px;text-align:right"><br><span class="gr">manual</span></td>
-        <td><input type="number" step="0.01" min="0" data-preco="${esc(m.cod)}" value="${(st.sgEdit?.[m.cod]??m._avistaSug).toFixed(2)}" style="width:92px;text-align:right;font-weight:600"><br><span class="gr" id="por-${sid}">POR ${rf2.format((st.sgEdit?.[m.cod]??m._avistaSug)/0.95)} · mk ${nf1.format((st.sgEdit?.[m.cod]??m._avistaSug)/m.custo)}×</span></td>
         ${mcCell(m.cod,'005')}
-        <td>${m.p_marketplace?`<span data-ph="${esc(m.cod)}|005" title="clique: evolução de preço 90d — ML" style="cursor:pointer;border-bottom:1px dotted var(--muted);${corOut(m._outM)}">${rf2.format(m.p_marketplace)}</span>`:'—'}<br><span class="gr">${m.mk_marketplace?'mk líq '+nf1.format(m.mk_marketplace)+'×':''}${m._alvoM?' · alvo '+nf1.format(m._alvoM)+'×':''}</span></td>
-        <td><input type="number" step="0.01" min="0" data-ml="${esc(m.cod)}" value="${vMl!=null?(+vMl).toFixed(2):''}" placeholder="—" style="width:84px;text-align:right"><br><span class="gr" id="mkm-${sid}">${vMl?'mk líq '+nf1.format((vMl*0.84-20)/m.custo)+'×':''}</span></td>`;
+        <td>${m.p_marketplace?`<span data-ph="${esc(m.cod)}|005" title="clique: evolução de preço 90d — ML" style="cursor:pointer;border-bottom:1px dotted var(--muted);${corOut(m._outM)}">${rf2.format(m.p_marketplace)}</span>`:'—'}<br><span class="gr">${m.mk_marketplace?'mk líq '+nf1.format(m.mk_marketplace)+'×':''}${m._alvoM?' · alvo '+nf1.format(m._alvoM)+'×':''}</span></td>`;
       tb.appendChild(tr);
     }
-    document.querySelectorAll('#sgRows input[data-preco]').forEach(inp=>inp.oninput=()=>{
-      st.sgEdit=st.sgEdit||{};
-      const v=parseFloat(inp.value);
-      if(v>0){ st.sgEdit[inp.dataset.preco]=v;
-        const el=document.getElementById('por-'+inp.dataset.preco.replace(/[^A-Za-z0-9]/g,'_'));
-        if(el) el.textContent='POR '+rf2.format(v/0.95)+' · mk '+nf1.format(v/(MB[inp.dataset.preco]?.custo||1))+'×';
-        st.sgSel.add(inp.dataset.preco);  // editar já seleciona
-        const cb=document.querySelector(`#sgRows input[type=checkbox][data-cod="${CSS.escape(inp.dataset.preco)}"]`);
-        if(cb) cb.checked=true;
-        $('#sgN').textContent=st.sgSel.size;
-      }
-    });
     const marcaSel=cod=>{ st.sgSel.add(cod);
       const cb=document.querySelector(`#sgRows input[type=checkbox][data-cod="${CSS.escape(cod)}"]`);
       if(cb) cb.checked=true; $('#sgN').textContent=st.sgSel.size; };
-    const LIVE={atac:{key:'sgAtac',span:'mka-',fx:(v,m)=>'mk '+nf1.format(v/m.custo)+'×'},
-                ml:{key:'sgMl',span:'mkm-',fx:(v,m)=>'mk líq '+nf1.format((v*0.84-20)/m.custo)+'×'},
-                de:{key:'sgDe',span:null,fx:null}};
-    for(const k in LIVE){
-      document.querySelectorAll(`#sgRows input[data-${k}]`).forEach(inp=>inp.oninput=()=>{
-        const v=parseFloat(inp.value), cod=inp.dataset[k], cfg=LIVE[k];
-        if(v>0){ (st[cfg.key]=st[cfg.key]||{})[cod]=v; marcaSel(cod);
-          if(cfg.span){ const el=document.getElementById(cfg.span+cod.replace(/[^A-Za-z0-9]/g,'_'));
-            if(el&&MB[cod]) el.textContent=cfg.fx(v,MB[cod]); } }
-      });
-    }
     document.querySelectorAll('#sgRows .cod[data-mc]').forEach(el=>el.onclick=e=>{e.stopPropagation();abreMC(el.dataset.mc, MB[el.dataset.mc]);});
     document.querySelectorAll('#sgRows [data-ph]').forEach(el=>el.onclick=e=>{e.stopPropagation();const [cod,un]=el.dataset.ph.split('|');abrePreco(cod, un, MB[cod]);});
     document.querySelectorAll('#sgRows [data-nota]').forEach(el=>el.onclick=e=>{e.stopPropagation();abreNota(el.dataset.nota, MB[el.dataset.nota]);});
