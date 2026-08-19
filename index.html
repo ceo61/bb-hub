@@ -1135,7 +1135,7 @@ async function abreExtrato(cod, m, acao){
   ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
   if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
   ov.innerHTML='<div class="aclcard" style="width:min(1760px,97vw)"><div class="carregando">Montando extrato semanal…</div></div>';
-  const NW=26;
+  const NW=18;
   const seg=new Date(); seg.setHours(12,0,0,0); seg.setDate(seg.getDate()-((seg.getDay()+6)%7));
   const mondays=[]; for(let i=NW;i>=1;i--){ const d=new Date(seg); d.setDate(d.getDate()-7*i); mondays.push(d.toISOString().slice(0,10)); }
   const ini=mondays[0];
