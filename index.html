@@ -1369,7 +1369,7 @@ async function abreExtrato(cod, m, acao){
     // embaixo do DE: o desconto DE→POR que o cliente vai ver com os valores da tela
     const de=+xDe.value||+vDe||0, por=v>0?v/0.95:0;
     const desc=(de>0&&por>0)?(1-por/de)*100:null;
-    ov.querySelector('#xDesc').textContent = desc==null?'':desc>0.05?'desconto de '+nf1.format(desc)+'% sobre o POR':'⚠ SEM desconto (POR ≥ DE)';
+    ov.querySelector('#xDesc').textContent = desc==null?'':desc>0.05?'desconto de '+nf1.format(desc)+'% do DE pro POR':'⚠ SEM desconto (POR ≥ DE)';
     ov.querySelector('#xMkM').textContent=(+xMl2.value>0?'fica ':'')+hint(+xMl2.value, alvoM, true);
   };
   [xAt,xDe,xa,xMl2].forEach(i=>i.oninput=atualiza); atualiza();
