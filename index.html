@@ -1415,7 +1415,7 @@ function montaDiagnostico(ov, cod){
         <span class="gr">${antigo?'último diagnóstico · ':''}confiança <b style="color:${conf}">${esc(d.confianca||'—')}</b>${quando?' · '+quando:''}${d.autor?' · '+esc(String(d.autor).split('@')[0]):''}</span>
       </div>
       <p style="margin:8px 0 4px;font-size:13px">${esc(d.resumo||'')}</p>
-      <p style="margin:4px 0;font-size:13px"><b>Ação:</b> ${esc(d.acao||'')}</p>
+      ${d.acao?`<p style="margin:4px 0;font-size:13px"><b>Ação:</b> ${esc(d.acao)}</p>`:''}
       ${(d.alertas&&d.alertas.length)?`<div style="font-size:12.5px;color:var(--warn);margin-top:4px">${d.alertas.map(a=>'⚠ '+esc(a)).join('<br>')}</div>`:''}`,'var(--accent)');
   };
   sb.from('diagnosticos').select('criado_em,autor,perfil,classificacao,resumo,acao,alertas,confianca').eq('cod',cod).order('criado_em',{ascending:false}).limit(1)
