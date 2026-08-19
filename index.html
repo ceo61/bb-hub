@@ -1299,7 +1299,7 @@ async function abreExtrato(cod, m, acao){
   } else {
     topoHtml=`${pillGer}
       <span>Atacado novo<br><input type="number" step="0.01" id="xAtac" value="${vAt!=null?(+vAt).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr" id="xMkA"></span></span>
-      <span>DE novo<br><input type="number" step="0.01" id="xDe" value="${vDe!=null?(+vDe).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr">manual</span></span>
+      <span>DE novo<br><input type="number" step="0.01" id="xDe" value="${vDe!=null?(+vDe).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr" id="xDesc"></span></span>
       <span>À vista novo (PIX)<br><input type="number" step="0.01" id="xAv" value="${vAv!=null?(+vAv).toFixed(2):''}" style="width:100px;text-align:right;font-weight:600"><br><span class="gr" id="xPor"></span></span>
       <span>ML novo<br><input type="number" step="0.01" id="xMl" value="${vMl!=null?(+vMl).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr" id="xMkM"></span></span>
       <span style="flex:1 1 320px;min-width:240px">Justificativa <span class="gr">(fica no histórico do produto)</span><br><input type="text" id="xJust" maxlength="300" placeholder="por que está mudando? ex.: BGT 8% abaixo e conversão caindo há 3 semanas" style="width:100%"><br><span class="gr" id="xMsg"></span></span>
@@ -1364,12 +1364,12 @@ async function abreExtrato(cod, m, acao){
   const xAt=ov.querySelector('#xAtac'), xDe=ov.querySelector('#xDe'), xa=ov.querySelector('#xAv'), xMl2=ov.querySelector('#xMl');
   const atualiza=()=>{
     ov.querySelector('#xMkA').textContent=(+xAt.value>0?'fica ':'')+hint(+xAt.value, alvoA);
-    // varejo: mostrar o DESCONTO DE→POR que o cliente vai ver com os valores da tela (não o markup)
-    const v=+xa.value, de=+xDe.value||+vDe||0, por=v>0?v/0.95:0;
+    const v=+xa.value;
+    ov.querySelector('#xPor').textContent=(v>0?'POR '+rf2.format(v/0.95)+' · fica ':'')+hint(v, alvoS);
+    // embaixo do DE: o desconto DE→POR que o cliente vai ver com os valores da tela
+    const de=+xDe.value||+vDe||0, por=v>0?v/0.95:0;
     const desc=(de>0&&por>0)?(1-por/de)*100:null;
-    ov.querySelector('#xPor').textContent = por>0
-      ? 'POR '+rf2.format(por)+(desc==null?'':desc>0.05?' · desconto de '+nf1.format(desc)+'% sobre o DE':' · ⚠ SEM desconto (POR ≥ DE)')
-      : '';
+    ov.querySelector('#xDesc').textContent = desc==null?'':desc>0.05?'desconto de '+nf1.format(desc)+'% sobre o POR':'⚠ SEM desconto (POR ≥ DE)';
     ov.querySelector('#xMkM').textContent=(+xMl2.value>0?'fica ':'')+hint(+xMl2.value, alvoM, true);
   };
   [xAt,xDe,xa,xMl2].forEach(i=>i.oninput=atualiza); atualiza();
