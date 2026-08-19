@@ -1143,7 +1143,7 @@ async function abreExtrato(cod, m, acao){
     for(let i=0;i<NM;i++){ meses.push(dm.toISOString().slice(0,10)); dm.setMonth(dm.getMonth()+1); } }
   const ini=meses[0]<mondays[0]?meses[0]:mondays[0];
   const d0=new Date(ini+'T12:00:00'); d0.setDate(d0.getDate()-62); const ini0=d0.toISOString().slice(0,10);
-  const [vd,cv,ad,pr,es,cu,cc,hist]=await Promise.all([
+  const [vd,cv,ad,pr,es,cu,cc,hist,tAB]=await Promise.all([
     sb.from('fato_vendas_diaria').select('data,qtd,qtd_b2c,val_b2c,lucro_b2c,qtd_ml,val_ml,lucro_ml,qtd_atac,val_atac,lucro_atac').eq('cod',cod).gte('data',ini0).order('data').then(r=>r.data||[]),
     sb.from('fato_conversao').select('data,views').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
     sb.from('fato_ads').select('data,custo').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
@@ -1152,6 +1152,7 @@ async function abreExtrato(cod, m, acao){
     sb.from('fato_custo').select('snapshot,custo').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
     sb.from('fato_concorrencia').select('data,cc_avista,cc_b2b').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
     sb.from('acoes_preco').select('criado_em,status,aprovado_por,preco_atual,preco_sugerido,de_sugerido,atac_sugerido,ml_sugerido,justificativa,obs').eq('cod',cod).in('status',['aprovado','executar','executado','erro','revisado']).order('criado_em',{ascending:false}).limit(12).then(r=>r.data||[]),
+    sb.from('testes_ab').select('*').eq('cod',cod).eq('status','ativo').limit(1).then(r=>r.data?.[0]||null),
   ]);
   const wk=d=>{ const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); return dt.toISOString().slice(0,10); };
   const qtdDia={}; vd.forEach(r=>{ qtdDia[r.data]=+r.qtd||0; });
@@ -1296,6 +1297,13 @@ async function abreExtrato(cod, m, acao){
       ${roCh('À vista (PIX)', m?.p_site, acao.preco_sugerido, alvoS, false, acao.preco_sugerido?('POR '+rf2.format(acao.preco_sugerido/0.95)+' · '):'')}
       ${roCh('ML', m?.p_marketplace, acao.ml_sugerido, alvoM, true)}
       <span style="flex:1 1 300px;min-width:240px">Justificativa<br><span style="font-size:13.5px;color:var(--ink)">“${esc(acao.justificativa||'sem justificativa (fluxo antigo)')}”</span><br><span class="gr">${esc((acao.aprovado_por||'?').split('@')[0])} · ${new Date(acao.criado_em).toLocaleDateString('pt-BR')} ${new Date(acao.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} · ${stLb}</span></span>`;
+  } else if(tAB){
+    // produto em teste A/B: troca manual de preço BLOQUEADA enquanto o teste durar
+    topoHtml=`${pillGer}
+      <span style="flex:1 1 340px;min-width:280px">🔁 <b>EM TESTE A/B SEMANAL #${tAB.id}</b><br>
+        <span style="font-size:13.5px">A ${rf2.format(tAB.preco_a)} · B ${rf2.format(tAB.preco_b)} (à vista) — braço atual <b>${esc(tAB.braco_atual)}</b> · troca todo domingo 23h</span><br>
+        <span class="gr">desde ${new Date(tAB.criado_em).toLocaleDateString('pt-BR')} · ${esc((tAB.criado_por||'?').split('@')[0])} · alteração manual de preço bloqueada durante o teste</span></span>
+      <button id="xAbFim" style="border:1px solid var(--crit);color:var(--crit);border-radius:9px;padding:8px 16px;flex:none;font-weight:600">✖ Tirar do teste A/B</button>`;
   } else {
     topoHtml=`${pillGer}
       <span>Atacado novo<br><input type="number" step="0.01" id="xAtac" value="${vAt!=null?(+vAt).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr" id="xMkA"></span></span>
@@ -1303,7 +1311,14 @@ async function abreExtrato(cod, m, acao){
       <span>À vista novo (PIX)<br><input type="number" step="0.01" id="xAv" value="${vAv!=null?(+vAv).toFixed(2):''}" style="width:100px;text-align:right;font-weight:600"><br><span class="gr" id="xPor"></span></span>
       <span>ML novo<br><input type="number" step="0.01" id="xMl" value="${vMl!=null?(+vMl).toFixed(2):''}" style="width:92px;text-align:right"><br><span class="gr" id="xMkM"></span></span>
       <span style="flex:1 1 320px;min-width:240px">Justificativa <span class="gr">(fica no histórico do produto)</span><br><input type="text" id="xJust" maxlength="300" placeholder="por que está mudando? ex.: BGT 8% abaixo e conversão caindo há 3 semanas" style="width:100%"><br><span class="gr" id="xMsg"></span></span>
-      <button class="btn" id="xAprova" style="padding:7px 18px;flex:none">✔ OK — aprovar</button>`;
+      <button class="btn" id="xAprova" style="padding:7px 18px;flex:none">✔ OK — aprovar</button>
+      <button id="xAbBtn" title="Rotação semanal automática entre dois preços B2C (troca domingo 23h)" style="border:1px solid var(--accent);color:var(--accent);border-radius:9px;padding:8px 14px;flex:none;font-weight:600">🔁 Incluir teste semanal</button>
+      <span id="xAbForm" class="hide" style="display:none;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <span>Preço A (à vista)<br><input type="number" step="0.01" min="0" id="xAbA" value="${m?.p_site!=null?(+m.p_site).toFixed(2):''}" style="width:100px;text-align:right"></span>
+        <span>Preço B (à vista)<br><input type="number" step="0.01" min="0" id="xAbB" style="width:100px;text-align:right"></span>
+        <button class="btn" id="xAbOk" style="padding:7px 16px;flex:none">OK — iniciar teste</button>
+        <span class="gr" id="xAbMsg" style="max-width:280px"></span>
+      </span>`;
   }
   ov.querySelector('.aclcard').innerHTML=`
     <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato do produto</span><button class="btn" id="xDiagBtn" style="padding:6px 14px;flex:none;font-size:12.5px" title="A IA lê folga, mercado, funil e margem deste produto e classifica na matriz de diagnóstico">🧠 Diagnóstico IA</button><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
@@ -1360,7 +1375,30 @@ async function abreExtrato(cod, m, acao){
     bS.onclick=()=>setVw(false); bM.onclick=()=>setVw(true);
   }
   montaDiagnostico(ov, cod);
-  if(!acao){
+  if(!acao&&tAB){
+    ov.querySelector('#xAbFim').onclick=async()=>{
+      if(!confirm(`Encerrar o teste A/B #${tAB.id} do ${cod}? O preço fica no braço atual (${tAB.braco_atual}) até alguém mexer.`)) return;
+      const {data:{user}}=await sb.auth.getUser();
+      const {error}=await sb.rpc('ab_encerra',{p_id:tAB.id, p_autor:user?.email||'?'});
+      if(error){ alert('Erro ao encerrar: '+error.message); return; }
+      document.getElementById('mcModal')?.remove(); abreExtrato(cod, m, acao);
+    };
+  }
+  if(!acao&&!tAB){
+    const abBtn=ov.querySelector('#xAbBtn'), abForm=ov.querySelector('#xAbForm');
+    abBtn.onclick=()=>{ abForm.classList.toggle('hide'); abForm.style.display=abForm.classList.contains('hide')?'none':'inline-flex'; ov.querySelector('#xAbB').focus(); };
+    ov.querySelector('#xAbOk').onclick=async()=>{
+      const a=+ov.querySelector('#xAbA').value||0, b=+ov.querySelector('#xAbB').value||0, msg=ov.querySelector('#xAbMsg');
+      if(!a||!b){ msg.textContent='preencha os dois preços (à vista)'; return; }
+      if(Math.abs(a-b)<0.01){ msg.textContent='os dois preços são iguais — não há o que testar'; return; }
+      const {data:{user}}=await sb.auth.getUser();
+      const {data:id,error}=await sb.rpc('ab_cria',{p_cod:cod, p_a:a, p_b:b, p_autor:user?.email||'?'});
+      if(error){ msg.textContent='Erro: '+error.message; return; }
+      msg.textContent=`✅ teste #${id} criado — braço A (${rf2.format(a)}) já na fila do ERP; troca domingo 23h`;
+      setTimeout(()=>{ document.getElementById('mcModal')?.remove(); abreExtrato(cod, m, acao); }, 1400);
+    };
+  }
+  if(!acao&&!tAB){
   const xAt=ov.querySelector('#xAtac'), xDe=ov.querySelector('#xDe'), xa=ov.querySelector('#xAv'), xMl2=ov.querySelector('#xMl');
   const atualiza=()=>{
     ov.querySelector('#xMkA').textContent=(+xAt.value>0?'fica ':'')+hint(+xAt.value, alvoA);
@@ -1632,6 +1670,7 @@ async function renderAprovacoes(){
 }
 async function renderSugestoes(){
   $('#conteudo').innerHTML='<div class="carregando">Montando sugestões…</div>';
+  st.abCods=new Set(((await sb.from('testes_ab').select('cod').eq('status','ativo')).data||[]).map(x=>x.cod));
   await carregaMarkup();
   const {data:pend}=await sb.from('acoes_preco').select('*').in('status',['aprovado','executar','erro']).order('criado_em',{ascending:false});
   const {data:feitas}=await sb.from('acoes_preco').select('*').eq('status','executado').gte('executado_em',new Date(Date.now()-86400e3).toISOString()).order('executado_em',{ascending:false});
@@ -1682,6 +1721,7 @@ async function renderSugestoes(){
       <select id="sgG"><option value="">Todos os grupos</option>${[...new Set(lista.map(m=>m.grupo||'—'))].sort().map(g=>`<option ${st.sgG===g?'selected':''} value="${esc(g)}">${esc(g)}</option>`).join('')}</select>
       <select id="sgGer"><option value="">Todas as gerações</option>${GERORD.filter(g=>lista.some(m=>m.geracao===g)).map(g=>`<option ${st.sgGer===g?'selected':''} value="${esc(g)}">${GERLB[g]||g}</option>`).join('')}</select>
       ${[['site','Site'],['atac','Atacado'],['ml','ML']].map(([k,lb])=>`<button class="kpi" data-out="${k}" style="padding:7px 14px;${st.sgOut===k?'border-color:var(--crit);box-shadow:inset 0 0 0 1px var(--crit)':''}"><span style="color:var(--crit)">●</span> ${lb} fora 2σ (${nf.format(cOut[k])})</button>`).join('')}
+      <button class="kpi" id="sgAB" title="produtos com rotação semanal de preço ativa — preço bloqueado para edição manual" style="padding:7px 14px;${st.sgAB?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}"><span style="color:var(--accent)">●</span> 🔁 Em teste A/B (${nf.format(st.abCods.size)})</button>
       <span style="display:inline-flex;border:1px solid var(--hair);border-radius:10px;overflow:hidden;flex:none">${[
         ['avaliar','🎯 Para avaliar',null,'a fila de trabalho: sem pendência e com evidência suficiente — ordenada por giro/mês'],
         ['aguardando','⏳ Aguardando',nAguardando,'mexidos/revisados juntando amostra: voltam à fila após 7 dias E +200 views desde a movimentação — cada linha mostra o progresso, o que foi feito e o ↩ pra desfazer revisão'],
@@ -1695,11 +1735,13 @@ async function renderSugestoes(){
       <thead><tr><th></th><th class="ord" data-c="cod">Produto<span class="seta"></span></th><th class="ord" data-c="_meses">Geração<span class="seta"></span></th><th class="ord" data-c="_saldo" title="estoque útil">EST<span class="seta"></span></th><th class="ord" data-c="_giro">Giro<span class="seta"></span><br><span class="gr">/mês</span></th><th title="FOLGA em meses: estoque útil ÷ giro mês (1ª linha); 2ª linha soma o encomendado (POs abertos em trânsito)">Folga</th><th class="ord" data-c="_views">Views<span class="seta"></span><br><span class="gr">28d</span></th><th class="ord" data-c="_conv">Conv.<span class="seta"></span></th><th class="ord" data-c="custo">Custo<span class="seta"></span></th><th title="ritmo de MC do Atacado (001): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 001<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_atacado">Atacado hoje<span class="seta"></span></th><th title="ritmo de MC do Site (002): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 002<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_site_de">DE hoje<span class="seta"></span></th><th class="ord" data-c="p_site">POR/PIX hoje<span class="seta"></span></th><th title="ritmo de MC do ML (005): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 005<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_marketplace">ML hoje<span class="seta"></span></th></tr></thead>
       <tbody id="sgRows"></tbody></table></div><button class="more hide" id="sgMore"></button></div>`;
   document.querySelectorAll('.kpi[data-out]').forEach(b=>b.onclick=()=>{st.sgOut=st.sgOut===b.dataset.out?null:b.dataset.out;renderSugestoes();});
+  $('#sgAB').onclick=()=>{st.sgAB=!st.sgAB;renderSugestoes();};
   $('#sgAta').onclick=abreAta;
   document.querySelectorAll('button[data-ver]').forEach(b=>b.onclick=()=>{st.sgVer=b.dataset.ver;st.sgShown=150;renderSugestoes();});
   const corOut=l=>l===2?'color:var(--crit);font-weight:800':l===1?'color:var(--lar)':'';
   const desenha=()=>{
     const rows=lista.filter(m=>{
+      if(st.sgAB&&!st.abCods.has(m.cod)) return false;
       if(st.sgOut==='site'&&m._outS!==2) return false;
       if(st.sgOut==='atac'&&m._outA!==2) return false;
       if(st.sgOut==='ml'&&m._outM!==2) return false;
