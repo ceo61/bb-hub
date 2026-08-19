@@ -1250,9 +1250,9 @@ async function abreExtrato(cod, m, acao){
     const sep='border-left:2px solid var(--hair);';
     const dm=new Date(ms+'T12:00:00');
     return `<tr><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${MESLB[dm.getMonth()]}/${String(dm.getFullYear()).slice(2)}</b>${parcial?' <span class="gr" title="mês em andamento — números parciais">*</span>':''}</td>
-      <td style="${tdc}">${fseq(a.saldo,v=>nf.format(v))}${(parcial&&m?._transito>0)?` <span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}</td>
+      <td style="${tdc}">${saldoU!=null?nf.format(saldoU):'—'}${(parcial&&m?._transito>0)?` <span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}</td>
       <td style="${tdc}${corF(folga)}">${F.d1(folga)}</td>
-      <td style="${tdc}">${fseq(a.custo,v=>rf2.format(v))}</td>
+      <td style="${tdc}">${custoU!=null?rf2.format(custoU):'—'}</td>
       <td style="${tdc}${sep}">${F.n(a.q1)}</td>
       <td style="${tdc}color:var(--ch4)">${mcCell(a.l1,a.v1)}</td>
       <td style="${tdc}">${fseq(a.atacTab,v=>rf2.format(v))}</td>
@@ -1352,7 +1352,7 @@ async function abreExtrato(cod, m, acao){
       tb.innerHTML=mensal?linhasM:linhas;
       ov.querySelector('#xTh0').textContent=mensal?'Mês':'Semana';
       ov.querySelector('#xVwNota').textContent=mensal
-        ?`${NM} meses · somáveis somados no mês; preço/custo/saldo/BGT mostram a sequência do mês (A → B); * = mês em andamento`
+        ?`${NM} meses · somáveis somados no mês; preços/BGT mostram a sequência do mês (A → B); saldo, folga e custo = fim do mês; * = mês em andamento`
         :`${NW} semanas fechadas (seg–dom)`;
       bS.className=mensal?'':'btn'; bS.style.cssText=mensal?desligado:ligado;
       bM.className=mensal?'btn':''; bM.style.cssText=mensal?ligado:desligado;
