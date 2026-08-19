@@ -1238,12 +1238,13 @@ async function abreExtrato(cod, m, acao){
       <button class="btn" id="xAprova" style="padding:7px 18px;flex:none">✔ OK — aprovar</button>`;
   }
   ov.querySelector('.aclcard').innerHTML=`
-    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato semanal — ${NW} semanas fechadas (seg–dom)</span><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
+    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato semanal — ${NW} semanas fechadas (seg–dom)</span><button class="btn" id="xDiagBtn" style="padding:6px 14px;flex:none;font-size:12.5px" title="A IA lê folga, mercado, funil e margem deste produto e classifica na matriz de diagnóstico">🧠 Diagnóstico IA</button><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
     <div class="tablecard" style="padding:11px 16px;margin:10px 0 12px">
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;font-size:12.5px">
         ${topoHtml}
       </div>
     </div>
+    <div id="xDiagBox"></div>
     <div class="tscroll" style="max-height:58vh"><table style="width:auto;min-width:0">
       <thead>
       <tr><th rowspan="2" style="padding:7px 8px;text-align:left;position:sticky;left:0;top:0;background:var(--surface);z-index:3;vertical-align:bottom">Semana</th>
@@ -1270,6 +1271,7 @@ async function abreExtrato(cod, m, acao){
       }).join('')}</div></div>`:''}
     <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom. Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões). ${acao?'Topo = a sugestão do analista exatamente como registrada (era → fica, markup resultante e alvo que ele viu); aplicar/devolver é na página Aprovações.':'Preencha o preço novo em cima, JUSTIFIQUE e OK — entra na MESMA fila de execução do Aprovar.'}</p>`;
   ov.querySelector('#mcX').onclick=()=>ov.remove();
+  montaDiagnostico(ov, cod);
   if(!acao){
   const xAt=ov.querySelector('#xAtac'), xDe=ov.querySelector('#xDe'), xa=ov.querySelector('#xAv'), xMl2=ov.querySelector('#xMl');
   const atualiza=()=>{
@@ -1305,6 +1307,57 @@ async function abreExtrato(cod, m, acao){
     setTimeout(()=>{ document.getElementById('mcModal')?.remove(); renderSugestoes(); }, 900);
   };
   }
+}
+function montaDiagnostico(ov, cod){
+  // DIAGNÓSTICO IA: botão no extrato → edge function `diagnostico` (Claude) classifica o
+  // produto na matriz de 11 perfis. Sem referência de mercado, pede o menor preço relevante
+  // do Google Shopping / Mercado Livre (lightbox) e grava em concorrencia_manual.
+  const box=ov.querySelector('#xDiagBox'), btn=ov.querySelector('#xDiagBtn');
+  if(!box||!btn) return;
+  const card=(inner,borda)=>`<div class="tablecard" style="padding:12px 16px;margin:0 0 12px${borda?';border-left:3px solid '+borda:''}">${inner}</div>`;
+  const pintar=(d,antigo)=>{
+    const conf={alta:'var(--good)',media:'var(--warn)',baixa:'var(--crit)'}[d.confianca]||'var(--muted)';
+    const quando=d.criado_em?new Date(d.criado_em).toLocaleDateString('pt-BR')+' '+new Date(d.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
+    box.innerHTML=card(`
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span class="pill" style="background:var(--accent-soft);color:var(--accent)"><i style="background:var(--accent)"></i>PERFIL ${esc(d.perfil)} · ${esc(d.classificacao)}</span>
+        <span class="gr">${antigo?'último diagnóstico · ':''}confiança <b style="color:${conf}">${esc(d.confianca||'—')}</b>${quando?' · '+quando:''}${d.autor?' · '+esc(String(d.autor).split('@')[0]):''}</span>
+      </div>
+      <p style="margin:8px 0 4px;font-size:13px">${esc(d.resumo||'')}</p>
+      <p style="margin:4px 0;font-size:13px"><b>Ação:</b> ${esc(d.acao||'')}</p>
+      ${(d.alertas&&d.alertas.length)?`<div style="font-size:12.5px;color:var(--warn);margin-top:4px">${d.alertas.map(a=>'⚠ '+esc(a)).join('<br>')}</div>`:''}`,'var(--accent)');
+  };
+  sb.from('diagnosticos').select('criado_em,autor,perfil,classificacao,resumo,acao,alertas,confianca').eq('cod',cod).order('criado_em',{ascending:false}).limit(1)
+    .then(({data})=>{ if(data?.[0]&&!box.dataset.fresco) pintar(data[0],true); });
+  const roda=async mercado=>{
+    btn.disabled=true;
+    box.innerHTML=card('<span class="gr">🧠 analisando o produto — folga, mercado, funil, margem… (até ~1 min)</span>');
+    const {data:{user}}=await sb.auth.getUser();
+    const {data,error}=await sb.functions.invoke('diagnostico',{body:{cod, autor:user?.email||null, ...(mercado?{mercado}:{})}});
+    btn.disabled=false;
+    if(error||data?.erro){ box.innerHTML=card('Erro no diagnóstico: '+esc(data?.erro||error?.message||error),'var(--crit)'); return; }
+    if(data?.precisa_preco){ pedePreco(); return; }
+    box.dataset.fresco='1';
+    pintar(data.diagnostico,false);
+  };
+  const pedePreco=()=>{
+    box.innerHTML=card(`
+      <b>Sem referência de mercado pra este produto.</b>
+      <p class="gr" style="margin:4px 0 8px">Pesquise e informe o MENOR preço de um anúncio relevante (produto realmente comparável) — pelo menos um canal:</p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+        <span>Google Shopping (R$)<br><input type="number" step="0.01" min="0" id="xDgShop" style="width:120px;text-align:right"></span>
+        <span>Mercado Livre (R$)<br><input type="number" step="0.01" min="0" id="xDgMl" style="width:120px;text-align:right"></span>
+        <button class="btn" id="xDgGo" style="padding:7px 16px;flex:none">Continuar diagnóstico</button>
+        <span class="gr" id="xDgErr" style="color:var(--crit)"></span>
+      </div>`,'var(--warn)');
+    box.querySelector('#xDgGo').onclick=()=>{
+      const g=+box.querySelector('#xDgShop').value||0, ml=+box.querySelector('#xDgMl').value||0;
+      if(!g&&!ml){ box.querySelector('#xDgErr').textContent='informe pelo menos um preço'; return; }
+      roda({gshopping:g||null, ml:ml||null});
+    };
+    box.querySelector('#xDgShop').focus();
+  };
+  btn.onclick=()=>roda();
 }
 async function renderRevisoes(){
   // devolutiva pro ANALISTA: o que aconteceu com cada sugestão (aplicada / devolvida com motivo / em revisão)
