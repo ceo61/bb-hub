@@ -1411,7 +1411,7 @@ function montaDiagnostico(ov, cod){
     const quando=d.criado_em?new Date(d.criado_em).toLocaleDateString('pt-BR')+' '+new Date(d.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
     cardEl.innerHTML=card(`
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <span class="pill" style="background:var(--accent-soft);color:var(--accent)"><i style="background:var(--accent)"></i>PERFIL ${esc(d.perfil)} · ${esc(d.classificacao)}</span>
+        <span class="pill" style="background:var(--accent-soft);color:var(--accent)"><i style="background:var(--accent)"></i>${esc(d.perfil)} → ${esc(d.classificacao)}</span>
         <span class="gr">${antigo?'último diagnóstico · ':''}confiança <b style="color:${conf}">${esc(d.confianca||'—')}</b>${quando?' · '+quando:''}${d.autor?' · '+esc(String(d.autor).split('@')[0]):''}</span>
       </div>
       <p style="margin:8px 0 4px;font-size:13px">${esc(d.resumo||'')}</p>
