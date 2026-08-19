@@ -1364,11 +1364,15 @@ async function abreExtrato(cod, m, acao){
   const xAt=ov.querySelector('#xAtac'), xDe=ov.querySelector('#xDe'), xa=ov.querySelector('#xAv'), xMl2=ov.querySelector('#xMl');
   const atualiza=()=>{
     ov.querySelector('#xMkA').textContent=(+xAt.value>0?'fica ':'')+hint(+xAt.value, alvoA);
-    const v=+xa.value;
-    ov.querySelector('#xPor').textContent=(v>0?'POR '+rf2.format(v/0.95)+' · fica ':'')+hint(v, alvoS);
+    // varejo: mostrar o DESCONTO DE→POR que o cliente vai ver com os valores da tela (não o markup)
+    const v=+xa.value, de=+xDe.value||+vDe||0, por=v>0?v/0.95:0;
+    const desc=(de>0&&por>0)?(1-por/de)*100:null;
+    ov.querySelector('#xPor').textContent = por>0
+      ? 'POR '+rf2.format(por)+(desc==null?'':desc>0.05?' · desconto de '+nf1.format(desc)+'% sobre o DE':' · ⚠ SEM desconto (POR ≥ DE)')
+      : '';
     ov.querySelector('#xMkM').textContent=(+xMl2.value>0?'fica ':'')+hint(+xMl2.value, alvoM, true);
   };
-  [xAt,xa,xMl2].forEach(i=>i.oninput=atualiza); atualiza();
+  [xAt,xDe,xa,xMl2].forEach(i=>i.oninput=atualiza); atualiza();
   ov.querySelector('#xAprova').onclick=async()=>{
     const av=+xa.value||null, de=+xDe.value||null, at=+xAt.value||null, ml=+xMl2.value||null;
     // só envia o que MUDOU vs hoje (à vista compara com o PIX atual — tolerância p/ arredondamento do ×0,95)
