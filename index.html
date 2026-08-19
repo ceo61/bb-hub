@@ -1138,8 +1138,11 @@ async function abreExtrato(cod, m, acao){
   const NW=18;
   const seg=new Date(); seg.setHours(12,0,0,0); seg.setDate(seg.getDate()-((seg.getDay()+6)%7));
   const mondays=[]; for(let i=NW;i>=1;i--){ const d=new Date(seg); d.setDate(d.getDate()-7*i); mondays.push(d.toISOString().slice(0,10)); }
-  const ini=mondays[0];
-  const d0=new Date(mondays[0]+'T12:00:00'); d0.setDate(d0.getDate()-62); const ini0=d0.toISOString().slice(0,10);
+  const NM=12;  // visão mensal: últimos 12 meses (o corrente é parcial)
+  const meses=[]; { const dm=new Date(); dm.setHours(12,0,0,0); dm.setDate(1); dm.setMonth(dm.getMonth()-(NM-1));
+    for(let i=0;i<NM;i++){ meses.push(dm.toISOString().slice(0,10)); dm.setMonth(dm.getMonth()+1); } }
+  const ini=meses[0]<mondays[0]?meses[0]:mondays[0];
+  const d0=new Date(ini+'T12:00:00'); d0.setDate(d0.getDate()-62); const ini0=d0.toISOString().slice(0,10);
   const [vd,cv,ad,pr,es,cu,cc,hist]=await Promise.all([
     sb.from('fato_vendas_diaria').select('data,qtd,qtd_b2c,val_b2c,lucro_b2c,qtd_ml,val_ml,lucro_ml,qtd_atac,val_atac,lucro_atac').eq('cod',cod).gte('data',ini0).order('data').then(r=>r.data||[]),
     sb.from('fato_conversao').select('data,views').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
@@ -1167,8 +1170,26 @@ async function abreExtrato(cod, m, acao){
     if(r.codtab==='002'&&f==='10'){ a.de=+r.preco_de||null; a.por=+r.preco_por||null; a.porReal=+r.preco_real||null; }
     else if(r.codtab==='001'){ a.atacTab=+r.preco_real||null; }
     else if(r.codtab==='401'){ a.mlTab=+r.preco_real||null; } });
+  // agregação MENSAL: somáveis somam; pontuais (preço/custo/saldo/BGT) viram sequência de valores distintos (A → B)
+  const mesDe=d=>d.slice(0,7);
+  const M={}; meses.forEach(ms=>M[mesDe(ms)]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,ads:0,saldo:[],de:[],porReal:[],atacTab:[],mlTab:[],custo:[],ccav:[],ccbb:[]});
+  const pushU=(arr,v)=>{ v=+v; if(!isFinite(v))return; if(!arr.length||Math.abs(arr[arr.length-1]-v)>0.005) arr.push(v); };
+  vd.forEach(r=>{ const a=M[mesDe(r.data)]; if(!a) return;
+    a.q2+=+r.qtd_b2c||0; a.v2+=+r.val_b2c||0; a.l2+=+r.lucro_b2c||0;
+    a.qm+=+r.qtd_ml||0; a.vm+=+r.val_ml||0; a.lm+=+r.lucro_ml||0;
+    a.q1+=+r.qtd_atac||0; a.v1+=+r.val_atac||0; a.l1+=+r.lucro_atac||0; });
+  cv.forEach(r=>{ const a=M[mesDe(r.data)]; if(a) a.vw+=+r.views||0; });
+  ad.forEach(r=>{ const a=M[mesDe(r.data)]; if(a) a.ads+=+r.custo||0; });
+  es.forEach(r=>{ const a=M[mesDe(r.snapshot)]; if(a) pushU(a.saldo,r.estoque_util); });
+  cu.forEach(r=>{ const a=M[mesDe(r.snapshot)]; if(a) pushU(a.custo,r.custo); });
+  cc.forEach(r=>{ const a=M[mesDe(r.data)]; if(a){ if(r.cc_avista!=null)pushU(a.ccav,r.cc_avista); if(r.cc_b2b!=null)pushU(a.ccbb,r.cc_b2b); } });
+  pr.forEach(r=>{ const a=M[mesDe(r.snapshot)]; if(!a) return; const f=(r.filial||'').trim();
+    if(r.codtab==='002'&&f==='10'){ if(+r.preco_de)pushU(a.de,r.preco_de); if(+r.preco_real)pushU(a.porReal,r.preco_real); }
+    else if(r.codtab==='001'){ if(+r.preco_real)pushU(a.atacTab,r.preco_real); }
+    else if(r.codtab==='401'){ if(+r.preco_real)pushU(a.mlTab,r.preco_real); } });
   const giro60=w=>{ const dom=new Date(w+'T12:00:00'); dom.setDate(dom.getDate()+6); let s=0;
     for(let i=0;i<60;i++){ const d=new Date(dom); d.setDate(d.getDate()-i); s+=qtdDia[d.toISOString().slice(0,10)]||0; } return s/2; };
+  const giroFim=fim=>{ let s=0; for(let i=0;i<60;i++){ const d=new Date(fim); d.setDate(d.getDate()-i); s+=qtdDia[d.toISOString().slice(0,10)]||0; } return s/2; };
   const F={m:v=>v!=null&&isFinite(v)?rf2.format(v):'—', r:v=>v?rf.format(v):'—', n:v=>v?nf.format(Math.round(v)):'—',
            d1:v=>v!=null&&isFinite(v)?nf1.format(v):'—', p:v=>v!=null&&isFinite(v)?nf1.format(v)+'%':'—'};
   const corF=x=>x==null?'':x<0?'color:var(--crit);font-weight:700':x<1?'color:var(--warn);font-weight:700':'color:var(--good)';
@@ -1211,6 +1232,49 @@ async function abreExtrato(cod, m, acao){
       <td style="${tdc}">${F.m(a.mlTab)}</td>
       <td style="${tdc}">${F.m(tickM)}</td>
       <td style="${tdc}">${F.d1(mkM)}${mkM?'×':''}</td></tr>`; }).join('');
+  // linhas MENSAIS: mesmo layout; pontuais viram "A → B" quando mudaram dentro do mês
+  const MESLB=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const fseq=(arr,fmt)=>arr.length?arr.map(fmt).join(' → '):'—';
+  const ult=arr=>arr.length?arr[arr.length-1]:null;
+  const linhasM=meses.map((ms,mi)=>{ const a=M[mesDe(ms)];
+    const parcial=mi===meses.length-1;
+    const fimMes=new Date(ms+'T12:00:00'); fimMes.setMonth(fimMes.getMonth()+1); fimMes.setDate(0);
+    const fim=parcial?new Date():fimMes;
+    const g=giroFim(fim), saldoU=ult(a.saldo), folga=(saldoU!=null&&g>0)?saldoU/g:null;
+    const custoU=ult(a.custo);
+    const mkS=(ult(a.porReal)&&custoU)?ult(a.porReal)/custoU:null;
+    const mkA=(ult(a.atacTab)&&custoU)?ult(a.atacTab)/custoU:null;
+    const mkM2=(ult(a.mlTab)&&custoU)?ult(a.mlTab)/custoU:null;
+    const prat=a.q2>0?a.v2/a.q2:null, tick=a.q1>0?a.v1/a.q1:null, tickM=a.qm>0?a.vm/a.qm:null;
+    const conv=a.vw>0?a.q2/a.vw*100:null, roas=a.ads>0?a.v2/a.ads:null;
+    const sep='border-left:2px solid var(--hair);';
+    const dm=new Date(ms+'T12:00:00');
+    return `<tr><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${MESLB[dm.getMonth()]}/${String(dm.getFullYear()).slice(2)}</b>${parcial?' <span class="gr" title="mês em andamento — números parciais">*</span>':''}</td>
+      <td style="${tdc}">${fseq(a.saldo,v=>nf.format(v))}${(parcial&&m?._transito>0)?` <span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}</td>
+      <td style="${tdc}${corF(folga)}">${F.d1(folga)}</td>
+      <td style="${tdc}">${fseq(a.custo,v=>rf2.format(v))}</td>
+      <td style="${tdc}${sep}">${F.n(a.q1)}</td>
+      <td style="${tdc}color:var(--ch4)">${mcCell(a.l1,a.v1)}</td>
+      <td style="${tdc}">${fseq(a.atacTab,v=>rf2.format(v))}</td>
+      <td style="${tdc}">${F.m(tick)}</td>
+      <td style="${tdc}color:var(--muted)">${fseq(a.ccbb,v=>rf2.format(v))}</td>
+      <td style="${tdc}">${F.d1(mkA)}${mkA?'×':''}</td>
+      <td style="${tdc}${sep}">${F.n(a.q2)}</td>
+      <td style="${tdc}color:var(--ch4)">${mcCell(a.l2,a.v2)}</td>
+      <td style="${tdc}">${fseq(a.de,v=>rf2.format(v))}</td>
+      <td style="${tdc}"><b>${fseq(a.porReal,v=>rf2.format(v))}</b></td>
+      <td style="${tdc}">${F.m(prat)}</td>
+      <td style="${tdc}color:var(--muted)">${fseq(a.ccav,v=>rf2.format(v))}</td>
+      <td style="${tdc}">${F.d1(mkS)}${mkS?'×':''}</td>
+      <td style="${tdc}">${F.p(conv)}</td>
+      <td style="${tdc}color:var(--ch1)">${F.n(a.vw)}</td>
+      <td style="${tdc}">${F.r(a.ads)}</td>
+      <td style="${tdc}">${F.d1(roas)}</td>
+      <td style="${tdc}${sep}">${F.n(a.qm)}</td>
+      <td style="${tdc}color:var(--ch4)">${mcCell(a.lm,a.vm)}</td>
+      <td style="${tdc}">${fseq(a.mlTab,v=>rf2.format(v))}</td>
+      <td style="${tdc}">${F.m(tickM)}</td>
+      <td style="${tdc}">${F.d1(mkM2)}${mkM2?'×':''}</td></tr>`; }).join('');
   const th=(t,tip,sep)=>`<th style="padding:6px 8px;text-align:right;white-space:nowrap;top:29px;${sep?'border-left:2px solid var(--hair);':''}"${tip?` title="${tip}"`:''}>${t}</th>`;
   const vAt=m?._atacSug??m?.p_atacado, vAv=m?._avistaSug, vDe=m?.p_site_de, vMl=m?._mlSug??m?.p_marketplace;
   const C0=+m?.custo||0, alvoA=m?._alvoA, alvoS=m?._alvo, alvoM=m?._alvoM;
@@ -1242,27 +1306,32 @@ async function abreExtrato(cod, m, acao){
       <button class="btn" id="xAprova" style="padding:7px 18px;flex:none">✔ OK — aprovar</button>`;
   }
   ov.querySelector('.aclcard').innerHTML=`
-    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato semanal — ${NW} semanas fechadas (seg–dom)</span><button class="btn" id="xDiagBtn" style="padding:6px 14px;flex:none;font-size:12.5px" title="A IA lê folga, mercado, funil e margem deste produto e classifica na matriz de diagnóstico">🧠 Diagnóstico IA</button><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
+    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato do produto</span><button class="btn" id="xDiagBtn" style="padding:6px 14px;flex:none;font-size:12.5px" title="A IA lê folga, mercado, funil e margem deste produto e classifica na matriz de diagnóstico">🧠 Diagnóstico IA</button><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
     <div class="tablecard" style="padding:11px 16px;margin:10px 0 12px">
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;font-size:12.5px">
         ${topoHtml}
       </div>
     </div>
     <div id="xDiagBox"></div>
+    <div style="display:flex;gap:6px;align-items:center;margin:0 0 8px">
+      <button id="xVwS" class="btn" style="padding:5px 14px;font-size:12px;flex:none">Semanal</button>
+      <button id="xVwM" style="padding:5px 14px;font-size:12px;flex:none;border:1px solid var(--hair);border-radius:9px;color:var(--ink2)">Mensal</button>
+      <span class="gr" id="xVwNota">${NW} semanas fechadas (seg–dom)</span>
+    </div>
     <div class="tscroll" style="max-height:58vh"><table style="width:auto;min-width:0">
       <thead>
-      <tr><th rowspan="2" style="padding:7px 8px;text-align:left;position:sticky;left:0;top:0;background:var(--surface);z-index:3;vertical-align:bottom">Semana</th>
+      <tr><th rowspan="2" id="xTh0" style="padding:7px 8px;text-align:left;position:sticky;left:0;top:0;background:var(--surface);z-index:3;vertical-align:bottom">Semana</th>
         <th colspan="3" style="padding:5px 8px;text-align:center;letter-spacing:.1em">GERAIS</th>
         <th colspan="6" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair)">BBDI — ATACADO (001)</th>
         <th colspan="11" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair);color:var(--accent)">BBB — SITE (002)</th>
         <th colspan="5" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair)">ML (005)</th></tr>
       <tr>
         ${th('Saldo','estoque útil no fim da semana (snapshot; histórico desde 15/07/26)')}${th('Folga','saldo ÷ giro 60d÷2 (aprox — total c/ lotões)')}${th('Custo','custo unitário (desde 16/07/26)')}
-        ${th('7dd','unidades atacado na semana',1)}${th('MC 001','lucro bruto da semana no Atacado e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('Tab','preço tabela 001 (real; desde 15/07/26)')}${th('Ticket','ticket médio atacado')}${th('BGT','concorrente B2B cash (desde 13/06/26)')}${th('Mkup','tabela 001 ÷ custo')}
-        ${th('7dd','unidades site na semana',1)}${th('MC 002','lucro bruto da semana no Site e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('PIX','preço FINAL à vista = POR×0,95 — o que o cliente paga (mesma régua da 1ª página)')}${th('Prat.','preço praticado site')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('Mkup','PIX (à vista real) ÷ custo — mesmo mk da 1ª página')}${th('Conv','qtd 002 ÷ views')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS','faturado 002 ÷ Ads')}
-        ${th('7dd','unidades Mercado Livre',1)}${th('MC 005','lucro bruto da semana no ML e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('Tab','preço tabela 401')}${th('Ticket','ticket médio ML')}${th('Mkup','tabela 401 ÷ custo')}</tr>
+        ${th('un','unidades atacado no período (semana ou mês)',1)}${th('MC 001','lucro bruto do período no Atacado e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('Tab','preço tabela 001 (real; desde 15/07/26)')}${th('Ticket','ticket médio atacado')}${th('BGT','concorrente B2B cash (desde 13/06/26)')}${th('Mkup','tabela 001 ÷ custo')}
+        ${th('un','unidades site no período (semana ou mês)',1)}${th('MC 002','lucro bruto do período no Site e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('PIX','preço FINAL à vista = POR×0,95 — o que o cliente paga (mesma régua da 1ª página)')}${th('Prat.','preço praticado site')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('Mkup','PIX (à vista real) ÷ custo — mesmo mk da 1ª página')}${th('Conv','qtd 002 ÷ views')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS','faturado 002 ÷ Ads')}
+        ${th('un','unidades Mercado Livre no período',1)}${th('MC 005','lucro bruto do período no ML e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('Tab','preço tabela 401')}${th('Ticket','ticket médio ML')}${th('Mkup','tabela 401 ÷ custo')}</tr>
       </thead>
-      <tbody>${linhas}</tbody></table></div>
+      <tbody id="xTbody">${linhas}</tbody></table></div>
     ${(hist&&hist.length)?`<div class="tablecard" style="padding:11px 16px;margin-top:12px"><div class="eyebrow" style="margin-bottom:7px">🗂 Histórico de alterações e revisões deste produto</div>
       <div style="display:grid;gap:5px;font-size:12.5px;max-height:170px;overflow:auto">${hist.map(h=>{
         const dt=new Date(h.criado_em).toLocaleDateString('pt-BR');
@@ -1275,6 +1344,21 @@ async function abreExtrato(cod, m, acao){
       }).join('')}</div></div>`:''}
     <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom. Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões). ${acao?'Topo = a sugestão do analista exatamente como registrada (era → fica, markup resultante e alvo que ele viu); aplicar/devolver é na página Aprovações.':'Preencha o preço novo em cima, JUSTIFIQUE e OK — entra na MESMA fila de execução do Aprovar.'}</p>`;
   ov.querySelector('#mcX').onclick=()=>ov.remove();
+  { // toggle semanal × mensal
+    const bS=ov.querySelector('#xVwS'), bM=ov.querySelector('#xVwM'), tb=ov.querySelector('#xTbody');
+    const ligado='padding:5px 14px;font-size:12px;flex:none';
+    const desligado=ligado+';border:1px solid var(--hair);border-radius:9px;color:var(--ink2);background:none';
+    const setVw=mensal=>{
+      tb.innerHTML=mensal?linhasM:linhas;
+      ov.querySelector('#xTh0').textContent=mensal?'Mês':'Semana';
+      ov.querySelector('#xVwNota').textContent=mensal
+        ?`${NM} meses · somáveis somados no mês; preço/custo/saldo/BGT mostram a sequência do mês (A → B); * = mês em andamento`
+        :`${NW} semanas fechadas (seg–dom)`;
+      bS.className=mensal?'':'btn'; bS.style.cssText=mensal?desligado:ligado;
+      bM.className=mensal?'btn':''; bM.style.cssText=mensal?ligado:desligado;
+    };
+    bS.onclick=()=>setVw(false); bM.onclick=()=>setVw(true);
+  }
   montaDiagnostico(ov, cod);
   if(!acao){
   const xAt=ov.querySelector('#xAtac'), xDe=ov.querySelector('#xDe'), xa=ov.querySelector('#xAv'), xMl2=ov.querySelector('#xMl');
