@@ -1312,13 +1312,16 @@ function montaDiagnostico(ov, cod){
   // DIAGNÓSTICO IA: botão no extrato → edge function `diagnostico` (Claude) classifica o
   // produto na matriz de 11 perfis. Sem referência de mercado, pede o menor preço relevante
   // do Google Shopping / Mercado Livre (lightbox) e grava em concorrencia_manual.
+  // Abaixo do cartão, chat pra tirar dúvidas com o agente sobre o produto/diagnóstico.
   const box=ov.querySelector('#xDiagBox'), btn=ov.querySelector('#xDiagBtn');
   if(!box||!btn) return;
+  box.innerHTML='<div id="xDiagCard"></div><div id="xDiagChat"></div>';
+  const cardEl=box.querySelector('#xDiagCard'), chatEl=box.querySelector('#xDiagChat');
   const card=(inner,borda)=>`<div class="tablecard" style="padding:12px 16px;margin:0 0 12px${borda?';border-left:3px solid '+borda:''}">${inner}</div>`;
   const pintar=(d,antigo)=>{
     const conf={alta:'var(--good)',media:'var(--warn)',baixa:'var(--crit)'}[d.confianca]||'var(--muted)';
     const quando=d.criado_em?new Date(d.criado_em).toLocaleDateString('pt-BR')+' '+new Date(d.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
-    box.innerHTML=card(`
+    cardEl.innerHTML=card(`
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <span class="pill" style="background:var(--accent-soft);color:var(--accent)"><i style="background:var(--accent)"></i>PERFIL ${esc(d.perfil)} · ${esc(d.classificacao)}</span>
         <span class="gr">${antigo?'último diagnóstico · ':''}confiança <b style="color:${conf}">${esc(d.confianca||'—')}</b>${quando?' · '+quando:''}${d.autor?' · '+esc(String(d.autor).split('@')[0]):''}</span>
@@ -1331,17 +1334,17 @@ function montaDiagnostico(ov, cod){
     .then(({data})=>{ if(data?.[0]&&!box.dataset.fresco) pintar(data[0],true); });
   const roda=async mercado=>{
     btn.disabled=true;
-    box.innerHTML=card('<span class="gr">🧠 analisando o produto — folga, mercado, funil, margem… (até ~1 min)</span>');
+    cardEl.innerHTML=card('<span class="gr">🧠 analisando o produto — folga, mercado, funil, margem… (até ~1 min)</span>');
     const {data:{user}}=await sb.auth.getUser();
     const {data,error}=await sb.functions.invoke('diagnostico',{body:{cod, autor:user?.email||null, ...(mercado?{mercado}:{})}});
     btn.disabled=false;
-    if(error||data?.erro){ box.innerHTML=card('Erro no diagnóstico: '+esc(data?.erro||error?.message||error),'var(--crit)'); return; }
+    if(error||data?.erro){ cardEl.innerHTML=card('Erro no diagnóstico: '+esc(data?.erro||error?.message||error),'var(--crit)'); return; }
     if(data?.precisa_preco){ pedePreco(); return; }
     box.dataset.fresco='1';
     pintar(data.diagnostico,false);
   };
   const pedePreco=()=>{
-    box.innerHTML=card(`
+    cardEl.innerHTML=card(`
       <b>Sem referência de mercado pra este produto.</b>
       <p class="gr" style="margin:4px 0 8px">Pesquise e informe o MENOR preço de um anúncio relevante (produto realmente comparável) — pelo menos um canal:</p>
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
@@ -1350,14 +1353,50 @@ function montaDiagnostico(ov, cod){
         <button class="btn" id="xDgGo" style="padding:7px 16px;flex:none">Continuar diagnóstico</button>
         <span class="gr" id="xDgErr" style="color:var(--crit)"></span>
       </div>`,'var(--warn)');
-    box.querySelector('#xDgGo').onclick=()=>{
-      const g=+box.querySelector('#xDgShop').value||0, ml=+box.querySelector('#xDgMl').value||0;
-      if(!g&&!ml){ box.querySelector('#xDgErr').textContent='informe pelo menos um preço'; return; }
+    cardEl.querySelector('#xDgGo').onclick=()=>{
+      const g=+cardEl.querySelector('#xDgShop').value||0, ml=+cardEl.querySelector('#xDgMl').value||0;
+      if(!g&&!ml){ cardEl.querySelector('#xDgErr').textContent='informe pelo menos um preço'; return; }
       roda({gshopping:g||null, ml:ml||null});
     };
-    box.querySelector('#xDgShop').focus();
+    cardEl.querySelector('#xDgShop').focus();
   };
   btn.onclick=()=>roda();
+  // ---- chat com o agente ----
+  const hist=[];
+  chatEl.innerHTML=`<div class="tablecard" style="padding:10px 16px;margin:0 0 12px">
+    <button id="xChTg" style="color:var(--accent);font-weight:600;font-size:12.5px;padding:0">💬 Conversar com o agente sobre este produto</button>
+    <div id="xChPanel" class="hide" style="margin-top:8px">
+      <div id="xChMsgs" style="display:grid;gap:6px;max-height:260px;overflow:auto;margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="xChInp" maxlength="1000" placeholder="ex.: e se eu baixar só o atacado? por que não mexer no ML?" style="flex:1">
+        <button class="btn" id="xChGo" style="padding:7px 16px;flex:none">Enviar</button>
+      </div>
+    </div></div>`;
+  const msgs=chatEl.querySelector('#xChMsgs'), inp=chatEl.querySelector('#xChInp'), go=chatEl.querySelector('#xChGo');
+  chatEl.querySelector('#xChTg').onclick=()=>{ chatEl.querySelector('#xChPanel').classList.toggle('hide'); inp.focus(); };
+  const bolha=(de,txt)=>{
+    const b=document.createElement('div');
+    b.style.cssText='padding:8px 12px;border-radius:10px;font-size:13px;max-width:88%;white-space:pre-wrap;'+
+      (de==='analista'?'justify-self:end;background:var(--accent-soft);color:var(--ink)':'justify-self:start;background:var(--surface2)');
+    b.textContent=txt;
+    msgs.appendChild(b); msgs.scrollTop=msgs.scrollHeight;
+    return b;
+  };
+  const envia=async()=>{
+    const q=inp.value.trim(); if(!q||go.disabled) return;
+    inp.value=''; go.disabled=true;
+    bolha('analista',q);
+    const espera=bolha('ia','pensando…');
+    const {data:{user}}=await sb.auth.getUser();
+    const {data,error}=await sb.functions.invoke('diagnostico',{body:{cod, autor:user?.email||null, pergunta:q, historico:hist.slice(-10)}});
+    go.disabled=false;
+    if(error||data?.erro){ espera.textContent='Erro: '+(data?.erro||error?.message||error); espera.style.color='var(--crit)'; return; }
+    espera.textContent=data.resposta;
+    hist.push({de:'analista',texto:q},{de:'ia',texto:data.resposta});
+    inp.focus();
+  };
+  go.onclick=envia;
+  inp.onkeydown=e=>{ if(e.key==='Enter') envia(); };
 }
 async function renderRevisoes(){
   // devolutiva pro ANALISTA: o que aconteceu com cada sugestão (aplicada / devolvida com motivo / em revisão)
