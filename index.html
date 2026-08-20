@@ -1772,7 +1772,7 @@ async function renderSugestoes(){
       if(st.sgOut==='ml'&&m._outM!==2) return false;
       if(st.sgG&&(m.grupo||'—')!==st.sgG) return false;
       if(st.sgGer&&m.geracao!==st.sgGer) return false;
-      if(st.sgQ&&!((m.cod+' '+(m.descricao||'')).toUpperCase().includes(st.sgQ))) return false;
+      if(st.sgQ){ const nq=st.sgQ.replace(/[^A-Z0-9]/g,''); const alvo=(m.cod+' '+(m.descricao||'')).toUpperCase().replace(/[^A-Z0-9]/g,''); if(nq&&!alvo.includes(nq)) return false; }
       return true;
     });
     if(st.sgCol) rows.sort((a,b)=>{
