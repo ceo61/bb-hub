@@ -1155,6 +1155,7 @@ async function abreExtrato(cod, m, acao){
     sb.from('testes_ab').select('*').eq('cod',cod).eq('status','ativo').limit(1).then(r=>r.data?.[0]||null),
     sb.from('testes_ab_log').select('teste_id,quando,evento,braco').eq('cod',cod).order('quando').then(r=>r.data||[]),
   ]);
+  const wk=d=>{ const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); return dt.toISOString().slice(0,10); };
   // selo de teste A/B por semana: semana 1 = semana em que o teste foi criado (braço A);
   // troca de domingo 23h vale a partir da semana SEGUINTE (corte = domingo 23:00 local)
   const abW={};
@@ -1170,7 +1171,6 @@ async function abreExtrato(cod, m, acao){
       const n=Math.round((new Date(w+'T12:00:00')-new Date(w1+'T12:00:00'))/6048e5)+1;
       abW[w]={n, braco:ult.braco, id:ult.teste_id};
     } }
-  const wk=d=>{ const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); return dt.toISOString().slice(0,10); };
   const qtdDia={}; vd.forEach(r=>{ qtdDia[r.data]=+r.qtd||0; });
   const W={}; mondays.forEach(w=>W[w]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,ads:0,saldo:null,de:null,por:null,porReal:null,atacTab:null,mlTab:null,custo:null,ccav:null,ccbb:null});
   vd.forEach(r=>{ const a=W[wk(r.data)]; if(!a) return;
