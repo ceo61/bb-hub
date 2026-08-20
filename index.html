@@ -2342,7 +2342,24 @@ async function renderSkus(){
       </span>
       <span class="count">${compat?'compatibilidades da SZ0 (Protheus, espelho diário) · independe de venda/tráfego':'GA4 · site bbbaterias · cada SKU VTEX tem seu próprio link e conversão'}</span>
     </div>
-    <div id="skCorpo"><div class="embreve"><div class="big">${compat?'🧷':'🧩'}</div><h2>Escolha um produto</h2><p>${compat?'Todas as compatibilidades cadastradas (part numbers, modelos e IDSKU).':'Acessos, conversão, ticket e receita de cada SKU — mês a mês (7 meses).'}</p><p style="margin-top:14px">${btnC}</p></div></div>`;
+    <div id="skCorpo">
+      <div style="max-width:880px;margin:36px auto 0;text-align:center"><h2 style="margin:0 0 4px">O que você quer pesquisar?</h2><p class="gr" style="margin:0 0 18px">Escolha o bloco e depois selecione o produto na caixa acima.</p></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;max-width:880px;margin:0 auto">
+        <div class="tablecard" data-skbloco="" style="padding:22px;cursor:pointer;${!compat?'box-shadow:inset 0 0 0 2px var(--accent);':''}">
+          <div style="font-size:30px">🧩</div>
+          <h3 style="margin:8px 0 6px;${!compat?'color:var(--accent)':''}">SKUs com acesso no Google Analytics</h3>
+          <p class="gr" style="margin:0">Só o que teve tráfego no site: acessos, conversão, ticket e receita de cada SKU, mês a mês (7 meses). Bom para ver o que o mercado está procurando e comprando.</p>
+          ${!compat?'<p style="margin:10px 0 0;font-weight:600;color:var(--accent)">✓ modo ativo — escolha o produto acima</p>':''}
+        </div>
+        <div class="tablecard" data-skbloco="compat" style="padding:22px;cursor:pointer;${compat?'box-shadow:inset 0 0 0 2px var(--good);':''}">
+          <div style="font-size:30px">🧷</div>
+          <h3 style="margin:8px 0 6px;${compat?'color:var(--good)':''}">Todas as compatibilidades cadastradas</h3>
+          <p class="gr" style="margin:0">O catálogo completo da SZ0, independente de venda ou tráfego: part numbers, modelos e IDSKU de cada referência — com os acessos e a taxa de conversão de quem teve. Bom para auditar cadastro e achar anúncio escondido.</p>
+          ${compat?'<p style="margin:10px 0 0;font-weight:600;color:var(--good)">✓ modo ativo — escolha o produto acima</p>':''}
+        </div>
+      </div>
+    </div>`;
+  document.querySelectorAll('[data-skbloco]').forEach(el=>el.onclick=()=>{ st.skModo=el.dataset.skbloco||null; renderSkus(); });
   const ligaCompat=()=>{ const b=document.getElementById('skBtnCompat'); if(b) b.onclick=()=>{st.skModo=compat?null:'compat';renderSkus();}; };
   ligaCompat();
   $('#skGrupo').onchange=e=>{st.skGrupo=e.target.value;renderSkus();};
