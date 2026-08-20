@@ -2324,6 +2324,34 @@ async function renderPainel(){
 }
 
 /* ---------- SKUs — conversão por anúncio VTEX ---------- */
+function abreNovasCompat(cod){
+  let ov=document.getElementById('mcModal');
+  if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
+  ov.className='aclov';
+  ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
+  if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
+  const atuais=st.skNovas?.[cod]||[];
+  ov.innerHTML=`<div class="aclcard" style="width:min(640px,96vw)">
+    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📋 Simular novas compatibilidades — ${esc(cod)}</h2><span id="nvX" style="margin-left:auto;cursor:pointer;font-size:20px">✕</span></div>
+    <p class="gr" style="margin:8px 0">Cole <b>uma compatibilidade por linha</b> (nome/modelo, como iria para o cadastro). Elas entram na tabela em ordem alfabética destacadas como <b style="color:var(--warn)">NOVA</b> — <b>nada é gravado</b>; é para ver em que vizinhança caem: perto de linhas com acesso (potencial) ou em zona morta (provável lixo).</p>
+    <textarea id="nvTxt" style="width:100%;min-height:200px;resize:vertical;font-family:inherit" placeholder="Dell Inspiron 5406&#10;Dell Latitude 3520&#10;…">${esc(atuais.join('\n'))}</textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+      <button class="btn" id="nvOk">Simular na tabela</button>
+      ${atuais.length?'<button class="btn" id="nvLimpa" style="background:var(--crit)">Limpar simulação</button>':''}
+      <span class="gr" id="nvInfo" style="margin-left:auto"></span>
+    </div></div>`;
+  const conta=()=>{ const n=ov.querySelector('#nvTxt').value.split('\n').map(s=>s.trim()).filter(Boolean).length; ov.querySelector('#nvInfo').textContent=n?nf.format(n)+' linha(s)':''; };
+  ov.querySelector('#nvTxt').oninput=conta; conta();
+  ov.querySelector('#nvX').onclick=()=>ov.remove();
+  ov.querySelector('#nvOk').onclick=()=>{
+    const linhas=[...new Set(ov.querySelector('#nvTxt').value.split('\n').map(s=>s.trim()).filter(Boolean))];
+    (st.skNovas=st.skNovas||{})[cod]=linhas;
+    st.skColC='esp'; st.skDirC=1;   // simulação abre em ordem alfabética
+    ov.remove(); renderSkus();
+  };
+  const lb=ov.querySelector('#nvLimpa');
+  if(lb) lb.onclick=()=>{ delete st.skNovas[cod]; ov.remove(); renderSkus(); };
+}
 async function renderSkus(){
   const compat = st.skModo==='compat';
   const grupos={};
@@ -2426,12 +2454,16 @@ async function renderSkus(){
       <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
         <span class="kpi" style="padding:7px 16px"><b>${esc(cod)}</b>&nbsp;<span class="gr">${esc(st.dim[cod]?.descricao||'')}</span></span>
         ${btnC}
+        <button class="kpi" id="skNovasBtn" style="padding:7px 16px;color:var(--warn);${(st.skNovas?.[cod]||[]).length?'border-color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn);font-weight:700':''}">📋 Colar novas${(st.skNovas?.[cod]||[]).length?' ('+nf.format(st.skNovas[cod].length)+')':''}</button>
         <input type="search" id="skQC" placeholder="Filtrar modelo, part number ou IDSKU…" value="" style="margin-left:auto;min-width:240px"></div>
       <div id="skTabC"></div>`;
     const desenhaC=()=>{
       const nq=(st.skQC||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-      const ls=ordC.filter(x=>{ if(!nq) return true;
+      let ls=ordC.filter(x=>{ if(!nq) return true;
         return ((x.codref||'')+(x.modelo||'')+(x.espec||'')+(x.idvtex||'')).toUpperCase().replace(/[^A-Z0-9]/g,'').includes(nq); });
+      const novas=(st.skNovas?.[cod]||[]).map(t=>({novo:true, espec:t, modelo:'', codref:'', idvtex:''}))
+        .filter(x=>!nq||x.espec.toUpperCase().replace(/[^A-Z0-9]/g,'').includes(nq));
+      ls=ls.concat(novas);
       const CC={esp:x=>(x.espec||x.modelo||'').toUpperCase(), id:x=>String(x.idvtex||''),
                 v:x=>(cvw[x.idvtex]?.v||0), p:x=>(cvw[x.idvtex]?.p||0),
                 tx:x=>{const w=cvw[x.idvtex];return (w&&w.v>0)?w.p/w.v:-1;}};
@@ -2445,9 +2477,12 @@ async function renderSkus(){
       $('#skTabC').innerHTML=`
       <div class="tablecard"><div class="tscroll"><table style="min-width:680px">
         <thead><tr>${[['esp','Compatível com','left'],['id','IDSKU','left'],['v','Acessos 7m',''],['p','Compras 7m',''],['tx','Tx conv.','']].map(([k,lb,al])=>`<th data-cc="${k}" title="clique para ordenar (2º clique inverte)" style="${al?'text-align:'+al+';':''}color:var(--accent);text-decoration:underline;cursor:pointer;user-select:none">${lb}<span class="seta">${st.skColC===k?(st.skDirC>0?'▲':'▼'):''}</span></th>`).join('')}</tr></thead>
-        <tbody>${ls.map(x=>{const w=cvw[x.idvtex]||{v:0,p:0};const tx=w.v>0?w.p/w.v*100:null;return `<tr><td style="text-align:left"><b>${esc(x.espec||x.modelo||'—')}</b>${(x.modelo&&x.espec&&!x.espec.toUpperCase().includes(x.modelo.toUpperCase()))?` <span class="gr">(${esc(x.modelo)})</span>`:''}</td><td style="text-align:left"><span class="gr" title="itemId GA4/VTEX · ref ${esc(x.codref||'—')}">${esc(x.idvtex||'—')}</span></td><td style="${w.v?'font-weight:600':'color:var(--muted)'}">${w.v?nf.format(Math.round(w.v)):'0'}</td><td style="${w.p?'font-weight:700;color:var(--good)':'color:var(--muted)'}">${w.p?nf.format(Math.round(w.p)):'0'}</td><td style="${tx?'font-weight:600':'color:var(--muted)'}">${tx!=null?nf1.format(tx)+'%':'—'}</td></tr>`;}).join('')}</tbody>
+        <tbody>${ls.map(x=>{
+          if(x.novo) return `<tr style="background:var(--warn-soft)"><td style="text-align:left"><b>${esc(x.espec)}</b> <span style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--warn);border:1px solid var(--warn);border-radius:99px;padding:1px 8px;vertical-align:1px">NOVA</span></td><td style="text-align:left;color:var(--muted)">—</td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td></tr>`;
+          const w=cvw[x.idvtex]||{v:0,p:0};const tx=w.v>0?w.p/w.v*100:null;return `<tr><td style="text-align:left"><b>${esc(x.espec||x.modelo||'—')}</b>${(x.modelo&&x.espec&&!x.espec.toUpperCase().includes(x.modelo.toUpperCase()))?` <span class="gr">(${esc(x.modelo)})</span>`:''}</td><td style="text-align:left"><span class="gr" title="itemId GA4/VTEX · ref ${esc(x.codref||'—')}">${esc(x.idvtex||'—')}</span></td><td style="${w.v?'font-weight:600':'color:var(--muted)'}">${w.v?nf.format(Math.round(w.v)):'0'}</td><td style="${w.p?'font-weight:700;color:var(--good)':'color:var(--muted)'}">${w.p?nf.format(Math.round(w.p)):'0'}</td><td style="${tx?'font-weight:600':'color:var(--muted)'}">${tx!=null?nf1.format(tx)+'%':'—'}</td></tr>`;}).join('')}</tbody>
       </table></div></div>
-      <p class="gr" style="margin:10px 2px 0">${nf.format(ls.length)}${nq?' de '+nf.format(ordC.length):''} compatibilidades — <b>${nf.format(comAcesso)} com acesso</b> no site nos últimos 7 meses (GA4 por IDSKU, ordenado por acessos) · fonte: SZ0060 espelhada diariamente · cadastro completo (SB1), independe de venda.</p>`;
+      <p class="gr" style="margin:10px 2px 0">${nf.format(ls.length)}${nq?' de '+nf.format(ordC.length):''} compatibilidades — <b>${nf.format(comAcesso)} com acesso</b> no site nos últimos 7 meses (GA4 por IDSKU, ordenado por acessos) · fonte: SZ0060 espelhada diariamente · cadastro completo (SB1), independe de venda.</p>
+      ${(st.skNovas?.[cod]||[]).length?`<p style="margin:6px 2px 0;font-size:12px;color:var(--warn)"><b>+${nf.format(st.skNovas[cod].length)} compatibilidades NOVAS em simulação</b> — nada foi gravado no cadastro.</p>`:''}`;
       document.querySelectorAll('#skTabC th[data-cc]').forEach(th=>th.onclick=()=>{
         const c=th.dataset.cc;
         if(st.skColC===c) st.skDirC=-(st.skDirC||1);
@@ -2458,6 +2493,8 @@ async function renderSkus(){
     desenhaC();
     let tC; $('#skQC').oninput=e=>{clearTimeout(tC);tC=setTimeout(()=>{st.skQC=e.target.value;desenhaC();},200);};
     ligaCompat();
+    const nb=document.getElementById('skNovasBtn');
+    if(nb) nb.onclick=()=>abreNovasCompat(cod);
     return;
   }
   $('#skCorpo').innerHTML='<div class="carregando">Carregando SKUs…</div>';
