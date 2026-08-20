@@ -2386,12 +2386,12 @@ async function renderSkus(){
   if(compat){
     $('#skCorpo').innerHTML='<div class="carregando">Carregando compatibilidades…</div>';
     let cps=st.skCacheC?.[cod];
-    if(!cps){
+    if(!cps||!cps.length){
       cps=await tudo('dim_compatibilidade',{select:'idvtex,codref,modelo,espec',eq:[['cod',cod]]});
-      (st.skCacheC=st.skCacheC||{})[cod]=cps;
+      if(cps.length) (st.skCacheC=st.skCacheC||{})[cod]=cps;
     }
     if(cod!==st.skCod||st.skModo!=='compat') return;
-    if(!cps.length){ $('#skCorpo').innerHTML='<div class="carregando">Nenhuma compatibilidade cadastrada na SZ0 para este produto.</div>'; return; }
+    if(!cps.length){ $('#skCorpo').innerHTML=`<div class="carregando">Nenhuma compatibilidade cadastrada na SZ0 para <b>${esc(cod)}</b>${st.dim[cod]?'':' — código não existe no cadastro (SB1); confira a digitação'}.</div>`; return; }
     const ordC=[...cps].sort((a,b)=>String(a.codref||'').localeCompare(String(b.codref||'')));
     $('#skCorpo').innerHTML=`
       <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
@@ -2422,7 +2422,7 @@ async function renderSkus(){
     dados={cv:cv||[], lbl:lbl||[]}; (st.skCache=st.skCache||{})[cod]=dados;
   }
   if(cod!==st.skCod) return;
-  if(!dados.cv.length){ $('#skCorpo').innerHTML='<div class="carregando">Sem tráfego GA4 por SKU para este produto nos últimos 7 meses.</div>'; return; }
+  if(!dados.cv.length){ $('#skCorpo').innerHTML=`<div class="carregando">Sem tráfego GA4 por SKU para <b>${esc(cod)}</b> nos últimos 7 meses${st.dim[cod]?'':' — código não existe no cadastro (SB1); confira a digitação'}.</div>`; return; }
   const meses=[...new Set(dados.cv.map(r=>r.mes))].sort().slice(-7);
   const mesAtual=new Date().toISOString().slice(0,7);
   const L={}; dados.lbl.forEach(x=>{ if(x.idvtex) L[x.idvtex]={ref:x.codref||'', pn:x.modelo||'', esp:x.espec||''}; });
