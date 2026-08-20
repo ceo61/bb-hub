@@ -1339,7 +1339,7 @@ async function abreExtrato(cod, m, acao){
       </span>`;
   }
   ov.querySelector('.aclcard').innerHTML=`
-    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato do produto</span><button class="btn" id="xDiagBtn" style="padding:6px 14px;flex:none;font-size:12.5px" title="A IA lê folga, mercado, funil e margem deste produto e classifica na matriz de diagnóstico">🧠 Diagnóstico IA</button><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
+    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><a href="https://www.bbbaterias.com.br/${encodeURIComponent(cod.toLowerCase())}" target="_blank" rel="noopener" title="abrir a página do produto no site (nova aba)" style="flex:none;color:var(--accent);font-weight:600;font-size:12.5px;text-decoration:none;border:1px solid var(--hair);border-radius:8px;padding:4px 10px">🌐 ver no site ↗</a><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato do produto</span><button class="btn" id="xDiagBtn" style="padding:6px 14px;flex:none;font-size:12.5px" title="A IA lê folga, mercado, funil e margem deste produto e classifica na matriz de diagnóstico">🧠 Diagnóstico IA</button><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
     <div class="tablecard" style="padding:11px 16px;margin:10px 0 12px">
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;font-size:12.5px">
         ${topoHtml}
