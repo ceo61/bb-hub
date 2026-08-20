@@ -2467,7 +2467,7 @@ async function renderSkus(){
     $('#skCorpo').innerHTML='<div class="carregando">Carregando compatibilidades…</div>';
     let cps=st.skCacheC?.[cod];
     if(!cps||!cps.length){
-      cps=await tudo('dim_compatibilidade',{select:'idvtex,codref,modelo,espec',eq:[['cod',cod]]});
+      cps=await tudo('dim_compatibilidade',{select:'idvtex,codref,modelo,espec,bbb_sku_ativo,bbb_produto_ativo',eq:[['cod',cod]]});
       if(cps.length) (st.skCacheC=st.skCacheC||{})[cod]=cps;
     }
     let cvw=st.skCacheV?.[cod];
@@ -2513,9 +2513,11 @@ async function renderSkus(){
         <thead><tr>${[['esp','Compatível com','left'],['id','IDSKU','left'],['v','Acessos 7m',''],['p','Compras 7m',''],['tx','Tx conv.','']].map(([k,lb,al])=>`<th data-cc="${k}" title="clique para ordenar (2º clique inverte)" style="${al?'text-align:'+al+';':''}color:var(--accent);text-decoration:underline;cursor:pointer;user-select:none">${lb}<span class="seta">${st.skColC===k?(st.skDirC>0?'▲':'▼'):''}</span></th>`).join('')}</tr></thead>
         <tbody>${ls.map(x=>{
           if(x.novo) return `<tr style="background:var(--warn-soft)"><td style="text-align:left"><b>${esc(x.espec)}</b> <span style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--warn);border:1px solid var(--warn);border-radius:99px;padding:1px 8px;vertical-align:1px">NOVA</span></td><td style="text-align:left;color:var(--muted)">—</td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td><td style="color:var(--muted)">—</td></tr>`;
-          const w=cvw[x.idvtex]||{v:0,p:0};const tx=w.v>0?w.p/w.v*100:null;return `<tr><td style="text-align:left"><b>${esc(x.espec||x.modelo||'—')}</b>${(x.modelo&&x.espec&&!x.espec.toUpperCase().includes(x.modelo.toUpperCase()))?` <span class="gr">(${esc(x.modelo)})</span>`:''}</td><td style="text-align:left"><span class="gr" title="itemId GA4/VTEX · ref ${esc(x.codref||'—')}">${esc(x.idvtex||'—')}</span></td><td style="${w.v?'font-weight:600':'color:var(--muted)'}">${w.v?nf.format(Math.round(w.v)):'0'}</td><td style="${w.p?'font-weight:700;color:var(--good)':'color:var(--muted)'}">${w.p?nf.format(Math.round(w.p)):'0'}</td><td style="${tx?'font-weight:600':'color:var(--muted)'}">${tx!=null?nf1.format(tx)+'%':'—'}</td></tr>`;}).join('')}</tbody>
+          const w=cvw[x.idvtex]||{v:0,p:0};const tx=w.v>0?w.p/w.v*100:null;
+          const off=(x.bbb_sku_ativo==='N'||x.bbb_produto_ativo==='N');
+          return `<tr${off?' title="compatibilidade pausada/cancelada na loja (ativo = N)"':''}><td style="text-align:left"><b style="${off?'color:var(--muted);opacity:.5;text-decoration:line-through;font-weight:500':''}">${esc(x.espec||x.modelo||'—')}</b>${(x.modelo&&x.espec&&!x.espec.toUpperCase().includes(x.modelo.toUpperCase()))?` <span class="gr">(${esc(x.modelo)})</span>`:''}</td><td style="text-align:left"><span class="gr" title="itemId GA4/VTEX · ref ${esc(x.codref||'—')}">${esc(x.idvtex||'—')}</span></td><td style="${w.v?'font-weight:600':'color:var(--muted)'}">${w.v?nf.format(Math.round(w.v)):'0'}</td><td style="${w.p?'font-weight:700;color:var(--good)':'color:var(--muted)'}">${w.p?nf.format(Math.round(w.p)):'0'}</td><td style="${tx?'font-weight:600':'color:var(--muted)'}">${tx!=null?nf1.format(tx)+'%':'—'}</td></tr>`;}).join('')}</tbody>
       </table></div></div>
-      <p class="gr" style="margin:10px 2px 0">${nf.format(ls.length)}${nq?' de '+nf.format(ordC.length):''} compatibilidades — <b>${nf.format(comAcesso)} com acesso</b> no site nos últimos 7 meses (GA4 por IDSKU, ordenado por acessos) · fonte: SZ0060 espelhada diariamente · cadastro completo (SB1), independe de venda.</p>
+      <p class="gr" style="margin:10px 2px 0">${nf.format(ls.length)}${nq?' de '+nf.format(ordC.length):''} compatibilidades — <b>${nf.format(comAcesso)} com acesso</b> no site nos últimos 7 meses (GA4 por IDSKU, ordenado por acessos) · fonte: SZ0060 espelhada diariamente · cadastro completo (SB1), independe de venda · <span style="color:var(--muted);text-decoration:line-through">riscado cinza</span> = pausada/cancelada na loja (produto ou SKU ativo = N).</p>
       ${(st.skNovas?.[cod]||[]).length?`<p style="margin:6px 2px 0;font-size:12px;color:var(--warn)"><b>+${nf.format(st.skNovas[cod].length)} compatibilidades NOVAS em simulação</b> — nada foi gravado no cadastro.</p>`:''}`;
       document.querySelectorAll('#skTabC th[data-cc]').forEach(th=>th.onclick=()=>{
         const c=th.dataset.cc;
