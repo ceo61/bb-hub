@@ -217,6 +217,7 @@ th.ord .seta{font-size:9px;margin-left:3px}
     <input type="password" id="loginSenha" placeholder="Senha" autocomplete="current-password" required>
     <div class="login-err" id="loginErr"></div>
     <button class="btn" id="loginBtn" type="submit">Entrar</button>
+    <button type="button" id="btnEsqueci" style="background:none;border:none;color:var(--accent);text-decoration:underline;cursor:pointer;margin-top:12px;font-size:13px">Esqueci minha senha</button>
   </form>
 </div>
 
@@ -325,8 +326,41 @@ $('#formLogin').onsubmit = async e=>{
   $('#loginBtn').disabled = false;
   if(error){ $('#loginErr').textContent = 'E-mail ou senha inválidos.'; return; }
 };
+$('#btnEsqueci').onclick = async ()=>{
+  const email=$('#loginEmail').value.trim().toLowerCase();
+  const err=$('#loginErr');
+  if(!email||!email.includes('@')){ err.style.color=''; err.textContent='Digite seu e-mail no campo acima e clique de novo.'; return; }
+  $('#btnEsqueci').disabled=true;
+  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:'https://ceo61.github.io/bb-hub/'});
+  $('#btnEsqueci').disabled=false;
+  if(error){ err.style.color=''; err.textContent='Erro ao enviar: '+error.message; return; }
+  err.style.color='var(--good)';
+  err.textContent='✅ Enviamos um link de redefinição para '+email+'. Abra o e-mail e clique no link (vale por 1 hora; olhe o spam).';
+};
 $('#btnSair').onclick = async ()=>{ await sb.auth.signOut(); location.reload(); };
+function abreNovaSenha(){
+  let ov=document.getElementById('mcModal');
+  if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
+  ov.className='aclov';
+  ov.innerHTML=`<div class="aclcard" style="width:min(440px,94vw)">
+    <h2 style="margin:0 0 6px;font-size:17px">🔑 Definir nova senha</h2>
+    <p class="gr" style="margin:0 0 12px">Você chegou pelo link de redefinição. Escolha a nova senha (mínimo 8 caracteres).</p>
+    <input type="password" id="nsA" placeholder="nova senha" autocomplete="new-password" style="width:100%;margin-bottom:8px">
+    <input type="password" id="nsB" placeholder="repita a nova senha" autocomplete="new-password" style="width:100%">
+    <div class="login-err" id="nsErr" style="margin-top:8px"></div>
+    <button class="btn" id="nsOk" style="margin-top:12px">Salvar nova senha</button></div>`;
+  ov.querySelector('#nsOk').onclick=async ()=>{
+    const a=ov.querySelector('#nsA').value, b=ov.querySelector('#nsB').value, e=ov.querySelector('#nsErr');
+    if(a.length<8){ e.textContent='A senha precisa de pelo menos 8 caracteres.'; return; }
+    if(a!==b){ e.textContent='As senhas não conferem.'; return; }
+    const {error}=await sb.auth.updateUser({password:a});
+    if(error){ e.textContent='Erro: '+error.message; return; }
+    e.style.color='var(--good)'; e.textContent='✅ Senha alterada! Você já está logado.';
+    setTimeout(()=>ov.remove(), 1200);
+  };
+}
 sb.auth.onAuthStateChange((_ev, sess)=>{
+  if(_ev==='PASSWORD_RECOVERY') abreNovaSenha();
   if(sess){ $('#telaLogin').classList.add('hide'); $('#telaApp').classList.remove('hide'); if(!st.carregado) carregaTudo(); }
   else { $('#telaLogin').classList.remove('hide'); $('#telaApp').classList.add('hide'); }
 });
