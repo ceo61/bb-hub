@@ -2332,9 +2332,9 @@ async function renderSkus(){
   const cods = compat
     ? Object.keys(st.dim).filter(c=>!st.skGrupo||(st.dim[c]?.grupo||'—')===st.skGrupo).sort()
     : [...new Set(st.radar.filter(r=>!st.skGrupo||(r.grupo||'—')===st.skGrupo).map(r=>r.cod))].sort();
+  const btnC=`<button class="kpi" id="skBtnCompat" title="${compat?'voltar aos acessos GA4 por SKU (mês a mês)':'ver TODAS as compatibilidades do produto (SZ0 espelhada) — o seletor passa a usar o cadastro completo (SB1), mesmo sem venda ou tráfego'}" style="padding:7px 16px;color:var(--good);${compat?'border-color:var(--good);box-shadow:inset 0 0 0 1px var(--good);font-weight:700':''}"><span style="color:var(--good)">●</span> 🧷 Compatibilidades</button>`;
   $('#conteudo').innerHTML=`
     <div class="toolbar">
-      <button class="kpi" id="skBtnCompat" title="ver TODAS as compatibilidades do produto (SZ0 espelhada) — o seletor passa a usar o cadastro completo (SB1), mesmo sem venda ou tráfego" style="padding:7px 14px;${compat?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">🧷 Compatibilidades</button>
       <select id="skGrupo"><option value="">Todos os grupos</option>${Object.keys(grupos).sort((a,b)=>grupos[b]-grupos[a]).map(g=>`<option ${st.skGrupo===g?'selected':''} value="${esc(g)}">${esc(g)} (${grupos[g]})</option>`).join('')}</select>
       <span style="position:relative;display:inline-block">
         <input id="skCod" placeholder="${compat?'Produto (cadastro completo SB1)…':'Digite ou escolha o produto…'}" value="${esc(st.skCod||'')}" autocomplete="off" style="min-width:240px">
@@ -2342,8 +2342,9 @@ async function renderSkus(){
       </span>
       <span class="count">${compat?'compatibilidades da SZ0 (Protheus, espelho diário) · independe de venda/tráfego':'GA4 · site bbbaterias · cada SKU VTEX tem seu próprio link e conversão'}</span>
     </div>
-    <div id="skCorpo"><div class="embreve"><div class="big">${compat?'🧷':'🧩'}</div><h2>Escolha um produto</h2><p>${compat?'Todas as compatibilidades cadastradas (part numbers, modelos e IDSKU).':'Acessos, conversão, ticket e receita de cada SKU — mês a mês (7 meses).'}</p></div></div>`;
-  $('#skBtnCompat').onclick=()=>{st.skModo=compat?null:'compat';renderSkus();};
+    <div id="skCorpo"><div class="embreve"><div class="big">${compat?'🧷':'🧩'}</div><h2>Escolha um produto</h2><p>${compat?'Todas as compatibilidades cadastradas (part numbers, modelos e IDSKU).':'Acessos, conversão, ticket e receita de cada SKU — mês a mês (7 meses).'}</p><p style="margin-top:14px">${btnC}</p></div></div>`;
+  const ligaCompat=()=>{ const b=document.getElementById('skBtnCompat'); if(b) b.onclick=()=>{st.skModo=compat?null:'compat';renderSkus();}; };
+  ligaCompat();
   $('#skGrupo').onchange=e=>{st.skGrupo=e.target.value;renderSkus();};
   const g2={};
   if(compat) Object.keys(st.dim).forEach(c=>{ g2[c]=st.dim[c]?.grupo||'—'; });
@@ -2407,6 +2408,7 @@ async function renderSkus(){
     $('#skCorpo').innerHTML=`
       <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
         <span class="kpi" style="padding:7px 16px"><b>${esc(cod)}</b>&nbsp;<span class="gr">${esc(st.dim[cod]?.descricao||'')}</span></span>
+        ${btnC}
         <input type="search" id="skQC" placeholder="Filtrar modelo, part number ou IDSKU…" value="" style="margin-left:auto;min-width:240px"></div>
       <div id="skTabC"></div>`;
     const desenhaC=()=>{
@@ -2422,6 +2424,7 @@ async function renderSkus(){
     };
     desenhaC();
     let tC; $('#skQC').oninput=e=>{clearTimeout(tC);tC=setTimeout(()=>{st.skQC=e.target.value;desenhaC();},200);};
+    ligaCompat();
     return;
   }
   $('#skCorpo').innerHTML='<div class="carregando">Carregando SKUs…</div>';
@@ -2464,6 +2467,7 @@ async function renderSkus(){
   const linha=(rot,sub,d,forte)=>`<tr${forte?' style="border-bottom:1px solid var(--hair)"':''}><td style="text-align:left;max-width:360px">${forte?'<b>'+rot+'</b>':rot}${sub?`<br><span class="gr">${sub}</span>`:''}</td>${meses.map(ms=>`<td>${fmt(val(d.m[ms]))}</td>`).join('')}<td><b>${fmt(val(d.tot))}</b></td></tr>`;
   $('#skCorpo').innerHTML=`
     <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">${Object.entries(METS).map(([k,lb])=>`<button class="kpi" data-met="${k}" style="padding:7px 16px;${st.skMet===k?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${lb}</button>`).join('')}
+      ${btnC}
       <input type="search" id="skQ" placeholder="Filtrar IDSKU ou nome…" value="${esc(st.skQ||'')}" style="margin-left:auto;min-width:230px"></div>
     <div id="skTab"></div>`;
   const desenhaSk=()=>{
@@ -2482,6 +2486,7 @@ async function renderSkus(){
   desenhaSk();
   let skT; $('#skQ').oninput=e=>{clearTimeout(skT);skT=setTimeout(()=>{st.skQ=e.target.value.trim().toUpperCase();desenhaSk();},200);};
   document.querySelectorAll('button[data-met]').forEach(b=>b.onclick=()=>{st.skMet=b.dataset.met;renderSkus();});
+  ligaCompat();
 }
 
 /* ---------- em construção / config ---------- */
