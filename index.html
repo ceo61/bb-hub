@@ -2047,8 +2047,8 @@ async function renderPainel(){
   const g2={}; st.radar.forEach(r=>{ if(!g2[r.cod]) g2[r.cod]=r.grupo||'—'; });
   const drop=$('#pnDrop'), inpCod=$('#pnCod');
   const abreLista=filtro=>{
-    const f=(filtro||'').trim().toUpperCase();
-    const ls=f?cods.filter(c=>c.includes(f)):cods;
+    const f=(filtro||'').trim().toUpperCase().replace(/[^A-Z0-9@]/g,'');
+    const ls=f?cods.filter(c=>c.replace(/[^A-Z0-9@]/g,'').includes(f)):cods;
     drop.innerHTML=ls.length
       ? ls.map(c=>`<div class="pn-it${c===(st.pnCod||'').toUpperCase()?' sel':''}" data-c="${esc(c)}"><span>${esc(c)}</span>${!st.pnGrupo?`<span style="margin-left:auto;padding-left:16px;color:var(--muted);font-size:11px">${esc(g2[c]||'')}</span>`:''}</div>`).join('')
       : '<div class="pn-it" style="color:var(--muted);cursor:default">nenhum produto no filtro</div>';
@@ -2350,8 +2350,8 @@ async function renderSkus(){
   else st.radar.forEach(r=>{ if(!g2[r.cod]) g2[r.cod]=r.grupo||'—'; });
   const drop=$('#skDrop'), inp=$('#skCod');
   const abre=f=>{
-    const F=(f||'').trim().toUpperCase();
-    const ls=F?cods.filter(c=>c.includes(F)):cods;
+    const F=(f||'').trim().toUpperCase().replace(/[^A-Z0-9@]/g,'');
+    const ls=F?cods.filter(c=>c.replace(/[^A-Z0-9@]/g,'').includes(F)):cods;
     drop.innerHTML=ls.length?ls.map(c=>`<div class="pn-it${c===(st.skCod||'').toUpperCase()?' sel':''}" data-c="${esc(c)}"><span>${esc(c)}</span>${!st.skGrupo?`<span style="margin-left:auto;padding-left:16px;color:var(--muted);font-size:11px">${esc(g2[c]||'')}</span>`:''}</div>`).join(''):'<div class="pn-it" style="color:var(--muted);cursor:default">nenhum produto</div>';
     drop.style.display='block';
     const s=drop.querySelector('.pn-it.sel'); if(s) s.scrollIntoView({block:'center'});
