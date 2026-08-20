@@ -2420,7 +2420,11 @@ async function renderSkus(){
                 tx:x=>{const w=cvw[x.idvtex];return (w&&w.v>0)?w.p/w.v:-1;}};
       if(st.skColC&&CC[st.skColC]){ const f=CC[st.skColC], d=st.skDirC||1;
         ls.sort((a,b)=>{ const va=f(a), vb=f(b);
-          return (typeof va==='string') ? d*va.localeCompare(vb) : d*(va-vb); }); }
+          if(typeof va==='string'){
+            if(!va&&vb) return 1; if(!vb&&va) return -1;   // sem nome vai pro fim
+            return d*va.localeCompare(vb);
+          }
+          return d*(va-vb); }); }
       $('#skTabC').innerHTML=`
       <div class="tablecard"><div class="tscroll"><table style="min-width:680px">
         <thead><tr>${[['esp','Compatível com','left'],['id','IDSKU','left'],['v','Acessos 7m',''],['p','Compras 7m',''],['tx','Tx conv.','']].map(([k,lb,al])=>`<th data-cc="${k}" title="clique para ordenar (2º clique inverte)" style="${al?'text-align:'+al+';':''}color:var(--accent);text-decoration:underline;cursor:pointer;user-select:none">${lb}<span class="seta">${st.skColC===k?(st.skDirC>0?'▲':'▼'):''}</span></th>`).join('')}</tr></thead>
