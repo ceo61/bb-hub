@@ -2415,12 +2415,24 @@ async function renderSkus(){
       const nq=(st.skQC||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
       const ls=ordC.filter(x=>{ if(!nq) return true;
         return ((x.codref||'')+(x.modelo||'')+(x.espec||'')+(x.idvtex||'')).toUpperCase().replace(/[^A-Z0-9]/g,'').includes(nq); });
+      const CC={esp:x=>(x.espec||x.modelo||'').toUpperCase(), id:x=>String(x.idvtex||''),
+                v:x=>(cvw[x.idvtex]?.v||0), p:x=>(cvw[x.idvtex]?.p||0),
+                tx:x=>{const w=cvw[x.idvtex];return (w&&w.v>0)?w.p/w.v:-1;}};
+      if(st.skColC&&CC[st.skColC]){ const f=CC[st.skColC], d=st.skDirC||1;
+        ls.sort((a,b)=>{ const va=f(a), vb=f(b);
+          return (typeof va==='string') ? d*va.localeCompare(vb) : d*(va-vb); }); }
       $('#skTabC').innerHTML=`
       <div class="tablecard"><div class="tscroll"><table style="min-width:680px">
-        <thead><tr><th style="text-align:left">Compatível com</th><th style="text-align:left">IDSKU</th><th>Acessos 7m</th><th>Compras 7m</th><th title="compras ÷ acessos (7 meses)">Tx conv.</th></tr></thead>
+        <thead><tr>${[['esp','Compatível com','left'],['id','IDSKU','left'],['v','Acessos 7m',''],['p','Compras 7m',''],['tx','Tx conv.','']].map(([k,lb,al])=>`<th data-cc="${k}" title="clique para ordenar (2º clique inverte)" style="${al?'text-align:'+al+';':''}color:var(--accent);text-decoration:underline;cursor:pointer;user-select:none">${lb}<span class="seta">${st.skColC===k?(st.skDirC>0?'▲':'▼'):''}</span></th>`).join('')}</tr></thead>
         <tbody>${ls.map(x=>{const w=cvw[x.idvtex]||{v:0,p:0};const tx=w.v>0?w.p/w.v*100:null;return `<tr><td style="text-align:left"><b>${esc(x.espec||x.modelo||'—')}</b>${(x.modelo&&x.espec&&!x.espec.toUpperCase().includes(x.modelo.toUpperCase()))?` <span class="gr">(${esc(x.modelo)})</span>`:''}</td><td style="text-align:left"><span class="gr" title="itemId GA4/VTEX · ref ${esc(x.codref||'—')}">${esc(x.idvtex||'—')}</span></td><td style="${w.v?'font-weight:600':'color:var(--muted)'}">${w.v?nf.format(Math.round(w.v)):'0'}</td><td style="${w.p?'font-weight:700;color:var(--good)':'color:var(--muted)'}">${w.p?nf.format(Math.round(w.p)):'0'}</td><td style="${tx?'font-weight:600':'color:var(--muted)'}">${tx!=null?nf1.format(tx)+'%':'—'}</td></tr>`;}).join('')}</tbody>
       </table></div></div>
       <p class="gr" style="margin:10px 2px 0">${nf.format(ls.length)}${nq?' de '+nf.format(ordC.length):''} compatibilidades — <b>${nf.format(comAcesso)} com acesso</b> no site nos últimos 7 meses (GA4 por IDSKU, ordenado por acessos) · fonte: SZ0060 espelhada diariamente · cadastro completo (SB1), independe de venda.</p>`;
+      document.querySelectorAll('#skTabC th[data-cc]').forEach(th=>th.onclick=()=>{
+        const c=th.dataset.cc;
+        if(st.skColC===c) st.skDirC=-(st.skDirC||1);
+        else { st.skColC=c; st.skDirC=(c==='esp'||c==='id')?1:-1; }
+        desenhaC();
+      });
     };
     desenhaC();
     let tC; $('#skQC').oninput=e=>{clearTimeout(tC);tC=setTimeout(()=>{st.skQC=e.target.value;desenhaC();},200);};
