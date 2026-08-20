@@ -1143,7 +1143,7 @@ async function abreExtrato(cod, m, acao){
     for(let i=0;i<NM;i++){ meses.push(dm.toISOString().slice(0,10)); dm.setMonth(dm.getMonth()+1); } }
   const ini=meses[0]<mondays[0]?meses[0]:mondays[0];
   const d0=new Date(ini+'T12:00:00'); d0.setDate(d0.getDate()-62); const ini0=d0.toISOString().slice(0,10);
-  const [vd,cv,ad,pr,es,cu,cc,hist,tAB]=await Promise.all([
+  const [vd,cv,ad,pr,es,cu,cc,hist,tAB,abLog]=await Promise.all([
     sb.from('fato_vendas_diaria').select('data,qtd,qtd_b2c,val_b2c,lucro_b2c,qtd_ml,val_ml,lucro_ml,qtd_atac,val_atac,lucro_atac').eq('cod',cod).gte('data',ini0).order('data').then(r=>r.data||[]),
     sb.from('fato_conversao').select('data,views').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
     sb.from('fato_ads').select('data,custo').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
@@ -1153,7 +1153,23 @@ async function abreExtrato(cod, m, acao){
     sb.from('fato_concorrencia').select('data,cc_avista,cc_b2b').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
     sb.from('acoes_preco').select('criado_em,status,aprovado_por,preco_atual,preco_sugerido,de_sugerido,atac_sugerido,ml_sugerido,justificativa,obs').eq('cod',cod).in('status',['aprovado','executar','executado','erro','revisado']).order('criado_em',{ascending:false}).limit(12).then(r=>r.data||[]),
     sb.from('testes_ab').select('*').eq('cod',cod).eq('status','ativo').limit(1).then(r=>r.data?.[0]||null),
+    sb.from('testes_ab_log').select('teste_id,quando,evento,braco').eq('cod',cod).order('quando').then(r=>r.data||[]),
   ]);
+  // selo de teste A/B por semana: semana 1 = semana em que o teste foi criado (braço A);
+  // troca de domingo 23h vale a partir da semana SEGUINTE (corte = domingo 23:00 local)
+  const abW={};
+  { const inicios={}; abLog.forEach(e=>{ if(e.evento==='inicio') inicios[e.teste_id]=wk(new Date(e.quando).toLocaleDateString('sv-SE')); });
+    for(const w of mondays){
+      const corte=new Date(w+'T23:00:00'); corte.setDate(corte.getDate()+6);
+      const evs=abLog.filter(e=>new Date(e.quando)<corte && e.evento!=='encerramento');
+      if(!evs.length) continue;
+      const ult=evs[evs.length-1];
+      const fim=abLog.find(e=>e.teste_id===ult.teste_id && e.evento==='encerramento');
+      if(fim && new Date(fim.quando)<new Date(w+'T12:00:00')) continue;  // teste já encerrado antes desta semana
+      const w1=inicios[ult.teste_id]; if(!w1||w<w1) continue;
+      const n=Math.round((new Date(w+'T12:00:00')-new Date(w1+'T12:00:00'))/6048e5)+1;
+      abW[w]={n, braco:ult.braco, id:ult.teste_id};
+    } }
   const wk=d=>{ const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); return dt.toISOString().slice(0,10); };
   const qtdDia={}; vd.forEach(r=>{ qtdDia[r.data]=+r.qtd||0; });
   const W={}; mondays.forEach(w=>W[w]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,ads:0,saldo:null,de:null,por:null,porReal:null,atacTab:null,mlTab:null,custo:null,ccav:null,ccbb:null});
@@ -1207,7 +1223,7 @@ async function abreExtrato(cod, m, acao){
     const prat=a.q2>0?a.v2/a.q2:null, tick=a.q1>0?a.v1/a.q1:null, tickM=a.qm>0?a.vm/a.qm:null;
     const conv=a.vw>0?a.q2/a.vw*100:null, roas=a.ads>0?a.v2/a.ads:null;
     const sep='border-left:2px solid var(--hair);';
-    return `<tr><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${w.slice(8,10)}/${w.slice(5,7)}</b></td>
+    return `<tr><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${w.slice(8,10)}/${w.slice(5,7)}</b>${abW[w]?` <span title="teste A/B #${abW[w].id} — semana ${abW[w].n} do teste, braço ${abW[w].braco}" style="background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:10px;border-radius:99px;padding:1px 7px">T${abW[w].n}·${abW[w].braco}</span>`:''}</td>
       <td style="${tdc}">${a.saldo!=null?nf.format(a.saldo):'—'}${(wi===mondays.length-1&&m?._transito>0)?` <span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}</td>
       <td style="${tdc}${corF(folga)}">${F.d1(folga)}</td>
       <td style="${tdc}">${F.m(a.custo)}</td>
@@ -1299,9 +1315,11 @@ async function abreExtrato(cod, m, acao){
       <span style="flex:1 1 300px;min-width:240px">Justificativa<br><span style="font-size:13.5px;color:var(--ink)">“${esc(acao.justificativa||'sem justificativa (fluxo antigo)')}”</span><br><span class="gr">${esc((acao.aprovado_por||'?').split('@')[0])} · ${new Date(acao.criado_em).toLocaleDateString('pt-BR')} ${new Date(acao.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} · ${stLb}</span></span>`;
   } else if(tAB){
     // produto em teste A/B: troca manual de preço BLOQUEADA enquanto o teste durar
+    const abIni=abLog.find(e=>e.teste_id===tAB.id&&e.evento==='inicio');
+    const abSem=abIni?Math.round((seg-new Date(wk(new Date(abIni.quando).toLocaleDateString('sv-SE'))+'T12:00:00'))/6048e5)+1:null;
     topoHtml=`${pillGer}
       <span style="flex:1 1 340px;min-width:280px">🔁 <b>EM TESTE A/B SEMANAL #${tAB.id}</b><br>
-        <span style="font-size:13.5px">A ${rf2.format(tAB.preco_a)} · B ${rf2.format(tAB.preco_b)} (à vista) — braço atual <b>${esc(tAB.braco_atual)}</b> · troca todo domingo 23h</span><br>
+        <span style="font-size:13.5px">A ${rf2.format(tAB.preco_a)} · B ${rf2.format(tAB.preco_b)} (à vista) — braço atual <b>${esc(tAB.braco_atual)}</b>${abSem?` · semana ${abSem} do teste`:''} · troca todo domingo 23h</span><br>
         <span class="gr">desde ${new Date(tAB.criado_em).toLocaleDateString('pt-BR')} · ${esc((tAB.criado_por||'?').split('@')[0])} · alteração manual de preço bloqueada durante o teste</span></span>
       <button id="xAbFim" style="border:1px solid var(--crit);color:var(--crit);border-radius:9px;padding:8px 16px;flex:none;font-weight:600">✖ Tirar do teste A/B</button>`;
   } else {
