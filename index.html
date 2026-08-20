@@ -2390,9 +2390,20 @@ async function renderSkus(){
       cps=await tudo('dim_compatibilidade',{select:'idvtex,codref,modelo,espec',eq:[['cod',cod]]});
       if(cps.length) (st.skCacheC=st.skCacheC||{})[cod]=cps;
     }
+    let cvw=st.skCacheV?.[cod];
+    if(!cvw){
+      const cv7=await tudo('fato_conversao_sku',{select:'idvtex,views,compras',eq:[['cod',cod]]});
+      cvw={}; cv7.forEach(r=>{ const a=cvw[r.idvtex]=cvw[r.idvtex]||{v:0,p:0}; a.v+=+r.views||0; a.p+=+r.compras||0; });
+      (st.skCacheV=st.skCacheV||{})[cod]=cvw;
+    }
     if(cod!==st.skCod||st.skModo!=='compat') return;
     if(!cps.length){ $('#skCorpo').innerHTML=`<div class="carregando">Nenhuma compatibilidade cadastrada na SZ0 para <b>${esc(cod)}</b>${st.dim[cod]?'':' — código não existe no cadastro (SB1); confira a digitação'}.</div>`; return; }
-    const ordC=[...cps].sort((a,b)=>String(a.codref||'').localeCompare(String(b.codref||'')));
+    const ordC=[...cps].sort((a,b)=>{
+      const va=cvw[a.idvtex]?.v||0, vb=cvw[b.idvtex]?.v||0;
+      if(vb!==va) return vb-va;
+      return String(a.codref||'').localeCompare(String(b.codref||''));
+    });
+    const comAcesso=ordC.filter(x=>(cvw[x.idvtex]?.v||0)>0).length;
     $('#skCorpo').innerHTML=`
       <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
         <span class="kpi" style="padding:7px 16px"><b>${esc(cod)}</b>&nbsp;<span class="gr">${esc(st.dim[cod]?.descricao||'')}</span></span>
@@ -2404,10 +2415,10 @@ async function renderSkus(){
         return ((x.codref||'')+(x.modelo||'')+(x.espec||'')+(x.idvtex||'')).toUpperCase().replace(/[^A-Z0-9]/g,'').includes(nq); });
       $('#skTabC').innerHTML=`
       <div class="tablecard"><div class="tscroll"><table style="min-width:680px">
-        <thead><tr><th style="text-align:left">Ref (codref)</th><th style="text-align:left">Part number</th><th style="text-align:left">Compatível com</th><th style="text-align:left">IDSKU</th></tr></thead>
-        <tbody>${ls.map(x=>`<tr><td style="text-align:left"><span class="gr">${esc(x.codref||'—')}</span></td><td style="text-align:left"><b>${esc(x.modelo||'—')}</b></td><td style="text-align:left">${esc(x.espec||'—')}</td><td style="text-align:left"><span class="gr" title="itemId GA4/VTEX">${esc(x.idvtex||'—')}</span></td></tr>`).join('')}</tbody>
+        <thead><tr><th style="text-align:left">Ref (codref)</th><th style="text-align:left">Part number</th><th style="text-align:left">Compatível com</th><th style="text-align:left">IDSKU</th><th>Acessos 7m</th><th>Compras 7m</th></tr></thead>
+        <tbody>${ls.map(x=>{const w=cvw[x.idvtex]||{v:0,p:0};return `<tr><td style="text-align:left"><span class="gr">${esc(x.codref||'—')}</span></td><td style="text-align:left"><b>${esc(x.modelo||'—')}</b></td><td style="text-align:left">${esc(x.espec||'—')}</td><td style="text-align:left"><span class="gr" title="itemId GA4/VTEX">${esc(x.idvtex||'—')}</span></td><td style="${w.v?'font-weight:600':'color:var(--muted)'}">${w.v?nf.format(Math.round(w.v)):'0'}</td><td style="${w.p?'font-weight:700;color:var(--good)':'color:var(--muted)'}">${w.p?nf.format(Math.round(w.p)):'0'}</td></tr>`;}).join('')}</tbody>
       </table></div></div>
-      <p class="gr" style="margin:10px 2px 0">${nf.format(ls.length)}${nq?' de '+nf.format(ordC.length):''} compatibilidades · fonte: SZ0060 (Protheus) espelhada diariamente às 6h no hub · produtos vêm do cadastro completo (SB1), mesmo sem venda ou tráfego.</p>`;
+      <p class="gr" style="margin:10px 2px 0">${nf.format(ls.length)}${nq?' de '+nf.format(ordC.length):''} compatibilidades — <b>${nf.format(comAcesso)} com acesso</b> no site nos últimos 7 meses (GA4 por IDSKU, ordenado por acessos) · fonte: SZ0060 espelhada diariamente · cadastro completo (SB1), independe de venda.</p>`;
     };
     desenhaC();
     let tC; $('#skQC').oninput=e=>{clearTimeout(tC);tC=setTimeout(()=>{st.skQC=e.target.value;desenhaC();},200);};
