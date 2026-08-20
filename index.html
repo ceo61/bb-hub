@@ -1143,7 +1143,7 @@ async function abreExtrato(cod, m, acao){
     for(let i=0;i<NM;i++){ meses.push(dm.toISOString().slice(0,10)); dm.setMonth(dm.getMonth()+1); } }
   const ini=meses[0]<mondays[0]?meses[0]:mondays[0];
   const d0=new Date(ini+'T12:00:00'); d0.setDate(d0.getDate()-62); const ini0=d0.toISOString().slice(0,10);
-  const [vd,cv,ad,pr,es,cu,cc,hist,tAB,abLog]=await Promise.all([
+  const [vd,cv,ad,pr,es,cu,cc,hist,tAB,abLog,abModos]=await Promise.all([
     sb.from('fato_vendas_diaria').select('data,qtd,qtd_b2c,val_b2c,lucro_b2c,qtd_ml,val_ml,lucro_ml,qtd_atac,val_atac,lucro_atac').eq('cod',cod).gte('data',ini0).order('data').then(r=>r.data||[]),
     sb.from('fato_conversao').select('data,views').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
     sb.from('fato_ads').select('data,custo').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
@@ -1154,6 +1154,7 @@ async function abreExtrato(cod, m, acao){
     sb.from('acoes_preco').select('criado_em,status,aprovado_por,preco_atual,preco_sugerido,de_sugerido,atac_sugerido,ml_sugerido,justificativa,obs').eq('cod',cod).in('status',['aprovado','executar','executado','erro','revisado']).order('criado_em',{ascending:false}).limit(12).then(r=>r.data||[]),
     sb.from('testes_ab').select('*').eq('cod',cod).eq('status','ativo').limit(1).then(r=>r.data?.[0]||null),
     sb.from('testes_ab_log').select('teste_id,quando,evento,braco').eq('cod',cod).order('quando').then(r=>r.data||[]),
+    sb.from('testes_ab').select('id,modo').eq('cod',cod).then(r=>Object.fromEntries((r.data||[]).map(x=>[x.id,x.modo||'semanal']))),
   ]);
   const wk=d=>{ const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); return dt.toISOString().slice(0,10); };
   // selo de teste A/B por semana: semana 1 = semana em que o teste foi criado (braço A);
@@ -1169,7 +1170,7 @@ async function abreExtrato(cod, m, acao){
       if(fim && new Date(fim.quando)<new Date(w+'T12:00:00')) continue;  // teste já encerrado antes desta semana
       const w1=inicios[ult.teste_id]; if(!w1||w<w1) continue;
       const n=Math.round((new Date(w+'T12:00:00')-new Date(w1+'T12:00:00'))/6048e5)+1;
-      abW[w]={n, braco:ult.braco, id:ult.teste_id};
+      abW[w]={n, braco:abModos[ult.teste_id]==='diario'?'A/B':ult.braco, id:ult.teste_id};
     } }
   const qtdDia={}; vd.forEach(r=>{ qtdDia[r.data]=+r.qtd||0; });
   const W={}; mondays.forEach(w=>W[w]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,ads:0,saldo:null,de:null,por:null,porReal:null,atacTab:null,mlTab:null,custo:null,ccav:null,ccbb:null});
@@ -1317,9 +1318,12 @@ async function abreExtrato(cod, m, acao){
     // produto em teste A/B: troca manual de preço BLOQUEADA enquanto o teste durar
     const abIni=abLog.find(e=>e.teste_id===tAB.id&&e.evento==='inicio');
     const abSem=abIni?Math.round((seg-new Date(wk(new Date(abIni.quando).toLocaleDateString('sv-SE'))+'T12:00:00'))/6048e5)+1:null;
+    const abDiario=(tAB.modo||'semanal')==='diario';
     topoHtml=`${pillGer}
-      <span style="flex:1 1 340px;min-width:280px">🔁 <b>EM TESTE A/B SEMANAL #${tAB.id}</b><br>
-        <span style="font-size:13.5px">A ${rf2.format(tAB.preco_a)} · B ${rf2.format(tAB.preco_b)} (à vista) — braço atual <b>${esc(tAB.braco_atual)}</b>${abSem?` · semana ${abSem} do teste`:''} · troca todo domingo 23h</span><br>
+      <span style="flex:1 1 340px;min-width:280px">🔁 <b>EM TESTE A/B ${abDiario?'DIÁRIO':'SEMANAL'} #${tAB.id}</b><br>
+        <span style="font-size:13.5px">${abDiario
+          ?`A ${rf2.format(tAB.preco_a)} (dias PARES) · B ${rf2.format(tAB.preco_b)} (dias ÍMPARES) — braço atual <b>${esc(tAB.braco_atual)}</b> · troca à meia-noite`
+          :`A ${rf2.format(tAB.preco_a)} · B ${rf2.format(tAB.preco_b)} (à vista) — braço atual <b>${esc(tAB.braco_atual)}</b>${abSem?` · semana ${abSem} do teste`:''} · troca todo domingo 23h`}</span><br>
         <span class="gr">desde ${new Date(tAB.criado_em).toLocaleDateString('pt-BR')} · ${esc((tAB.criado_por||'?').split('@')[0])} · alteração manual de preço bloqueada durante o teste</span></span>
       <button id="xAbFim" style="border:1px solid var(--crit);color:var(--crit);border-radius:9px;padding:8px 16px;flex:none;font-weight:600">✖ Tirar do teste A/B</button>`;
   } else {
@@ -1334,6 +1338,7 @@ async function abreExtrato(cod, m, acao){
       <span id="xAbForm" class="hide" style="display:none;gap:10px;align-items:flex-end;flex-wrap:wrap">
         <span>Preço A (à vista)<br><input type="number" step="0.01" min="0" id="xAbA" value="${m?.p_site!=null?(+m.p_site).toFixed(2):''}" style="width:100px;text-align:right"></span>
         <span>Preço B (à vista)<br><input type="number" step="0.01" min="0" id="xAbB" style="width:100px;text-align:right"></span>
+        <span>Modo<br><select id="xAbModo"><option value="semanal">Semanal — troca domingo 23h</option><option value="diario">Diário — A dias pares · B ímpares</option></select></span>
         <button class="btn" id="xAbOk" style="padding:7px 16px;flex:none">OK — iniciar teste</button>
         <span class="gr" id="xAbMsg" style="max-width:280px"></span>
       </span>`;
@@ -1410,9 +1415,11 @@ async function abreExtrato(cod, m, acao){
       if(!a||!b){ msg.textContent='preencha os dois preços (à vista)'; return; }
       if(Math.abs(a-b)<0.01){ msg.textContent='os dois preços são iguais — não há o que testar'; return; }
       const {data:{user}}=await sb.auth.getUser();
-      const {data:id,error}=await sb.rpc('ab_cria',{p_cod:cod, p_a:a, p_b:b, p_autor:user?.email||'?'});
+      const modo=ov.querySelector('#xAbModo').value;
+      const {data:id,error}=await sb.rpc('ab_cria',{p_cod:cod, p_a:a, p_b:b, p_autor:user?.email||'?', p_modo:modo});
       if(error){ msg.textContent='Erro: '+error.message; return; }
-      msg.textContent=`✅ teste #${id} criado — braço A (${rf2.format(a)}) já na fila do ERP; troca domingo 23h`;
+      const bracoHj=modo==='diario'?(new Date().getDate()%2===0?'A':'B'):'A';
+      msg.textContent=`✅ teste #${id} criado (${modo}) — braço ${bracoHj} (${rf2.format(bracoHj==='A'?a:b)}) já na fila do ERP; ${modo==='diario'?'troca à meia-noite (pares=A, ímpares=B)':'troca domingo 23h'}`;
       setTimeout(()=>{ document.getElementById('mcModal')?.remove(); abreExtrato(cod, m, acao); }, 1400);
     };
   }
