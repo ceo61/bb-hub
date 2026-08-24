@@ -1794,13 +1794,13 @@ async function renderSugestoes(){
     ${((pend||[]).length||(feitas||[]).length)?`<div class="banner ambar" style="display:grid;gap:6px">
       ${aprA.length?`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">⏳ <b>${aprA.length} ação(ões) aprovadas na fila.</b>${st.admin?`<a class="btn" href="#aprovacoes" style="padding:5px 16px;text-decoration:none">🔍 Revisar e aplicar</a>`:`<span style="font-weight:400">aguardando revisão final do administrador</span>`}</div>`:''}
       ${aprA.map(a=>`<div style="display:flex;align-items:center;gap:10px;font-weight:400;font-size:12.5px">
-        <b>${esc(a.cod)}</b> ${rf2.format(a.preco_atual)} → <b>${rf2.format(a.preco_sugerido)}</b>${a.de_sugerido?` · DE→${rf2.format(a.de_sugerido)}`:''}${a.atac_sugerido?` · Atac→${rf2.format(a.atac_sugerido)}`:''}${a.ml_sugerido?` · ML→${rf2.format(a.ml_sugerido)}`:''}
+        <b>${esc(a.cod)}</b> ${a.preco_sugerido!=null?`${rf2.format(a.preco_atual)} → <b>${rf2.format(a.preco_sugerido)}</b>`:`<span class="gr">site mantém ${rf2.format(a.preco_atual)}</span>`}${a.de_sugerido?` · DE→${rf2.format(a.de_sugerido)}`:''}${a.atac_sugerido?` · Atac→${rf2.format(a.atac_sugerido)}`:''}${a.ml_sugerido?` · ML→${rf2.format(a.ml_sugerido)}`:''}
         <span style="color:var(--muted)">${esc(a.diagnostico||'')} · ${new Date(a.criado_em).toLocaleDateString('pt-BR')}</span>
         <button data-cancela="${a.id}" style="margin-left:auto;color:var(--crit);font-weight:600;border:1px solid var(--hair);border-radius:6px;padding:2px 10px">desfazer</button>
       </div>`).join('')}
       ${emExec.length?`<div>🔄 <b>${emExec.length} em aplicação no ERP</b> — o executor roda a cada 2 min no Mac; esta tela atualiza sozinha.</div>`:''}
       ${emExec.map(a=>`<div style="display:flex;align-items:center;gap:10px;font-weight:400;font-size:12.5px">
-        <b>${esc(a.cod)}</b> ${rf2.format(a.preco_atual)} → <b>${rf2.format(a.preco_sugerido)}</b> <span style="color:var(--muted)">aplicando…</span></div>`).join('')}
+        <b>${esc(a.cod)}</b> ${a.preco_sugerido!=null?`${rf2.format(a.preco_atual)} → <b>${rf2.format(a.preco_sugerido)}</b>`:`<span class="gr">site mantém</span>`} <span style="color:var(--muted)">aplicando…</span></div>`).join('')}
       ${comErro.length?`<div>⚠️ <b>${comErro.length} com erro:</b></div>`:''}
       ${comErro.map(a=>`<div style="display:flex;align-items:center;gap:10px;font-weight:400;font-size:12.5px">
         <b>${esc(a.cod)}</b> <span style="color:var(--muted)">${esc((a.obs||'').slice(-110))}</span>
