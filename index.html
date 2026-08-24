@@ -501,13 +501,24 @@ function renderSemaforo(){
   $('#semDot').style.background = e.cor;
   $('#semTxt').textContent = e.txt;
 }
-$('#semaforo').onclick = ()=>{
+$('#semaforo').onclick = async ()=>{
   const pop=$('#popSem');
   if(!pop.classList.contains('hide')){ pop.classList.add('hide'); return; }
+  const {data:peds}=await sb.from('sync_pedidos').select('*').order('id',{ascending:false}).limit(3);
+  const P={pendente:'⏳',executando:'🔄',ok:'🟢',falha:'🔴'};
   pop.innerHTML = '<h4>Últimas atualizações (ETL 6h)</h4>' + st.etl.map(r=>
     `<div class="run"><span>${r.status==='ok'?'🟢':'🔴'}</span><span>${dtBR(r.executado_em)}</span><span style="color:var(--muted)">${esc(r.detalhes||'')}</span></div>`
-  ).join('');
+  ).join('') + `<div style="border-top:1px solid var(--hair);margin-top:8px;padding-top:8px">
+    ${(peds||[]).map(p=>`<div class="run"><span>${P[p.status]||'•'}</span><span>${dtBR(p.pedido_em)}</span><span style="color:var(--muted)">sincronização ${esc(p.status)}${p.autor?' · '+esc(p.autor):''}</span></div>`).join('')}
+    <button class="btn" id="btnSync" style="margin-top:6px;width:100%">🔄 Sincronizar agora</button>
+    <div class="gr" style="margin-top:5px">O Mac atende em ~2 min se estiver ligado; a carga completa leva alguns minutos. Se o dia ainda não teve carga ok, ele também tenta sozinho ao ligar (após as 6h).</div></div>`;
   pop.classList.remove('hide');
+  $('#btnSync').onclick=async ()=>{
+    const btn=$('#btnSync'); btn.disabled=true; btn.textContent='enviando…';
+    const {data:{user}}=await sb.auth.getUser();
+    const {error}=await sb.from('sync_pedidos').insert({autor:user?.email||'?'});
+    btn.textContent=error?('erro: '+error.message):'✅ pedido enviado — acompanhe aqui';
+  };
 };
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
