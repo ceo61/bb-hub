@@ -2639,7 +2639,7 @@ async function renderSkus(){
 /* ---------- Visão Global — semana a semana por grupo ---------- */
 async function renderGlobal(){
   $('#conteudo').innerHTML='<div class="carregando">Montando visão global…</div>';
-  if(!st.vg) st.vg=await tudo('visao_global',{eq:[]});
+  if(!st.vg) st.vg=await tudo('visao_global_mat',{eq:[]});
   const recG={}; st.vg.forEach(r=>recG[r.grupo_abc]=(recG[r.grupo_abc]||0)+(+r.receita||0));
   const grupos=[...new Set(st.vg.map(r=>r.grupo_abc))].sort((a,b)=>(recG[b]||0)-(recG[a]||0));
   if(!st.vgG||!grupos.includes(st.vgG)) st.vgG=grupos[0];
