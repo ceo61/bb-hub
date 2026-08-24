@@ -2643,7 +2643,7 @@ async function renderGlobal(){
   const recG={}; st.vg.forEach(r=>recG[r.grupo_abc]=(recG[r.grupo_abc]||0)+(+r.receita||0));
   const grupos=[...new Set(st.vg.map(r=>r.grupo_abc))].sort((a,b)=>(recG[b]||0)-(recG[a]||0));
   if(!st.vgG||!grupos.includes(st.vgG)) st.vgG=grupos[0];
-  const rows=st.vg.filter(r=>r.grupo_abc===st.vgG).sort((a,b)=>a.seg<b.seg?1:-1);
+  const rows=st.vg.filter(r=>r.grupo_abc===st.vgG).sort((a,b)=>a.seg<b.seg?-1:1);
   const dHoje=new Date(); const seg0=new Date(dHoje); seg0.setDate(dHoje.getDate()-((dHoje.getDay()+6)%7));
   const segHoje=seg0.toISOString().slice(0,10);
   const N=v=>v==null?null:+v;
@@ -2656,28 +2656,28 @@ async function renderGlobal(){
   const fechadas=rows.filter(r=>r.seg!==segHoje);
   let leitura='';
   if(fechadas.length>=2){
-    const [u,p]=fechadas;
+    const u=fechadas[fechadas.length-1], p=fechadas[fechadas.length-2];
     const f=[];
     const db=dpc(N(u.p_bgt),N(p.p_bgt)), dt=dpc(N(u.p_tabela),N(p.p_tabela)), dr=dpc(N(u.p_realizado),N(p.p_realizado));
     const dq=dpc(N(u.qtd),N(p.qtd)), dk=dpc(N(u.cliques),N(p.cliques)), da=dpc(N(u.acessos),N(p.acessos));
     if(db!=null) f.push(`BGT ${db<0?'<b style="color:var(--crit)">baixou '+nf1.format(-db)+'%</b>':db>0?'subiu '+nf1.format(db)+'%':'estável'}`);
     if(dt!=null) f.push(`nossa tabela ${dt>0?'subiu '+nf1.format(dt)+'%':dt<0?'baixou '+nf1.format(-dt)+'%':'estável'}`);
     if(dr!=null) f.push(`realizado ${dr>0?'+':''}${nf1.format(dr)}%`);
-    if(N(u.p_tabela)&&N(u.p_bgt)) f.push(`gap tabela×BGT: <b>${nf1.format((N(u.p_tabela)/N(u.p_bgt)-1)*100)}%</b>`);
+    if(N(u.p_tab_bgt)&&N(u.p_bgt)) f.push(`gap tabela×BGT (cesta comum): <b>${nf1.format((N(u.p_tab_bgt)/N(u.p_bgt)-1)*100)}%</b>`);
     if(dq!=null) f.push(`unidades ${dq>0?'+':''}${nf.format(Math.round(dq))}%`);
     if(dk!=null) f.push(`cliques ${dk>0?'+':''}${nf.format(Math.round(dk))}%`);
     if(da!=null) f.push(`acessos ${da>0?'+':''}${nf.format(Math.round(da))}%`);
     leitura=`<div class="banner ambar" style="background:var(--accent-soft);color:var(--accent);font-weight:400">🔍 <b>Semana fechada (${u.seg.slice(8,10)}/${u.seg.slice(5,7)}) vs anterior:</b> ${f.join(' · ')}</div>`;
   }
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Preços ponderados pela cesta fixa das unidades vendidas nos últimos 30 dias</b> (site/002) — isso isola o movimento de PREÇO do efeito de mix. Tabela = preço à vista registrado (último snapshot da semana) · Realizado = receita÷unidades da semana (inclui descontos e mix) · BGT = scrape semanal (sábados) ponderado na mesma cesta; (n) = produtos com preço BGT. Ads/cliques = Google Ads · acessos = GA4. Semana com * está em curso.</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Preços ponderados pela cesta fixa das unidades vendidas nos últimos 30 dias</b> (site/002) — isso isola o movimento de PREÇO do efeito de mix. Tabela = preço à vista registrado (último snapshot da semana) · Realizado = receita÷unidades da semana (inclui descontos e mix) · BGT = scrape semanal (sábados) ponderado na mesma cesta; (n) = produtos com preço BGT. <b>Gap ×BGT calculado na cesta comum</b> (nosso preço ponderado só nos produtos que a BGT cobre naquela semana ÷ BGT). <b>Cliques</b> = cliques pagos no Google Ads · <b>Acessos</b> = páginas de produto vistas no GA4 (orgânico + pago + direto) · ROAS = receita ÷ verba. Semana com * está em curso.</p>
     <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px">${grupos.map(g=>`<button class="kpi" data-vg="${esc(g)}" style="padding:7px 14px;${st.vgG===g?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${esc(g)} <span class="gr">${nf.format(Math.round((recG[g]||0)/1000))}k</span></button>`).join('')}</div>
     ${leitura}
     <div class="tablecard"><div class="tscroll"><table style="min-width:900px">
-      <thead><tr><th style="text-align:left">Semana</th><th>Tabela pond.</th><th>Realizado</th><th>BGT pond. (n)</th><th>Gap ×BGT</th><th>Unid.</th><th>Receita</th><th>Ads R$</th><th>Cliques</th><th>Acessos</th></tr></thead>
+      <thead><tr><th style="text-align:left">Semana</th><th>Tabela pond.</th><th>Realizado</th><th>BGT pond. (n)</th><th>Gap ×BGT</th><th>Unid.</th><th>Receita</th><th>Ads R$</th><th title="receita ÷ verba de ads (sobre receita, não lucro)">ROAS</th><th>Cliques</th><th>Acessos</th></tr></thead>
       <tbody>${rows.map((r,i)=>{
-        const p=rows[i+1]||{};
-        const gap=(N(r.p_tabela)&&N(r.p_bgt))?(N(r.p_tabela)/N(r.p_bgt)-1)*100:null;
+        const p=rows[i-1]||{};
+        const gap=(N(r.p_tab_bgt)&&N(r.p_bgt))?(N(r.p_tab_bgt)/N(r.p_bgt)-1)*100:null;
         return `<tr>
         <td style="text-align:left"><b>${r.seg.slice(8,10)}/${r.seg.slice(5,7)}</b>${r.seg===segHoje?'<span class="gr">*</span>':''}</td>
         <td>${r.p_tabela!=null?rf2.format(N(r.p_tabela)):'—'}${seta(dpc(N(r.p_tabela),N(p.p_tabela)))}</td>
@@ -2687,6 +2687,7 @@ async function renderGlobal(){
         <td>${r.qtd!=null?nf.format(N(r.qtd)):'—'}${seta(dpc(N(r.qtd),N(p.qtd)),'qtd')}</td>
         <td>${r.receita!=null?nf.format(Math.round(N(r.receita))):'—'}</td>
         <td>${r.ads_custo!=null?nf.format(Math.round(N(r.ads_custo))):'—'}</td>
+        <td>${(N(r.receita)&&N(r.ads_custo))?`<b>${nf1.format(N(r.receita)/N(r.ads_custo))}×</b>`:'—'}${seta(dpc((N(r.receita)&&N(r.ads_custo))?N(r.receita)/N(r.ads_custo):null,(N(p.receita)&&N(p.ads_custo))?N(p.receita)/N(p.ads_custo):null),'qtd')}</td>
         <td>${r.cliques!=null?nf.format(N(r.cliques)):'—'}${seta(dpc(N(r.cliques),N(p.cliques)),'qtd')}</td>
         <td>${r.acessos!=null?nf.format(N(r.acessos)):'—'}${seta(dpc(N(r.acessos),N(p.acessos)),'qtd')}</td></tr>`;}).join('')}</tbody>
     </table></div></div>
