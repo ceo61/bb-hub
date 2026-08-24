@@ -240,6 +240,7 @@ th.ord .seta{font-size:9px;margin-left:3px}
     <div class="navsec">Análise</div>
     <a href="#painel" data-pg="painel">📈 Painel do produto</a>
     <a href="#skus" data-pg="skus">🧩 SKUs</a>
+    <a href="#global" data-pg="global">🌐 Visão Global</a>
     <div class="navsec">Gestão</div>
     <a href="#sugestoes" data-pg="sugestoes">🎛️ CTRL ONLINE</a>
     <a href="#aprovacoes" data-pg="aprovacoes">🔍 Aprovações</a>
@@ -528,7 +529,7 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -548,6 +549,7 @@ function navega(pg){
   else if(pg==='revisoes') renderRevisoes();
   else if(pg==='painel') renderPainel();
   else if(pg==='skus') renderSkus();
+  else if(pg==='global') renderGlobal();
   else if(pg==='config') renderConfig();
   else renderEmBreve(pg);
 }
@@ -2632,6 +2634,64 @@ async function renderSkus(){
   let skT; $('#skQ').oninput=e=>{clearTimeout(skT);skT=setTimeout(()=>{st.skQ=e.target.value.trim().toUpperCase();desenhaSk();},200);};
   document.querySelectorAll('button[data-met]').forEach(b=>b.onclick=()=>{st.skMet=b.dataset.met;renderSkus();});
   ligaCompat();
+}
+
+/* ---------- Visão Global — semana a semana por grupo ---------- */
+async function renderGlobal(){
+  $('#conteudo').innerHTML='<div class="carregando">Montando visão global…</div>';
+  if(!st.vg) st.vg=await tudo('visao_global',{eq:[]});
+  const recG={}; st.vg.forEach(r=>recG[r.grupo_abc]=(recG[r.grupo_abc]||0)+(+r.receita||0));
+  const grupos=[...new Set(st.vg.map(r=>r.grupo_abc))].sort((a,b)=>(recG[b]||0)-(recG[a]||0));
+  if(!st.vgG||!grupos.includes(st.vgG)) st.vgG=grupos[0];
+  const rows=st.vg.filter(r=>r.grupo_abc===st.vgG).sort((a,b)=>a.seg<b.seg?1:-1);
+  const dHoje=new Date(); const seg0=new Date(dHoje); seg0.setDate(dHoje.getDate()-((dHoje.getDay()+6)%7));
+  const segHoje=seg0.toISOString().slice(0,10);
+  const N=v=>v==null?null:+v;
+  const dpc=(c,p)=>(c!=null&&p!=null&&p>0)?(c/p-1)*100:null;
+  const seta=(d,moral)=>{ if(d==null||Math.abs(d)<0.05) return '';
+    let cor='var(--ink2)';
+    if(moral==='qtd') cor=d>0?'var(--good)':'var(--crit)';
+    if(moral==='bgt') cor=d<0?'var(--crit)':'var(--good)';
+    return ` <span style="font-size:10px;color:${cor}">${d>0?'▲':'▼'}${nf1.format(Math.abs(d))}%</span>`; };
+  const fechadas=rows.filter(r=>r.seg!==segHoje);
+  let leitura='';
+  if(fechadas.length>=2){
+    const [u,p]=fechadas;
+    const f=[];
+    const db=dpc(N(u.p_bgt),N(p.p_bgt)), dt=dpc(N(u.p_tabela),N(p.p_tabela)), dr=dpc(N(u.p_realizado),N(p.p_realizado));
+    const dq=dpc(N(u.qtd),N(p.qtd)), dk=dpc(N(u.cliques),N(p.cliques)), da=dpc(N(u.acessos),N(p.acessos));
+    if(db!=null) f.push(`BGT ${db<0?'<b style="color:var(--crit)">baixou '+nf1.format(-db)+'%</b>':db>0?'subiu '+nf1.format(db)+'%':'estável'}`);
+    if(dt!=null) f.push(`nossa tabela ${dt>0?'subiu '+nf1.format(dt)+'%':dt<0?'baixou '+nf1.format(-dt)+'%':'estável'}`);
+    if(dr!=null) f.push(`realizado ${dr>0?'+':''}${nf1.format(dr)}%`);
+    if(N(u.p_tabela)&&N(u.p_bgt)) f.push(`gap tabela×BGT: <b>${nf1.format((N(u.p_tabela)/N(u.p_bgt)-1)*100)}%</b>`);
+    if(dq!=null) f.push(`unidades ${dq>0?'+':''}${nf.format(Math.round(dq))}%`);
+    if(dk!=null) f.push(`cliques ${dk>0?'+':''}${nf.format(Math.round(dk))}%`);
+    if(da!=null) f.push(`acessos ${da>0?'+':''}${nf.format(Math.round(da))}%`);
+    leitura=`<div class="banner ambar" style="background:var(--accent-soft);color:var(--accent);font-weight:400">🔍 <b>Semana fechada (${u.seg.slice(8,10)}/${u.seg.slice(5,7)}) vs anterior:</b> ${f.join(' · ')}</div>`;
+  }
+  $('#conteudo').innerHTML=`
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Preços ponderados pela cesta fixa das unidades vendidas nos últimos 30 dias</b> (site/002) — isso isola o movimento de PREÇO do efeito de mix. Tabela = preço à vista registrado (último snapshot da semana) · Realizado = receita÷unidades da semana (inclui descontos e mix) · BGT = scrape semanal (sábados) ponderado na mesma cesta; (n) = produtos com preço BGT. Ads/cliques = Google Ads · acessos = GA4. Semana com * está em curso.</p>
+    <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px">${grupos.map(g=>`<button class="kpi" data-vg="${esc(g)}" style="padding:7px 14px;${st.vgG===g?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${esc(g)} <span class="gr">${nf.format(Math.round((recG[g]||0)/1000))}k</span></button>`).join('')}</div>
+    ${leitura}
+    <div class="tablecard"><div class="tscroll"><table style="min-width:900px">
+      <thead><tr><th style="text-align:left">Semana</th><th>Tabela pond.</th><th>Realizado</th><th>BGT pond. (n)</th><th>Gap ×BGT</th><th>Unid.</th><th>Receita</th><th>Ads R$</th><th>Cliques</th><th>Acessos</th></tr></thead>
+      <tbody>${rows.map((r,i)=>{
+        const p=rows[i+1]||{};
+        const gap=(N(r.p_tabela)&&N(r.p_bgt))?(N(r.p_tabela)/N(r.p_bgt)-1)*100:null;
+        return `<tr>
+        <td style="text-align:left"><b>${r.seg.slice(8,10)}/${r.seg.slice(5,7)}</b>${r.seg===segHoje?'<span class="gr">*</span>':''}</td>
+        <td>${r.p_tabela!=null?rf2.format(N(r.p_tabela)):'—'}${seta(dpc(N(r.p_tabela),N(p.p_tabela)))}</td>
+        <td>${r.p_realizado!=null?rf2.format(N(r.p_realizado)):'—'}${seta(dpc(N(r.p_realizado),N(p.p_realizado)))}</td>
+        <td>${r.p_bgt!=null?`${rf2.format(N(r.p_bgt))} <span class="gr">(${r.n_bgt})</span>`:'—'}${seta(dpc(N(r.p_bgt),N(p.p_bgt)),'bgt')}</td>
+        <td style="${gap!=null?'font-weight:700':''}">${gap!=null?nf1.format(gap)+'%':'—'}</td>
+        <td>${r.qtd!=null?nf.format(N(r.qtd)):'—'}${seta(dpc(N(r.qtd),N(p.qtd)),'qtd')}</td>
+        <td>${r.receita!=null?nf.format(Math.round(N(r.receita))):'—'}</td>
+        <td>${r.ads_custo!=null?nf.format(Math.round(N(r.ads_custo))):'—'}</td>
+        <td>${r.cliques!=null?nf.format(N(r.cliques)):'—'}${seta(dpc(N(r.cliques),N(p.cliques)),'qtd')}</td>
+        <td>${r.acessos!=null?nf.format(N(r.acessos)):'—'}${seta(dpc(N(r.acessos),N(p.acessos)),'qtd')}</td></tr>`;}).join('')}</tbody>
+    </table></div></div>
+    <p class="gr" style="margin:10px 2px 0">Setas = variação vs semana anterior. Na BGT, queda em <span style="color:var(--crit)">vermelho</span> (pressão competitiva); em unidades/cliques/acessos, queda vermelha e alta verde. Grupos = mesas de analista (mesma consolidação da curva ABC).</p>`;
+  document.querySelectorAll('.kpi[data-vg]').forEach(b=>b.onclick=()=>{st.vgG=b.dataset.vg;renderGlobal();});
 }
 
 /* ---------- em construção / config ---------- */
