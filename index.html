@@ -247,6 +247,7 @@ th.ord .seta{font-size:9px;margin-left:3px}
     <a href="#revisoes" data-pg="revisoes">📮 Revisões</a>
     <a href="#precos" data-pg="precos">🏷️ Preços — Markup</a>
     <a href="#radar" data-pg="radar">📡 Radar</a>
+    <a href="#pressao" data-pg="pressao">🚀 Pressão Ads</a>
     <a href="#produtos" data-pg="produtos">📦 Produtos</a>
     <a href="#compras" data-pg="compras">🚢 Compras &amp; Trânsito</a>
     <a href="#importacoes" data-pg="importacoes">🛬 Importações <span class="soon">breve</span></a>
@@ -529,7 +530,7 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -550,6 +551,7 @@ function navega(pg){
   else if(pg==='painel') renderPainel();
   else if(pg==='skus') renderSkus();
   else if(pg==='global') renderGlobal();
+  else if(pg==='pressao') renderPressao();
   else if(pg==='config') renderConfig();
   else renderEmBreve(pg);
 }
@@ -1607,6 +1609,119 @@ function montaDiagnostico(ov, cod){
   go.onclick=envia;
   inp.onkeydown=e=>{ if(e.key==='Enter') envia(); };
 }
+/* ---------- pressão ads (80/20) ---------- */
+async function renderPressao(){
+  $('#conteudo').innerHTML='<div class="carregando">Carregando painel 80/20…</div>';
+  let user=null; try{ user=(await sb.auth.getUser()).data.user; }catch(e){}
+  const [painel, acomp, semanas]=await Promise.all([
+    tudo('ads_pressao_painel',{mod:q=>q.order('receita_b2c_28d',{ascending:false})}),
+    tudo('ads_pressao',{mod:q=>q.neq('status','descartado').order('id',{ascending:false})}),
+    tudo('ads_pressao_semanal',{mod:q=>q.order('semana_ini',{ascending:false})}),
+  ]);
+  const ativos={};  // cod -> registro mais recente não-desmontado
+  for(const a of acomp) if(!ativos[a.cod] && a.status!=='desmontado') ativos[a.cod]=a;
+  const semPorCod={};
+  for(const s of semanas) (semPorCod[s.cod]=semPorCod[s.cod]||[]).push(s);
+
+  const folgaCell=f=>{
+    if(f==null) return '<td>—</td>';
+    const cor = f<30?'var(--crit)':f<60?'var(--warn)':'var(--good)';
+    return `<td style="color:${cor};font-weight:600">${nf.format(f)}d</td>`;
+  };
+  const roasCell=r=>{
+    if(r==null) return '<td>—</td>';
+    const cor = r<2?'var(--crit)':r<4?'var(--warn)':'var(--good)';
+    return `<td style="color:${cor};font-weight:600">${nf1.format(r)}</td>`;
+  };
+  const badge=a=>{
+    if(!a) return '';
+    if(a.status==='marcado')   return '<span style="background:var(--warn-soft);color:var(--warn);padding:2px 8px;border-radius:10px;font-size:11px">⏳ aguardando montagem</span>';
+    if(a.status==='montado')   return `<span style="background:var(--good-soft);color:var(--good);padding:2px 8px;border-radius:10px;font-size:11px">🚀 montado ${a.montado_em?new Date(a.montado_em).toLocaleDateString('pt-BR'):''}${a.troas?' · tROAS '+nf.format(a.troas*100)+'%':''}</span>`;
+    if(a.status==='desmontar') return '<span style="background:var(--crit-soft);color:var(--crit);padding:2px 8px;border-radius:10px;font-size:11px">🧹 desmonte pedido</span>';
+    return `<span class="gr">${esc(a.status)}</span>`;
+  };
+
+  const emAcomp = Object.values(ativos);
+  const blocoAcomp = emAcomp.length ? `
+    <h3 style="margin:18px 0 8px">Apostas em acompanhamento (${emAcomp.length})</h3>
+    <div class="tablecard"><div class="tscroll"><table><thead><tr>
+      <th>Produto</th><th>Status</th><th>Marcado</th><th>tROAS</th><th>Campanha/grupo</th><th>ROAS semanais (últimas 6)</th><th></th>
+    </tr></thead><tbody>
+    ${emAcomp.map(a=>{
+      const ss=(semPorCod[a.cod]||[]).slice(0,6);
+      const spark=ss.length?ss.map(s=>`<span title="semana ${s.semana_ini} · custo ${rf.format(s.custo||0)} · valor ${rf.format(s.valor_conv||0)}" style="margin-right:8px">${s.semana_ini.slice(5)}: <b style="color:${(s.roas??0)<2?'var(--crit)':(s.roas??0)<4?'var(--warn)':'var(--good)'}">${s.roas!=null?nf1.format(s.roas):'—'}</b></span>`).join(''):'<span class="gr">sem semana fechada ainda</span>';
+      return `<tr>
+        <td><a href="#painel/${encodeURIComponent(a.cod)}" style="font-weight:600">${esc(a.cod)}</a></td>
+        <td>${badge(a)}</td>
+        <td>${a.marcado_em?new Date(a.marcado_em).toLocaleDateString('pt-BR'):'—'}</td>
+        <td>${a.troas?nf.format(a.troas*100)+'%':'—'}</td>
+        <td style="font-size:11.5px">${esc(a.campanha||'—')}</td>
+        <td style="font-size:11.5px">${spark}</td>
+        <td>${a.status==='montado'?`<button class="btn prDesm" data-id="${a.id}" style="padding:2px 10px;font-size:11px">pedir desmonte</button>`:a.status==='marcado'?`<button class="btn prDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">desfazer</button>`:''}</td>
+      </tr>`;}).join('')}
+    </tbody></table></div></div>` : '<p class="gr" style="margin:14px 0">Nenhuma aposta em acompanhamento ainda — marque produtos na lista abaixo.</p>';
+
+  const dt = painel[0]?.atualizado_em ? new Date(painel[0].atualizado_em+'T12:00:00').toLocaleDateString('pt-BR') : '—';
+  $('#conteudo').innerHTML=`
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Produtos que fazem <b>80% da receita B2C dos últimos 28 dias</b> (${painel.length} SKUs · atualizado ${dt}).
+    <b>Folga</b> = estoque útil ÷ velocidade de venda (todos os canais; vermelho &lt;30d, âmbar &lt;60d) · <b>ROAS 30d</b> = valor de conversão ÷ custo (Shopping+PMax, por produto; vermelho &lt;2, âmbar &lt;4) ·
+    <b>Conv</b> = compras÷views GA4 28d · <b>MC%</b> = margem de contribuição 002 30d ÷ receita B2C 30d.
+    Marcar 🚀 <b>não muda nada no Ads</b> — entra na fila para o Claude montar o grupo com tROAS menor e começar o acompanhamento semanal.</p>
+    ${blocoAcomp}
+    <div style="display:flex;gap:10px;margin:16px 0 8px;flex-wrap:wrap">
+      <input id="prBusca" placeholder="filtrar por código/descrição…" style="flex:1;min-width:220px">
+      <select id="prGrupo"><option value="">todos os grupos</option>${[...new Set(painel.map(p=>p.grupo).filter(Boolean))].sort().map(g=>`<option>${esc(g)}</option>`).join('')}</select>
+    </div>
+    <div class="tablecard"><div class="tscroll"><table><thead><tr>
+      <th>Produto</th><th>Grupo</th><th>Fase</th><th>R$ B2C 28d</th><th>Folga</th><th>Estoque</th><th>Trânsito</th>
+      <th>Ads 30d</th><th>ROAS 30d</th><th>Conv 28d</th><th>MC% 30d</th><th>Preço à vista</th><th>BGT</th><th></th>
+    </tr></thead><tbody id="prCorpo"></tbody></table></div></div>`;
+
+  const corpo=$('#prCorpo');
+  function desenhaLinhas(){
+    const f=($('#prBusca').value||'').toUpperCase(), g=$('#prGrupo').value;
+    corpo.innerHTML = painel.filter(p=>(!g||p.grupo===g)&&(!f||p.cod.toUpperCase().includes(f)||(p.descricao||'').toUpperCase().includes(f))).map(p=>{
+      const a=ativos[p.cod];
+      return `<tr>
+      <td><a href="#painel/${encodeURIComponent(p.cod)}" style="font-weight:600">${esc(p.cod)}</a><br><span class="gr" style="font-size:11px">${esc((p.descricao||'').slice(0,38))}</span></td>
+      <td>${esc(p.grupo||'—')}</td><td style="font-size:11.5px">${esc(p.fase||'—')}</td>
+      <td>${rf.format(p.receita_b2c_28d||0)}</td>
+      ${folgaCell(p.folga_dias)}
+      <td>${nf.format(p.estoque||0)}</td>
+      <td>${p.transito?nf.format(p.transito):'—'}</td>
+      <td>${rf.format(p.ads_custo_30d||0)}</td>
+      ${roasCell(p.roas_30d)}
+      <td>${p.conv_28d!=null?nf1.format(p.conv_28d*100)+'%':'—'}</td>
+      <td>${p.mc30_pct!=null?nf.format(Math.round(p.mc30_pct*100))+'%':'—'}</td>
+      <td>${p.preco_avista!=null?rf2.format(p.preco_avista):'—'}</td>
+      <td>${p.bgt!=null?rf2.format(p.bgt):'—'}</td>
+      <td>${a?badge(a):`<button class="btn prMarca" data-cod="${esc(p.cod)}" style="padding:2px 10px;font-size:11px">🚀 pressão</button>`}</td>
+    </tr>`;}).join('');
+  }
+  desenhaLinhas();
+  $('#prBusca').oninput=desenhaLinhas; $('#prGrupo').onchange=desenhaLinhas;
+
+  $('#conteudo').onclick=async e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    if(b.classList.contains('prMarca')){
+      b.disabled=true; b.textContent='…';
+      const {error}=await sb.from('ads_pressao').insert({cod:b.dataset.cod, status:'marcado', marcado_por:user?.email||'?'});
+      if(error){ alert('Erro: '+error.message); b.disabled=false; b.textContent='🚀 pressão'; return; }
+      renderPressao();
+    }
+    if(b.classList.contains('prDesm')){
+      b.disabled=true;
+      await sb.from('ads_pressao').update({status:'desmontar'}).eq('id',b.dataset.id);
+      renderPressao();
+    }
+    if(b.classList.contains('prDesc')){
+      b.disabled=true;
+      await sb.from('ads_pressao').update({status:'descartado'}).eq('id',b.dataset.id);
+      renderPressao();
+    }
+  };
+}
+
 async function renderRevisoes(){
   // devolutiva pro ANALISTA: o que aconteceu com cada sugestão (aplicada / devolvida com motivo / em revisão)
   $('#conteudo').innerHTML='<div class="carregando">Carregando resultado das sugestões…</div>';
