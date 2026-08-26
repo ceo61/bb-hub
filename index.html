@@ -1890,32 +1890,46 @@ async function abreMCsemanal(cod, m){
   let ov=document.getElementById('mcModal');
   if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
   ov.className='aclov';
-  ov.innerHTML='<div class="aclcard" style="width:min(720px,96vw);padding:14px 16px"><div class="carregando">Carregando série semanal…</div></div>';
+  ov.innerHTML='<div class="aclcard" style="width:min(800px,96vw);padding:14px 16px"><div class="carregando">Carregando série semanal…</div></div>';
   ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
   if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
   const d=new Date(); const seg0=new Date(d); seg0.setDate(d.getDate()-((d.getDay()+6)%7));
   const ini=new Date(seg0); ini.setDate(seg0.getDate()-105);
-  const [{data:mcs},{data:ads}]=await Promise.all([
+  const iniISO=ini.toISOString().slice(0,10);
+  const [{data:mcs},{data:ads},{data:vd},{data:est},{data:fv}]=await Promise.all([
     sb.from('fato_mc_semanal').select('semana,mc').eq('cod',cod).order('semana'),
-    sb.from('fato_ads').select('data,custo').eq('cod',cod).gte('data',ini.toISOString().slice(0,10)).order('data')]);
-  const A={}; (ads||[]).forEach(r=>{ const dt=new Date(r.data+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); const w=dt.toISOString().slice(0,10); A[w]=(A[w]||0)+(+r.custo||0); });
-  const rows=(mcs||[]).map(r=>({sem:r.semana, mc:+r.mc||0, ads:A[r.semana]||0}));
-  const roas=r=>r.ads>0?r.mc/r.ads:null;
-  const corR=v=>v==null?'color:var(--muted)':v<1?'color:var(--crit);font-weight:700':v<2?'color:var(--lar);font-weight:600':'color:var(--good);font-weight:700';
-  const seta=(c,p)=>{ if(c==null||p==null||p===0) return ''; const d=(c/p-1)*100; if(Math.abs(d)<0.5) return '';
-    return ` <span style="font-size:10px;color:${d>0?'var(--good)':'var(--crit)'}">${d>0?'▲':'▼'}${nf1.format(Math.abs(d))}%</span>`; };
+    sb.from('fato_ads').select('data,custo').eq('cod',cod).gte('data',iniISO).order('data'),
+    sb.from('fato_vendas_diaria').select('data,qtd_b2c,val_b2c').eq('cod',cod).gte('data',iniISO).order('data'),
+    sb.from('fato_estoque').select('snapshot,estoque_util').eq('cod',cod).gte('snapshot',iniISO).order('snapshot'),
+    sb.from('fato_vendas').select('media_mes').eq('cod',cod).order('snapshot',{ascending:false}).limit(1)]);
+  const wk=x=>{ const dt=new Date(x+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); return dt.toISOString().slice(0,10); };
+  const A={}; (ads||[]).forEach(r=>{ const w=wk(r.data); A[w]=(A[w]||0)+(+r.custo||0); });
+  const T={}; (vd||[]).forEach(r=>{ const w=wk(r.data); const t=T[w]=T[w]||{q:0,v:0}; t.q+=+r.qtd_b2c||0; t.v+=+r.val_b2c||0; });
+  const S={}; (est||[]).forEach(r=>{ S[wk(r.snapshot)]=+r.estoque_util; });
+  const giro=+(fv?.[0]?.media_mes)||0;
+  const rows=(mcs||[]).map(r=>{ const w=r.semana; const t=T[w]; const ad=A[w];
+    return {sem:w, mc:+r.mc||0, ads:ad??null, roas:(ad>0)?(+r.mc||0)/ad:null,
+            tick:(t&&t.q>0)?t.v/t.q:null, saldo:S[w]??null,
+            folga:(S[w]!=null&&giro>0)?S[w]/giro:null}; });
+  const ter=vals=>{ const v=vals.filter(x=>x!=null).sort((a,b)=>a-b);
+    if(v.length<4) return ()=>''; const p33=v[Math.floor(v.length/3)], p66=v[Math.floor(2*v.length/3)];
+    return x=>x==null?'':x>=p66?'color:var(--good);font-weight:700':x<=p33?'color:var(--crit);font-weight:700':''; };
+  const cMC=ter(rows.map(r=>r.mc)), cRO=ter(rows.map(r=>r.roas)), cTK=ter(rows.map(r=>r.tick));
   ov.querySelector('.aclcard').innerHTML=`
     <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📈 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')}</span><span id="mwX" style="cursor:pointer;font-size:20px">✕</span></div>
-    <p class="gr" style="margin:6px 0 10px">Últimas 15 semanas fechadas (seg–dom), canal site (002). MC = lucro bruto transação a transação (BASE BBDI) · <b>ROAS MC = MC ÷ verba de ads</b> — <span style="color:var(--crit)">&lt;1× queima caixa</span> · <span style="color:var(--lar)">1–2×</span> · <span style="color:var(--good)">≥2×</span>.</p>
+    <p class="gr" style="margin:6px 0 10px">15 semanas fechadas (seg–dom), canal site (002). MC = lucro bruto transacional (BASE BBDI) · ROAS MC = MC ÷ verba · Ticket = receita÷unidades da semana. <b style="color:var(--good)">Verde</b>/<b style="color:var(--crit)">vermelho</b> = terço alto/baixo da própria série do produto.</p>
     ${rows.length?`<div class="tscroll"><table style="width:100%;min-width:0">
-      <thead><tr><th style="text-align:left">Semana</th><th>MC 7d</th><th>Ads 7d</th><th>ROAS MC</th></tr></thead>
-      <tbody>${rows.map((r,i)=>{ const p=rows[i-1]; const rr=roas(r), rp=p?roas(p):null;
-        return `<tr><td style="text-align:left"><b>${r.sem.slice(8,10)}/${r.sem.slice(5,7)}</b></td>
-        <td>${rf2.format(r.mc)}${seta(r.mc,p?.mc)}</td>
-        <td>${r.ads?rf2.format(r.ads):'—'}</td>
-        <td style="${corR(rr)}">${rr!=null?nf1.format(rr)+'×':'—'}${seta(rr,rp)}</td></tr>`;}).join('')}</tbody>
+      <thead><tr><th style="text-align:left">Semana</th><th>MC 7d</th><th>Ads 7d</th><th>ROAS MC</th><th>Ticket 002</th><th>Saldo</th><th>Folga</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td style="text-align:left"><b>${r.sem.slice(8,10)}/${r.sem.slice(5,7)}</b></td>
+        <td style="${cMC(r.mc)}">${rf2.format(r.mc)}</td>
+        <td>${r.ads!=null?rf2.format(r.ads):'—'}</td>
+        <td style="${cRO(r.roas)}">${r.roas!=null?nf1.format(r.roas)+'×':'—'}</td>
+        <td style="${cTK(r.tick)}">${r.tick!=null?rf2.format(r.tick):'—'}</td>
+        <td>${r.saldo!=null?nf.format(Math.round(r.saldo)):'—'}</td>
+        <td>${r.folga!=null?nf1.format(r.folga)+' m':'—'}</td></tr>`).join('')}</tbody>
     </table></div>`:'<p class="gr">Sem MC registrada no site nas últimas 15 semanas.</p>'}
-    <p class="gr" style="margin:10px 0 0">Atualiza no ETL das 6h. Semana em curso não aparece (só fechadas).</p>`;
+    <p class="gr" style="margin:10px 0 0">Saldo = estoque útil no fim da semana (snapshots desde 15/07) · Folga = saldo ÷ giro mês atual (${giro?nf1.format(giro)+'/mês':'sem giro'}). Atualiza no ETL das 6h; só semanas fechadas.</p>`;
   ov.querySelector('#mwX').onclick=()=>ov.remove();
 }
 async function renderSugestoes(){
