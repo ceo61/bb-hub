@@ -1615,11 +1615,14 @@ function montaDiagnostico(ov, cod){
 async function renderPressao(){
   $('#conteudo').innerHTML='<div class="carregando">Carregando painel 80/20…</div>';
   let user=null; try{ user=(await sb.auth.getUser()).data.user; }catch(e){}
-  const [painel, acomp, semanas]=await Promise.all([
+  const [painelRaw, acomp, semanas, filhosArr]=await Promise.all([
     tudo('ads_pressao_painel',{mod:q=>q.order('receita_b2c_28d',{ascending:false})}),
     tudo('ads_pressao',{mod:q=>q.neq('status','descartado').order('id',{ascending:false})}),
     tudo('ads_pressao_semanal',{mod:q=>q.order('semana_ini',{ascending:false})}),
+    tudo('filhos_prdcor',{eq:[]}),
   ]);
+  const FILHOS=new Set(filhosArr.map(x=>x.cod));
+  const painel=painelRaw.filter(p=>!FILHOS.has(p.cod));  // ads investe só no PAI — filho (Z0_PRDCOR na SZ0) fica fora
   const ativos={};
   for(const a of acomp) if(!ativos[a.cod] && a.status!=='desmontado') ativos[a.cod]=a;
   const semPorCod={};
