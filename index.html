@@ -1609,7 +1609,7 @@ function montaDiagnostico(ov, cod){
   go.onclick=envia;
   inp.onkeydown=e=>{ if(e.key==='Enter') envia(); };
 }
-/* ---------- pressão ads (80/20) ---------- */
+/* ---------- pressão ads (80/20 por grupo) ---------- */
 async function renderPressao(){
   $('#conteudo').innerHTML='<div class="carregando">Carregando painel 80/20…</div>';
   let user=null; try{ user=(await sb.auth.getUser()).data.user; }catch(e){}
@@ -1618,107 +1618,117 @@ async function renderPressao(){
     tudo('ads_pressao',{mod:q=>q.neq('status','descartado').order('id',{ascending:false})}),
     tudo('ads_pressao_semanal',{mod:q=>q.order('semana_ini',{ascending:false})}),
   ]);
-  const ativos={};  // cod -> registro mais recente não-desmontado
+  const ativos={};
   for(const a of acomp) if(!ativos[a.cod] && a.status!=='desmontado') ativos[a.cod]=a;
   const semPorCod={};
   for(const s of semanas) (semPorCod[s.cod]=semPorCod[s.cod]||[]).push(s);
 
-  const folgaCell=f=>{
-    if(f==null) return '<td>—</td>';
-    const cor = f<30?'var(--crit)':f<60?'var(--warn)':'var(--good)';
-    return `<td style="color:${cor};font-weight:600">${nf.format(f)}d</td>`;
-  };
-  const roasCell=r=>{
-    if(r==null) return '<td>—</td>';
-    const cor = r<2?'var(--crit)':r<4?'var(--warn)':'var(--good)';
-    return `<td style="color:${cor};font-weight:600">${nf1.format(r)}</td>`;
-  };
   const badge=a=>{
     if(!a) return '';
-    if(a.status==='marcado')   return '<span style="background:var(--warn-soft);color:var(--warn);padding:2px 8px;border-radius:10px;font-size:11px">⏳ aguardando montagem</span>';
-    if(a.status==='montado')   return `<span style="background:var(--good-soft);color:var(--good);padding:2px 8px;border-radius:10px;font-size:11px">🚀 montado ${a.montado_em?new Date(a.montado_em).toLocaleDateString('pt-BR'):''}${a.troas?' · tROAS '+nf.format(a.troas*100)+'%':''}</span>`;
-    if(a.status==='desmontar') return '<span style="background:var(--crit-soft);color:var(--crit);padding:2px 8px;border-radius:10px;font-size:11px">🧹 desmonte pedido</span>';
+    if(a.status==='marcado')   return '<span style="background:var(--warn-soft);color:var(--warn);padding:2px 8px;border-radius:10px;font-size:11px">\u23f3 aguardando</span>';
+    if(a.status==='montado')   return `<span title="${esc(a.campanha||'')}" style="background:var(--good-soft);color:var(--good);padding:2px 8px;border-radius:10px;font-size:11px">\ud83d\ude80 em campanha${a.troas?' \u00b7 tROAS '+nf.format(a.troas*100)+'%':''}</span>`;
+    if(a.status==='desmontar') return '<span style="background:var(--crit-soft);color:var(--crit);padding:2px 8px;border-radius:10px;font-size:11px">\ud83e\uddf9 desmonte pedido</span>';
     return `<span class="gr">${esc(a.status)}</span>`;
   };
 
   const emAcomp = Object.values(ativos);
   const blocoAcomp = emAcomp.length ? `
-    <h3 style="margin:18px 0 8px">Apostas em acompanhamento (${emAcomp.length})</h3>
-    <div class="tablecard"><div class="tscroll"><table><thead><tr>
-      <th>Produto</th><th>Status</th><th>Marcado</th><th>tROAS</th><th>Campanha/grupo</th><th>ROAS semanais (últimas 6)</th><th></th>
+    <details style="margin:0 0 14px"><summary style="cursor:pointer;font-weight:600">Apostas em acompanhamento (${emAcomp.length})</summary>
+    <div class="tablecard" style="margin-top:8px"><div class="tscroll"><table><thead><tr>
+      <th>Produto</th><th>Status</th><th>Montado</th><th>tROAS</th><th>Campanha/grupo</th><th>ROAS Ads semanais</th><th></th>
     </tr></thead><tbody>
     ${emAcomp.map(a=>{
       const ss=(semPorCod[a.cod]||[]).slice(0,6);
-      const spark=ss.length?ss.map(s=>`<span title="semana ${s.semana_ini} · custo ${rf.format(s.custo||0)} · valor ${rf.format(s.valor_conv||0)}" style="margin-right:8px">${s.semana_ini.slice(5)}: <b style="color:${(s.roas??0)<2?'var(--crit)':(s.roas??0)<4?'var(--warn)':'var(--good)'}">${s.roas!=null?nf1.format(s.roas):'—'}</b></span>`).join(''):'<span class="gr">sem semana fechada ainda</span>';
+      const spark=ss.length?ss.map(s=>`<span title="semana ${s.semana_ini} \u00b7 custo ${rf.format(s.custo||0)} \u00b7 valor ${rf.format(s.valor_conv||0)}" style="margin-right:8px">${s.semana_ini.slice(5)}: <b style="color:${(s.roas??0)<2?'var(--crit)':(s.roas??0)<4?'var(--warn)':'var(--good)'}">${s.roas!=null?nf1.format(s.roas):'\u2014'}</b></span>`).join(''):'<span class="gr">sem semana fechada</span>';
       return `<tr>
         <td><a href="#painel/${encodeURIComponent(a.cod)}" style="font-weight:600">${esc(a.cod)}</a></td>
         <td>${badge(a)}</td>
-        <td>${a.marcado_em?new Date(a.marcado_em).toLocaleDateString('pt-BR'):'—'}</td>
-        <td>${a.troas?nf.format(a.troas*100)+'%':'—'}</td>
-        <td style="font-size:11.5px">${esc(a.campanha||'—')}</td>
+        <td>${a.montado_em?new Date(a.montado_em).toLocaleDateString('pt-BR'):(a.marcado_em?new Date(a.marcado_em).toLocaleDateString('pt-BR'):'\u2014')}</td>
+        <td>${a.troas?nf.format(a.troas*100)+'%':'\u2014'}</td>
+        <td style="font-size:11.5px">${esc(a.campanha||'\u2014')}</td>
         <td style="font-size:11.5px">${spark}</td>
         <td>${a.status==='montado'?`<button class="btn prDesm" data-id="${a.id}" style="padding:2px 10px;font-size:11px">pedir desmonte</button>`:a.status==='marcado'?`<button class="btn prDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">desfazer</button>`:''}</td>
       </tr>`;}).join('')}
-    </tbody></table></div></div>` : '<p class="gr" style="margin:14px 0">Nenhuma aposta em acompanhamento ainda — marque produtos na lista abaixo.</p>';
+    </tbody></table></div></div></details>` : '';
 
-  const dt = painel[0]?.atualizado_em ? new Date(painel[0].atualizado_em+'T12:00:00').toLocaleDateString('pt-BR') : '—';
+  // grupos na ordem de receita
+  const grupos=[...new Set(painel.map(p=>p.grupo))];
+  grupos.sort((a,b)=>painel.filter(p=>p.grupo===b).reduce((s,p)=>s+(p.receita_b2c_28d||0),0)-painel.filter(p=>p.grupo===a).reduce((s,p)=>s+(p.receita_b2c_28d||0),0));
+  if(!st.przGrupo || !grupos.includes(st.przGrupo)) st.przGrupo=grupos[0];
+  st.przSort=st.przSort||'receita_b2c_28d'; st.przDir=st.przDir??true;
+
+  const dt = painel[0]?.atualizado_em ? new Date(painel[0].atualizado_em+'T12:00:00').toLocaleDateString('pt-BR') : '\u2014';
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Produtos que fazem <b>80% da receita B2C dos últimos 28 dias</b> (${painel.length} SKUs · atualizado ${dt}).
-    <b>Folga</b> = estoque útil ÷ velocidade de venda (todos os canais; vermelho &lt;30d, âmbar &lt;60d) · <b>ROAS 30d</b> = valor de conversão ÷ custo (Shopping+PMax, por produto; vermelho &lt;2, âmbar &lt;4) ·
-    <b>Conv</b> = compras÷views GA4 28d · <b>MC%</b> = margem de contribuição 002 30d ÷ receita B2C 30d.
-    Marcar 🚀 <b>não muda nada no Ads</b> — entra na fila para o Claude montar o grupo com tROAS menor e começar o acompanhamento semanal.</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">80/20 <b>dentro de cada um dos 6 maiores grupos</b> (receita B2C 28d \u00b7 ${painel.length} SKUs \u00b7 atualizado ${dt}).
+    <b>ROAS fat</b> = faturamento site (Protheus) \u00f7 investimento Ads \u00b7 <b>ROAS MC</b> = margem de contribui\u00e7\u00e3o 002 (BASE BBDI) \u00f7 Ads \u00b7 <b>ROAS Ads</b> = valor de convers\u00e3o \u00f7 custo (todas as campanhas do produto, 30d).
+    <b style="color:var(--good)">Verde</b> = 30%+ acima da mediana do grupo (candidato a mais investimento) \u00b7 <b style="color:var(--crit)">vermelho</b> = 30%+ abaixo. Clique no t\u00edtulo da coluna para ordenar. Marcar \ud83d\ude80 s\u00f3 registra a aposta \u2014 o Claude monta o grupo com tROAS menor.</p>
     ${blocoAcomp}
-    <div style="display:flex;gap:10px;margin:16px 0 8px;flex-wrap:wrap">
-      <input id="prBusca" placeholder="filtrar por código/descrição…" style="flex:1;min-width:220px">
-      <select id="prGrupo"><option value="">todos os grupos</option>${[...new Set(painel.map(p=>p.grupo).filter(Boolean))].sort().map(g=>`<option>${esc(g)}</option>`).join('')}</select>
+    <div style="display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap;align-items:center">
+      ${grupos.map(g=>`<button class="btn przG" data-g="${esc(g)}" style="padding:4px 14px;${g===st.przGrupo?'background:var(--accent);color:#fff;border-radius:8px':''}">${esc(g)}</button>`).join('')}
+      <input id="przBusca" placeholder="filtrar\u2026" style="margin-left:auto;min-width:160px">
     </div>
-    <div class="tablecard"><div class="tscroll"><table><thead><tr>
-      <th>Produto</th><th>Grupo</th><th>Fase</th><th>R$ B2C 28d</th><th>Folga</th><th>Estoque</th><th>Trânsito</th>
-      <th>Ads 30d</th><th>ROAS 30d</th><th>Conv 28d</th><th>MC% 30d</th><th>Preço à vista</th><th>BGT</th><th></th>
-    </tr></thead><tbody id="prCorpo"></tbody></table></div></div>`;
+    <div class="tablecard"><div class="tscroll"><table><thead><tr id="przHead">
+      <th data-k="cod">Produto</th>
+      <th data-k="receita_b2c_28d">R$ B2C 28d</th>
+      <th data-k="ads_custo_7d">Ads 7d</th>
+      <th data-k="roas_fat_sem">ROAS fat<br>semana</th>
+      <th data-k="ads_custo_30d">Ads 30d</th>
+      <th data-k="roas_fat_30d">ROAS fat<br>m\u00eas</th>
+      <th data-k="roas_mc_sem">ROAS MC<br>semana</th>
+      <th data-k="roas_mc_30d">ROAS MC<br>m\u00eas</th>
+      <th data-k="roas_30d">ROAS Ads<br>30d</th>
+      <th>Campanha</th><th></th>
+    </tr></thead><tbody id="przCorpo"></tbody></table></div></div>`;
 
-  const corpo=$('#prCorpo');
-  function desenhaLinhas(){
-    const f=($('#prBusca').value||'').toUpperCase(), g=$('#prGrupo').value;
-    corpo.innerHTML = painel.filter(p=>(!g||p.grupo===g)&&(!f||p.cod.toUpperCase().includes(f)||(p.descricao||'').toUpperCase().includes(f))).map(p=>{
+  const mediana=arr=>{ const v=arr.filter(x=>x!=null&&isFinite(x)).sort((a,b)=>a-b); return v.length?v[Math.floor(v.length/2)]:null; };
+  function desenha(){
+    const f=($('#przBusca').value||'').toUpperCase();
+    let rows=painel.filter(p=>p.grupo===st.przGrupo&&(!f||p.cod.toUpperCase().includes(f)||(p.descricao||'').toUpperCase().includes(f)));
+    const meds={};
+    for(const k of ['roas_fat_sem','roas_fat_30d','roas_mc_sem','roas_mc_30d','roas_30d']) meds[k]=mediana(rows.map(p=>p[k]));
+    const k=st.przSort;
+    rows.sort((a,b)=>{ const x=a[k],y=b[k]; if(x==null)return 1; if(y==null)return -1; return st.przDir?(y>x?1:-1):(x>y?1:-1); });
+    const cel=(v,k)=>{
+      if(v==null) return '<td style="color:var(--muted)">\u2014</td>';
+      const m=meds[k]; let cor='';
+      if(m!=null&&m>0){ if(v>=m*1.3) cor='color:var(--good);font-weight:700'; else if(v<=m*0.7) cor='color:var(--crit);font-weight:600'; }
+      return `<td style="${cor}">${nf1.format(v)}</td>`;
+    };
+    $('#przCorpo').innerHTML=rows.map(p=>{
       const a=ativos[p.cod];
       return `<tr>
-      <td><a href="#painel/${encodeURIComponent(p.cod)}" style="font-weight:600">${esc(p.cod)}</a><br><span class="gr" style="font-size:11px">${esc((p.descricao||'').slice(0,38))}</span></td>
-      <td>${esc(p.grupo||'—')}</td><td style="font-size:11.5px">${esc(p.fase||'—')}</td>
+      <td><a href="#painel/${encodeURIComponent(p.cod)}" style="font-weight:600">${esc(p.cod)}</a><br><span class="gr" style="font-size:11px">${esc((p.descricao||'').slice(0,34))}</span></td>
       <td>${rf.format(p.receita_b2c_28d||0)}</td>
-      ${folgaCell(p.folga_dias)}
-      <td>${nf.format(p.estoque||0)}</td>
-      <td>${p.transito?nf.format(p.transito):'—'}</td>
+      <td>${rf.format(p.ads_custo_7d||0)}</td>
+      ${cel(p.roas_fat_sem,'roas_fat_sem')}
       <td>${rf.format(p.ads_custo_30d||0)}</td>
-      ${roasCell(p.roas_30d)}
-      <td>${p.conv_28d!=null?nf1.format(p.conv_28d*100)+'%':'—'}</td>
-      <td>${p.mc30_pct!=null?nf.format(Math.round(p.mc30_pct*100))+'%':'—'}</td>
-      <td>${p.preco_avista!=null?rf2.format(p.preco_avista):'—'}</td>
-      <td>${p.bgt!=null?rf2.format(p.bgt):'—'}</td>
-      <td>${a?badge(a):`<button class="btn prMarca" data-cod="${esc(p.cod)}" style="padding:2px 10px;font-size:11px">🚀 pressão</button>`}</td>
+      ${cel(p.roas_fat_30d,'roas_fat_30d')}
+      ${cel(p.roas_mc_sem,'roas_mc_sem')}
+      ${cel(p.roas_mc_30d,'roas_mc_30d')}
+      ${cel(p.roas_30d,'roas_30d')}
+      <td>${a?badge(a):'<span class="gr" style="font-size:11px">\u2014</span>'}</td>
+      <td>${a?'':`<button class="btn prMarca" data-cod="${esc(p.cod)}" style="padding:2px 10px;font-size:11px">\ud83d\ude80</button>`}</td>
     </tr>`;}).join('');
   }
-  desenhaLinhas();
-  $('#prBusca').oninput=desenhaLinhas; $('#prGrupo').onchange=desenhaLinhas;
+  desenha();
+  $('#przBusca').oninput=desenha;
+  $('#przHead').onclick=e=>{
+    const th=e.target.closest('th'); if(!th||!th.dataset.k) return;
+    if(st.przSort===th.dataset.k) st.przDir=!st.przDir; else { st.przSort=th.dataset.k; st.przDir=true; }
+    desenha();
+  };
+  document.querySelectorAll('.przG').forEach(b=>b.onclick=()=>{ st.przGrupo=b.dataset.g; renderPressao(); });
 
   $('#conteudo').onclick=async e=>{
     const b=e.target.closest('button'); if(!b) return;
     if(b.classList.contains('prMarca')){
-      b.disabled=true; b.textContent='…';
+      b.disabled=true; b.textContent='\u2026';
       const {error}=await sb.from('ads_pressao').insert({cod:b.dataset.cod, status:'marcado', marcado_por:user?.email||'?'});
-      if(error){ alert('Erro: '+error.message); b.disabled=false; b.textContent='🚀 pressão'; return; }
+      if(error){ alert('Erro: '+error.message); b.disabled=false; b.textContent='\ud83d\ude80'; return; }
       renderPressao();
     }
-    if(b.classList.contains('prDesm')){
-      b.disabled=true;
-      await sb.from('ads_pressao').update({status:'desmontar'}).eq('id',b.dataset.id);
-      renderPressao();
-    }
-    if(b.classList.contains('prDesc')){
-      b.disabled=true;
-      await sb.from('ads_pressao').update({status:'descartado'}).eq('id',b.dataset.id);
-      renderPressao();
-    }
+    if(b.classList.contains('prDesm')){ b.disabled=true; await sb.from('ads_pressao').update({status:'desmontar'}).eq('id',b.dataset.id); renderPressao(); }
+    if(b.classList.contains('prDesc')){ b.disabled=true; await sb.from('ads_pressao').update({status:'descartado'}).eq('id',b.dataset.id); renderPressao(); }
   };
 }
 
