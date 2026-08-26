@@ -30,6 +30,7 @@ input,select{font:inherit;color:var(--ink);background:var(--surface);border:1px 
 input::placeholder{color:var(--muted)}
 button:focus-visible,input:focus-visible,select:focus-visible,tr:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 .hide{display:none!important}
+#przHead th[data-k]{cursor:pointer;text-decoration:underline dotted var(--muted);text-underline-offset:3px}
 .eyebrow{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
 
 /* ---------- login ---------- */
@@ -1655,7 +1656,7 @@ async function renderPressao(){
   const grupos=[...new Set(painel.map(p=>p.grupo))];
   grupos.sort((a,b)=>painel.filter(p=>p.grupo===b).reduce((s,p)=>s+(p.receita_b2c_28d||0),0)-painel.filter(p=>p.grupo===a).reduce((s,p)=>s+(p.receita_b2c_28d||0),0));
   if(!st.przGrupo || !grupos.includes(st.przGrupo)) st.przGrupo=grupos[0];
-  st.przSort=st.przSort||'receita_b2c_28d'; st.przDir=st.przDir??true;
+  st.przSort=st.przSort||'_idx'; st.przDir=st.przDir??true;
 
   const dt = painel[0]?.atualizado_em ? new Date(painel[0].atualizado_em+'T12:00:00').toLocaleDateString('pt-BR') : '\u2014';
   $('#conteudo').innerHTML=`
@@ -1669,6 +1670,7 @@ async function renderPressao(){
     </div>
     <div class="tablecard"><div class="tscroll"><table><thead><tr id="przHead">
       <th data-k="cod">Produto</th>
+      <th data-k="_idx" title="M\u00e9dia ponderada dos ROAS normalizados pela mediana do grupo: MC m\u00eas 25% \u00b7 MC sem 15% \u00b7 fat m\u00eas 20% \u00b7 fat sem 10% \u00b7 Ads 30d 20% \u00b7 Ads sem 10%. 100 = na m\u00e9dia do grupo.">\u00cdndice</th>
       <th data-k="receita_b2c_28d">R$ B2C 28d</th>
       <th data-k="ads_custo_30d">Ads 30d</th>
       <th data-k="roas_fat_30d">ROAS fat<br>m\u00eas</th>
@@ -1682,11 +1684,18 @@ async function renderPressao(){
     </tr></thead><tbody id="przCorpo"></tbody></table></div></div>`;
 
   const mediana=arr=>{ const v=arr.filter(x=>x!=null&&isFinite(x)).sort((a,b)=>a-b); return v.length?v[Math.floor(v.length/2)]:null; };
+  const PESOS={roas_mc_30d:.25, roas_mc_sem:.15, roas_fat_30d:.20, roas_fat_sem:.10, roas_30d:.20, roas_ads_sem:.10};
   function desenha(){
     const f=($('#przBusca').value||'').toUpperCase();
-    let rows=painel.filter(p=>p.grupo===st.przGrupo&&(!f||p.cod.toUpperCase().includes(f)||(p.descricao||'').toUpperCase().includes(f)));
+    const doGrupo=painel.filter(p=>p.grupo===st.przGrupo);
     const meds={};
-    for(const k of ['roas_fat_sem','roas_fat_30d','roas_mc_sem','roas_mc_30d','roas_30d','roas_ads_sem']) meds[k]=mediana(rows.map(p=>p[k]));
+    for(const k of ['roas_fat_sem','roas_fat_30d','roas_mc_sem','roas_mc_30d','roas_30d','roas_ads_sem']) meds[k]=mediana(doGrupo.map(p=>p[k]));
+    for(const p of doGrupo){
+      let sv=0, sw=0;
+      for(const k in PESOS){ const v=p[k], m=meds[k]; if(v!=null&&m!=null&&m>0){ sv+=PESOS[k]*(v/m); sw+=PESOS[k]; } }
+      p._idx = sw>0 ? Math.round(100*sv/sw) : null;
+    }
+    let rows=doGrupo.filter(p=>(!f||p.cod.toUpperCase().includes(f)||(p.descricao||'').toUpperCase().includes(f)));
     const k=st.przSort;
     rows.sort((a,b)=>{ const x=a[k],y=b[k]; if(x==null)return 1; if(y==null)return -1; return st.przDir?(y>x?1:-1):(x>y?1:-1); });
     const cel=(v,k)=>{
@@ -1699,6 +1708,7 @@ async function renderPressao(){
       const a=ativos[p.cod];
       return `<tr>
       <td><a href="#painel/${encodeURIComponent(p.cod)}" style="font-weight:600">${esc(p.cod)}</a><br><span class="gr" style="font-size:11px">${esc((p.descricao||'').slice(0,34))}</span></td>
+      <td>${p._idx==null?'<span style="color:var(--muted)">\u2014</span>':`<b style="font-size:13px;color:${p._idx>=130?'var(--good)':p._idx<=70?'var(--crit)':'var(--ink)'}">${p._idx}</b>`}</td>
       <td>${rf.format(p.receita_b2c_28d||0)}</td>
       <td>${rf.format(p.ads_custo_30d||0)}</td>
       ${cel(p.roas_fat_30d,'roas_fat_30d')}
