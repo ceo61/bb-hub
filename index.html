@@ -1642,7 +1642,7 @@ async function renderPressao(){
       const ss=(semPorCod[a.cod]||[]).slice(0,6);
       const spark=ss.length?ss.map(s=>`<span title="semana ${s.semana_ini} \u00b7 custo ${rf.format(s.custo||0)} \u00b7 valor ${rf.format(s.valor_conv||0)}" style="margin-right:8px">${s.semana_ini.slice(5)}: <b style="color:${(s.roas??0)<2?'var(--crit)':(s.roas??0)<4?'var(--warn)':'var(--good)'}">${s.roas!=null?nf1.format(s.roas):'\u2014'}</b></span>`).join(''):'<span class="gr">sem semana fechada</span>';
       return `<tr>
-        <td><a href="#painel/${encodeURIComponent(a.cod)}" style="font-weight:600">${esc(a.cod)}</a></td>
+        <td><a href="#painel/${encodeURIComponent(a.cod)}" style="font-weight:600">${esc(a.cod)}</a> <span data-mcw="${esc(a.cod)}" title="MC × Ads × ROAS MC — últimas 15 semanas (site)" style="cursor:pointer;opacity:.7">📈</span></td>
         <td>${badge(a)}</td>
         <td>${a.montado_em?new Date(a.montado_em).toLocaleDateString('pt-BR'):(a.marcado_em?new Date(a.marcado_em).toLocaleDateString('pt-BR'):'\u2014')}</td>
         <td>${a.troas?nf.format(a.troas*100)+'%':'\u2014'}</td>
@@ -1707,7 +1707,7 @@ async function renderPressao(){
     $('#przCorpo').innerHTML=rows.map(p=>{
       const a=ativos[p.cod];
       return `<tr>
-      <td><a href="#painel/${encodeURIComponent(p.cod)}" style="font-weight:600">${esc(p.cod)}</a><br><span class="gr" style="font-size:11px">${esc((p.descricao||'').slice(0,34))}</span></td>
+      <td><a href="#painel/${encodeURIComponent(p.cod)}" style="font-weight:600">${esc(p.cod)}</a> <span data-mcw="${esc(p.cod)}" title="MC × Ads × ROAS MC — últimas 15 semanas (site)" style="cursor:pointer;opacity:.7">📈</span><br><span class="gr" style="font-size:11px">${esc((p.descricao||'').slice(0,34))}</span></td>
       <td>${p._idx==null?'<span style="color:var(--muted)">\u2014</span>':`<b style="font-size:13px;color:${p._idx>=130?'var(--good)':p._idx<=70?'var(--crit)':'var(--ink)'}">${p._idx}</b>`}</td>
       <td>${rf.format(p.receita_b2c_28d||0)}</td>
       <td>${rf.format(p.ads_custo_30d||0)}</td>
@@ -1732,6 +1732,8 @@ async function renderPressao(){
   document.querySelectorAll('.przG').forEach(b=>b.onclick=()=>{ st.przGrupo=b.dataset.g; renderPressao(); });
 
   $('#conteudo').onclick=async e=>{
+    const mw=e.target.closest('[data-mcw]');
+    if(mw){ e.preventDefault(); e.stopPropagation(); abreMCsemanal(mw.dataset.mcw, st.dim[mw.dataset.mcw]); return; }
     const b=e.target.closest('button'); if(!b) return;
     if(b.classList.contains('prMarca')){
       b.disabled=true; b.textContent='\u2026';
@@ -1888,7 +1890,7 @@ async function abreMCsemanal(cod, m){
   let ov=document.getElementById('mcModal');
   if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
   ov.className='aclov';
-  ov.innerHTML='<div class="aclcard" style="width:min(620px,96vw)"><div class="carregando">Carregando série semanal…</div></div>';
+  ov.innerHTML='<div class="aclcard" style="width:min(720px,96vw);padding:14px 16px"><div class="carregando">Carregando série semanal…</div></div>';
   ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
   if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
   const d=new Date(); const seg0=new Date(d); seg0.setDate(d.getDate()-((d.getDay()+6)%7));
@@ -1905,7 +1907,7 @@ async function abreMCsemanal(cod, m){
   ov.querySelector('.aclcard').innerHTML=`
     <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📈 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')}</span><span id="mwX" style="cursor:pointer;font-size:20px">✕</span></div>
     <p class="gr" style="margin:6px 0 10px">Últimas 15 semanas fechadas (seg–dom), canal site (002). MC = lucro bruto transação a transação (BASE BBDI) · <b>ROAS MC = MC ÷ verba de ads</b> — <span style="color:var(--crit)">&lt;1× queima caixa</span> · <span style="color:var(--lar)">1–2×</span> · <span style="color:var(--good)">≥2×</span>.</p>
-    ${rows.length?`<div class="tscroll"><table style="width:100%">
+    ${rows.length?`<div class="tscroll"><table style="width:100%;min-width:0">
       <thead><tr><th style="text-align:left">Semana</th><th>MC 7d</th><th>Ads 7d</th><th>ROAS MC</th></tr></thead>
       <tbody>${rows.map((r,i)=>{ const p=rows[i-1]; const rr=roas(r), rp=p?roas(p):null;
         return `<tr><td style="text-align:left"><b>${r.sem.slice(8,10)}/${r.sem.slice(5,7)}</b></td>
@@ -2047,7 +2049,7 @@ async function renderSugestoes(){
       const sid=esc(m.cod).replace(/[^A-Za-z0-9]/g,'_');
       const tr=document.createElement('tr');
       tr.innerHTML=`<td style="text-align:center"><input type="checkbox" data-cod="${esc(m.cod)}" ${st.sgSel.has(m.cod)?'checked':''} style="width:16px;height:16px"></td>
-        <td style="text-align:left;white-space:nowrap"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span>${m._classe?`<span class="abcchip abc-${m._classe}" title="curva ${m._classe} da venda 12m">${m._classe}</span>`:''} <span data-ext="${esc(m.cod)}" title="extrato semanal completo — 26 semanas (saldo, folga, preços, BGT, vendas, conversão, ads, lucro) + preço novo" style="cursor:pointer;opacity:.7">📊</span> <span data-mcw="${esc(m.cod)}" title="MC × Ads × ROAS MC — últimas 15 semanas (canal site)" style="cursor:pointer;opacity:.7">📈</span> <span data-nota="${esc(m.cod)}" title="anotar na ata do dia" style="cursor:pointer;opacity:.65">📝</span> ${VER==='aguardando'
+        <td style="text-align:left;white-space:nowrap"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span>${m._classe?`<span class="abcchip abc-${m._classe}" title="curva ${m._classe} da venda 12m">${m._classe}</span>`:''} <span data-ext="${esc(m.cod)}" title="extrato semanal completo — 26 semanas (saldo, folga, preços, BGT, vendas, conversão, ads, lucro) + preço novo" style="cursor:pointer;opacity:.7">📊</span> <span data-nota="${esc(m.cod)}" title="anotar na ata do dia" style="cursor:pointer;opacity:.65">📝</span> ${VER==='aguardando'
           ?(revMap[m.cod]?`<span data-undorev="${revMap[m.cod].id}" title="revisado por ${esc(revMap[m.cod].aprovado_por||'')} em ${new Date(revMap[m.cod].criado_em).toLocaleDateString('pt-BR')} — clique para DESFAZER (volta pra fila)" style="cursor:pointer;color:var(--warn);font-weight:700">↩</span>`:'')
           :`<span data-rev="${esc(m.cod)}" title="conferi e está OK — volta à fila após 7 dias e +200 views" style="cursor:pointer;color:var(--good);font-weight:700;opacity:.75">✓</span>`}<br><span class="gr">${esc(m.grupo||'')}</span>${(VER==='aguardando'&&execMap[m.cod])?(e=>`<br><span class="gr" style="color:var(--accent)"${e.justificativa?` title="${esc(e.justificativa)} — ${esc(e.aprovado_por||'')}"`:''}>⚡ ${e.preco_sugerido!=null?rf2.format(e.preco_atual)+'→'+rf2.format(e.preco_sugerido):''}${e.atac_sugerido!=null?' · atac→'+rf2.format(e.atac_sugerido):''}${e.ml_sugerido!=null?' · ml→'+rf2.format(e.ml_sugerido):''} · ${new Date(e.executado_em).toLocaleDateString('pt-BR').slice(0,5)}</span>${e.justificativa?`<br><span class="gr" style="font-style:italic">“${esc(e.justificativa.slice(0,70))}${e.justificativa.length>70?'…':''}”</span>`:''}`)(execMap[m.cod]):''}${(VER==='aguardando'&&ocultosMov[m.cod])?(r=>{const dias=Math.floor((Date.now()-new Date(r.mov_em).getTime())/864e5);return `<br><span class="gr" style="color:var(--warn)" title="volta à fila quando completar 7 dias E 200 views desde a movimentação">⏳ ${nf.format(r.views_desde)}/200 views · ${nf.format(dias)}/7 dias</span>`;})(ocultosMov[m.cod]):''}</td>
         <td><span class="gr">${GERLB[m.geracao]||m.geracao}</span></td>
@@ -2072,7 +2074,6 @@ async function renderSugestoes(){
     document.querySelectorAll('#sgRows [data-ph]').forEach(el=>el.onclick=e=>{e.stopPropagation();const [cod,un]=el.dataset.ph.split('|');abrePreco(cod, un, MB[cod]);});
     document.querySelectorAll('#sgRows [data-nota]').forEach(el=>el.onclick=e=>{e.stopPropagation();abreNota(el.dataset.nota, MB[el.dataset.nota]);});
     document.querySelectorAll('#sgRows [data-ext]').forEach(el=>el.onclick=e=>{e.stopPropagation();abreExtrato(el.dataset.ext, MB[el.dataset.ext]);});
-    document.querySelectorAll('#sgRows [data-mcw]').forEach(el=>el.onclick=e=>{e.stopPropagation();abreMCsemanal(el.dataset.mcw, MB[el.dataset.mcw]);});
     document.querySelectorAll('#sgRows [data-rev]').forEach(el=>el.onclick=async e=>{e.stopPropagation();
       const cod=el.dataset.rev, m=MB[cod]||{};
       const {data:{user}}=await sb.auth.getUser();
