@@ -1884,6 +1884,38 @@ async function renderAprovacoes(){
   clearTimeout(st._apT);
   if(emExec.length) st._apT=setTimeout(()=>{ if(st.pg==='aprovacoes') renderAprovacoes(); },30000);
 }
+async function abreMCsemanal(cod, m){
+  let ov=document.getElementById('mcModal');
+  if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
+  ov.className='aclov';
+  ov.innerHTML='<div class="aclcard" style="width:min(620px,96vw)"><div class="carregando">Carregando série semanal…</div></div>';
+  ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
+  if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
+  const d=new Date(); const seg0=new Date(d); seg0.setDate(d.getDate()-((d.getDay()+6)%7));
+  const ini=new Date(seg0); ini.setDate(seg0.getDate()-105);
+  const [{data:mcs},{data:ads}]=await Promise.all([
+    sb.from('fato_mc_semanal').select('semana,mc').eq('cod',cod).order('semana'),
+    sb.from('fato_ads').select('data,custo').eq('cod',cod).gte('data',ini.toISOString().slice(0,10)).order('data')]);
+  const A={}; (ads||[]).forEach(r=>{ const dt=new Date(r.data+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); const w=dt.toISOString().slice(0,10); A[w]=(A[w]||0)+(+r.custo||0); });
+  const rows=(mcs||[]).map(r=>({sem:r.semana, mc:+r.mc||0, ads:A[r.semana]||0}));
+  const roas=r=>r.ads>0?r.mc/r.ads:null;
+  const corR=v=>v==null?'color:var(--muted)':v<1?'color:var(--crit);font-weight:700':v<2?'color:var(--lar);font-weight:600':'color:var(--good);font-weight:700';
+  const seta=(c,p)=>{ if(c==null||p==null||p===0) return ''; const d=(c/p-1)*100; if(Math.abs(d)<0.5) return '';
+    return ` <span style="font-size:10px;color:${d>0?'var(--good)':'var(--crit)'}">${d>0?'▲':'▼'}${nf1.format(Math.abs(d))}%</span>`; };
+  ov.querySelector('.aclcard').innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📈 ${esc(cod)}</h2><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')}</span><span id="mwX" style="cursor:pointer;font-size:20px">✕</span></div>
+    <p class="gr" style="margin:6px 0 10px">Últimas 15 semanas fechadas (seg–dom), canal site (002). MC = lucro bruto transação a transação (BASE BBDI) · <b>ROAS MC = MC ÷ verba de ads</b> — <span style="color:var(--crit)">&lt;1× queima caixa</span> · <span style="color:var(--lar)">1–2×</span> · <span style="color:var(--good)">≥2×</span>.</p>
+    ${rows.length?`<div class="tscroll"><table style="width:100%">
+      <thead><tr><th style="text-align:left">Semana</th><th>MC 7d</th><th>Ads 7d</th><th>ROAS MC</th></tr></thead>
+      <tbody>${rows.map((r,i)=>{ const p=rows[i-1]; const rr=roas(r), rp=p?roas(p):null;
+        return `<tr><td style="text-align:left"><b>${r.sem.slice(8,10)}/${r.sem.slice(5,7)}</b></td>
+        <td>${rf2.format(r.mc)}${seta(r.mc,p?.mc)}</td>
+        <td>${r.ads?rf2.format(r.ads):'—'}</td>
+        <td style="${corR(rr)}">${rr!=null?nf1.format(rr)+'×':'—'}${seta(rr,rp)}</td></tr>`;}).join('')}</tbody>
+    </table></div>`:'<p class="gr">Sem MC registrada no site nas últimas 15 semanas.</p>'}
+    <p class="gr" style="margin:10px 0 0">Atualiza no ETL das 6h. Semana em curso não aparece (só fechadas).</p>`;
+  ov.querySelector('#mwX').onclick=()=>ov.remove();
+}
 async function renderSugestoes(){
   $('#conteudo').innerHTML='<div class="carregando">Montando sugestões…</div>';
   st.abCods=new Set(((await sb.from('testes_ab').select('cod').eq('status','ativo')).data||[]).map(x=>x.cod));
@@ -2015,7 +2047,7 @@ async function renderSugestoes(){
       const sid=esc(m.cod).replace(/[^A-Za-z0-9]/g,'_');
       const tr=document.createElement('tr');
       tr.innerHTML=`<td style="text-align:center"><input type="checkbox" data-cod="${esc(m.cod)}" ${st.sgSel.has(m.cod)?'checked':''} style="width:16px;height:16px"></td>
-        <td style="text-align:left;white-space:nowrap"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span>${m._classe?`<span class="abcchip abc-${m._classe}" title="curva ${m._classe} da venda 12m">${m._classe}</span>`:''} <span data-ext="${esc(m.cod)}" title="extrato semanal completo — 26 semanas (saldo, folga, preços, BGT, vendas, conversão, ads, lucro) + preço novo" style="cursor:pointer;opacity:.7">📊</span> <span data-nota="${esc(m.cod)}" title="anotar na ata do dia" style="cursor:pointer;opacity:.65">📝</span> ${VER==='aguardando'
+        <td style="text-align:left;white-space:nowrap"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span>${m._classe?`<span class="abcchip abc-${m._classe}" title="curva ${m._classe} da venda 12m">${m._classe}</span>`:''} <span data-ext="${esc(m.cod)}" title="extrato semanal completo — 26 semanas (saldo, folga, preços, BGT, vendas, conversão, ads, lucro) + preço novo" style="cursor:pointer;opacity:.7">📊</span> <span data-mcw="${esc(m.cod)}" title="MC × Ads × ROAS MC — últimas 15 semanas (canal site)" style="cursor:pointer;opacity:.7">📈</span> <span data-nota="${esc(m.cod)}" title="anotar na ata do dia" style="cursor:pointer;opacity:.65">📝</span> ${VER==='aguardando'
           ?(revMap[m.cod]?`<span data-undorev="${revMap[m.cod].id}" title="revisado por ${esc(revMap[m.cod].aprovado_por||'')} em ${new Date(revMap[m.cod].criado_em).toLocaleDateString('pt-BR')} — clique para DESFAZER (volta pra fila)" style="cursor:pointer;color:var(--warn);font-weight:700">↩</span>`:'')
           :`<span data-rev="${esc(m.cod)}" title="conferi e está OK — volta à fila após 7 dias e +200 views" style="cursor:pointer;color:var(--good);font-weight:700;opacity:.75">✓</span>`}<br><span class="gr">${esc(m.grupo||'')}</span>${(VER==='aguardando'&&execMap[m.cod])?(e=>`<br><span class="gr" style="color:var(--accent)"${e.justificativa?` title="${esc(e.justificativa)} — ${esc(e.aprovado_por||'')}"`:''}>⚡ ${e.preco_sugerido!=null?rf2.format(e.preco_atual)+'→'+rf2.format(e.preco_sugerido):''}${e.atac_sugerido!=null?' · atac→'+rf2.format(e.atac_sugerido):''}${e.ml_sugerido!=null?' · ml→'+rf2.format(e.ml_sugerido):''} · ${new Date(e.executado_em).toLocaleDateString('pt-BR').slice(0,5)}</span>${e.justificativa?`<br><span class="gr" style="font-style:italic">“${esc(e.justificativa.slice(0,70))}${e.justificativa.length>70?'…':''}”</span>`:''}`)(execMap[m.cod]):''}${(VER==='aguardando'&&ocultosMov[m.cod])?(r=>{const dias=Math.floor((Date.now()-new Date(r.mov_em).getTime())/864e5);return `<br><span class="gr" style="color:var(--warn)" title="volta à fila quando completar 7 dias E 200 views desde a movimentação">⏳ ${nf.format(r.views_desde)}/200 views · ${nf.format(dias)}/7 dias</span>`;})(ocultosMov[m.cod]):''}</td>
         <td><span class="gr">${GERLB[m.geracao]||m.geracao}</span></td>
@@ -2040,6 +2072,7 @@ async function renderSugestoes(){
     document.querySelectorAll('#sgRows [data-ph]').forEach(el=>el.onclick=e=>{e.stopPropagation();const [cod,un]=el.dataset.ph.split('|');abrePreco(cod, un, MB[cod]);});
     document.querySelectorAll('#sgRows [data-nota]').forEach(el=>el.onclick=e=>{e.stopPropagation();abreNota(el.dataset.nota, MB[el.dataset.nota]);});
     document.querySelectorAll('#sgRows [data-ext]').forEach(el=>el.onclick=e=>{e.stopPropagation();abreExtrato(el.dataset.ext, MB[el.dataset.ext]);});
+    document.querySelectorAll('#sgRows [data-mcw]').forEach(el=>el.onclick=e=>{e.stopPropagation();abreMCsemanal(el.dataset.mcw, MB[el.dataset.mcw]);});
     document.querySelectorAll('#sgRows [data-rev]').forEach(el=>el.onclick=async e=>{e.stopPropagation();
       const cod=el.dataset.rev, m=MB[cod]||{};
       const {data:{user}}=await sb.auth.getUser();
