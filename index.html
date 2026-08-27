@@ -1675,11 +1675,10 @@ async function renderPressao(){
     <div class="tablecard"><div class="tscroll"><table><thead><tr id="przHead">
       <th data-k="cod">Produto</th>
       <th data-k="_idx" title="M\u00e9dia ponderada dos ROAS normalizados pela mediana do grupo: MC m\u00eas 25% \u00b7 MC sem 15% \u00b7 fat m\u00eas 20% \u00b7 fat sem 10% \u00b7 Ads 30d 20% \u00b7 Ads sem 10%. 100 = na m\u00e9dia do grupo.">\u00cdndice</th>
+      <th data-k="estoque" title="estoque \u00fatil (7 locais)">Saldo</th>
       <th data-k="receita_b2c_28d">R$ B2C 28d</th>
       <th data-k="ads_custo_30d">Ads 30d</th>
-      <th data-k="roas_fat_30d">ROAS fat<br>m\u00eas</th>
       <th data-k="ads_custo_7d">Ads 7d</th>
-      <th data-k="roas_fat_sem">ROAS fat<br>semana</th>
       <th data-k="roas_mc_30d">ROAS MC<br>m\u00eas</th>
       <th data-k="roas_mc_sem">ROAS MC<br>semana</th>
       <th data-k="roas_30d">ROAS Ads<br>30d</th>
@@ -1713,11 +1712,10 @@ async function renderPressao(){
       return `<tr>
       <td><a href="#sugestoes/${encodeURIComponent(p.cod)}" title="abrir o extrato semanal do produto" style="font-weight:600">${esc(p.cod)}</a> <span data-mcw="${esc(p.cod)}" title="MC × Ads × ROAS MC — últimas 15 semanas (site)" style="cursor:pointer;opacity:.7">📈</span><br><span class="gr" style="font-size:11px">${esc((p.descricao||'').slice(0,34))}</span></td>
       <td>${p._idx==null?'<span style="color:var(--muted)">\u2014</span>':`<b style="font-size:13px;color:${p._idx>=130?'var(--good)':p._idx<=70?'var(--crit)':'var(--ink)'}">${p._idx}</b>`}</td>
+      <td>${p.estoque!=null?nf.format(Math.round(p.estoque)):'\u2014'}</td>
       <td>${rf.format(p.receita_b2c_28d||0)}</td>
       <td>${rf.format(p.ads_custo_30d||0)}</td>
-      ${cel(p.roas_fat_30d,'roas_fat_30d')}
       <td>${rf.format(p.ads_custo_7d||0)}</td>
-      ${cel(p.roas_fat_sem,'roas_fat_sem')}
       ${cel(p.roas_mc_30d,'roas_mc_30d')}
       ${cel(p.roas_mc_sem,'roas_mc_sem')}
       ${cel(p.roas_30d,'roas_30d')}
