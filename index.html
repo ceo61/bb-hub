@@ -3089,6 +3089,34 @@ async function renderSkus(){
 }
 
 /* ---------- Visão Global — semana a semana por grupo ---------- */
+function svgMultiIdx(series, opts){
+  const W=(opts&&opts.W)||960, H=(opts&&opts.h)||270, mL=46, mR=14, mT=12, mB=26, fmt=(opts&&opts.fmt)||(v=>nf1.format(v));
+  const segs=[...new Set(series.flatMap(s=>s.pts.map(p=>p.seg)))].sort();
+  if(segs.length<3||!series.length) return '<p class="gr">ainda não há semanas suficientes para o gráfico</p>';
+  const xs=sg=>mL+(W-mL-mR)*(segs.indexOf(sg)/Math.max(1,segs.length-1));
+  const vals=series.flatMap(s=>s.pts.map(p=>p.idx)).filter(v=>v!=null&&isFinite(v));
+  let lo=Math.min(...vals,100), hi=Math.max(...vals,100);
+  const pad=(hi-lo)*0.08||5; lo-=pad; hi+=pad;
+  const ys=v=>mT+(H-mT-mB)*(1-(v-lo)/(hi-lo));
+  let g='';
+  for(const fr of [0.25,0.5,0.75]){ const v=lo+(hi-lo)*fr;
+    g+=`<line x1="${mL}" x2="${W-mR}" y1="${ys(v).toFixed(1)}" y2="${ys(v).toFixed(1)}" stroke="var(--hair)" stroke-width="1"/>`;
+    g+=`<text x="${mL-6}" y="${(ys(v)+4).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--muted)">${Math.round(v)}</text>`; }
+  g+=`<line x1="${mL}" x2="${W-mR}" y1="${ys(100).toFixed(1)}" y2="${ys(100).toFixed(1)}" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="5 4"/>`;
+  g+=`<text x="${mL-6}" y="${(ys(100)+4).toFixed(1)}" text-anchor="end" font-size="11" font-weight="700" fill="var(--muted)">100</text>`;
+  const stepX=Math.ceil(segs.length/7);
+  segs.forEach((sg,i)=>{ if(i%stepX===0||i===segs.length-1)
+    g+=`<text x="${xs(sg).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="11" fill="var(--muted)">${sg.slice(8,10)}/${sg.slice(5,7)}</text>`; });
+  const linhas=series.map(s=>{
+    const pts=s.pts.filter(p=>p.idx!=null&&isFinite(p.idx));
+    if(pts.length<2) return '';
+    const d=pts.map((p,i)=>`${i?'L':'M'}${xs(p.seg).toFixed(1)} ${ys(p.idx).toFixed(1)}`).join(' ');
+    const dots=pts.map(p=>`<circle cx="${xs(p.seg).toFixed(1)}" cy="${ys(p.idx).toFixed(1)}" r="3" fill="${s.cor}"><title>${s.nome} · sem ${p.seg.slice(8,10)}/${p.seg.slice(5,7)} · ${fmt(p.val)} · índice ${Math.round(p.idx)}</title></circle>`).join('');
+    return `<path d="${d}" fill="none" stroke="${s.cor}" stroke-width="2.2" stroke-linejoin="round"/>${dots}`;
+  }).join('');
+  return `<svg style="width:100%;height:auto" viewBox="0 0 ${W} ${H}" role="img">${g}${linhas}</svg>`;
+}
+
 async function renderGlobal(){
   $('#conteudo').innerHTML='<div class="carregando">Montando visão global…</div>';
   if(!st.vg) st.vg=await tudo('visao_global_mat',{eq:[]});
@@ -3106,6 +3134,8 @@ async function renderGlobal(){
     if(moral==='bgt') cor=d<0?'var(--crit)':'var(--good)';
     return ` <span style="font-size:10px;color:${cor}">${d>0?'▲':'▼'}${nf1.format(Math.abs(d))}%</span>`; };
   const fechadas=rows.filter(r=>r.seg!==segHoje);
+  const _mv=rows.map(r=>(N(r.ads_custo)>0&&r.mc!=null)?N(r.mc)/N(r.ads_custo):null).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
+  const medVg=_mv.length?_mv[Math.floor(_mv.length/2)]:null;
   let leitura='';
   if(fechadas.length>=2){
     const u=fechadas[fechadas.length-1], p=fechadas[fechadas.length-2];
@@ -3114,36 +3144,73 @@ async function renderGlobal(){
     const dq=dpc(N(u.qtd),N(p.qtd)), dk=dpc(N(u.cliques),N(p.cliques)), da=dpc(N(u.acessos),N(p.acessos));
     if(db!=null) f.push(`BGT ${db<0?'<b style="color:var(--crit)">baixou '+nf1.format(-db)+'%</b>':db>0?'subiu '+nf1.format(db)+'%':'estável'}`);
     if(dt!=null) f.push(`nossa tabela ${dt>0?'subiu '+nf1.format(dt)+'%':dt<0?'baixou '+nf1.format(-dt)+'%':'estável'}`);
-    if(dr!=null) f.push(`realizado ${dr>0?'+':''}${nf1.format(dr)}%`);
+    if(dr!=null) f.push(`ticket médio ${dr>0?'+':''}${nf1.format(dr)}%`);
+    const mgU=(N(u.receita)>0&&u.mc!=null)?N(u.mc)/N(u.receita)*100:null, mgP=(N(p.receita)>0&&p.mc!=null)?N(p.mc)/N(p.receita)*100:null;
+    if(mgU!=null) f.push(`margem <b>${nf1.format(mgU)}%</b>${mgP!=null?` (${mgU>=mgP?'+':''}${nf1.format(mgU-mgP)}pp)`:''}`);
+    const rmU=(N(u.ads_custo)>0&&u.mc!=null)?N(u.mc)/N(u.ads_custo):null, rmP=(N(p.ads_custo)>0&&p.mc!=null)?N(p.mc)/N(p.ads_custo):null;
+    if(rmU!=null) f.push(`ROAS MC <b>${nf1.format(rmU)}×</b>${rmP!=null?` (${rmU>=rmP?'+':''}${nf1.format(rmU-rmP)})`:''}`);
     if(N(u.p_tab_bgt)&&N(u.p_bgt)) f.push(`gap tabela×BGT (cesta comum): <b>${nf1.format((N(u.p_tab_bgt)/N(u.p_bgt)-1)*100)}%</b>`);
     if(dq!=null) f.push(`unidades ${dq>0?'+':''}${nf.format(Math.round(dq))}%`);
     if(dk!=null) f.push(`cliques ${dk>0?'+':''}${nf.format(Math.round(dk))}%`);
     if(da!=null) f.push(`acessos ${da>0?'+':''}${nf.format(Math.round(da))}%`);
     leitura=`<div class="banner ambar" style="background:var(--accent-soft);color:var(--accent);font-weight:400">🔍 <b>Semana fechada (${u.seg.slice(8,10)}/${u.seg.slice(5,7)}) vs anterior:</b> ${f.join(' · ')}</div>`;
   }
+  // séries indexadas por grupo (todas as mesas, semanas fechadas com MC)
+  const CORESVG=['var(--ch1)','var(--ch2)','var(--ch3)','var(--ch4)','#d6552a','#0e8f9e','#b8437e','#6b7f2a','#8a6d3b','#5a5f66'];
+  const porG={};
+  st.vg.forEach(r=>{ if(r.seg===segHoje||r.mc==null) return; (porG[r.grupo_abc]=porG[r.grupo_abc]||[]).push(r); });
+  const mkSerie=calc=>{
+    const out=[];
+    grupos.forEach((g,gi)=>{
+      const rs=(porG[g]||[]).slice().sort((a,b)=>a.seg<b.seg?-1:1);
+      const raw=rs.map(r=>({seg:r.seg, val:calc(r)})).filter(pt=>pt.val!=null&&isFinite(pt.val));
+      const base=raw.find(pt=>pt.val>0);
+      if(!base||raw.length<3) return;
+      out.push({nome:g, cor:CORESVG[gi%CORESVG.length], pts:raw.map(pt=>({...pt, idx:pt.val/base.val*100}))});
+    });
+    return out;
+  };
+  const sMargem=mkSerie(r=>{ const v=N(r.receita), m=N(r.mc); return (v>0&&m!=null)?m/v*100:null; });
+  const sRmc=mkSerie(r=>{ const a=N(r.ads_custo), m=N(r.mc); return (a>0&&m!=null)?m/a:null; });
+  const legVg=S=>S.slice().sort((a,b)=>(b.pts[b.pts.length-1]?.idx||0)-(a.pts[a.pts.length-1]?.idx||0))
+    .map(s=>{ const u=s.pts[s.pts.length-1];
+      return `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:16px;font-size:12px"><span style="width:10px;height:10px;border-radius:3px;background:${s.cor};display:inline-block"></span>${esc(s.nome)} <b style="color:${u.idx>=100?'var(--good)':'var(--crit)'}">${Math.round(u.idx)}</b></span>`; }).join('');
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Preços ponderados pela cesta fixa das unidades vendidas nos últimos 30 dias</b> (site/002) — isso isola o movimento de PREÇO do efeito de mix. Tabela = preço à vista registrado (último snapshot da semana) · Realizado = receita÷unidades da semana (inclui descontos e mix) · BGT = scrape semanal (sábados) ponderado na mesma cesta; (n) = produtos com preço BGT. <b>Gap ×BGT calculado na cesta comum</b> (nosso preço ponderado só nos produtos que a BGT cobre naquela semana ÷ BGT). <b>Cliques</b> = cliques pagos no Google Ads · <b>Acessos</b> = páginas de produto vistas no GA4 (orgânico + pago + direto) · ROAS = receita ÷ verba. Semana com * está em curso.</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Semanal, site/002. <b>Margem</b> = MC ÷ receita (lucro bruto transacional BASE BBDI 2020) · <b>ROAS MC</b> = MC ÷ verba de ads (régua: <b style="color:var(--good)">verde</b> ≥ +30% da mediana das semanas, <b style="color:var(--crit)">vermelho</b> ≤ −30%) · <b>Ticket médio</b> = receita ÷ unidades da semana · <b>Ticket BGT</b> = concorrente ponderado na cesta fixa 30d; (n) = produtos com preço · <b>Gap ×BGT na cesta comum</b> (nosso preço ponderado só nos produtos que a BGT cobre ÷ BGT; scrape diário desde 27/08/26, antes sábados) · <b>ROAS</b> = receita ÷ verba · <b>Cliques</b> = pagos Google Ads · <b>Acessos</b> = views GA4 (todas as origens). Semana com * está em curso (sem MC fechada).</p>
     <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px">${grupos.map(g=>`<button class="kpi" data-vg="${esc(g)}" style="padding:7px 14px;${st.vgG===g?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${esc(g)} <span class="gr">${nf.format(Math.round((recG[g]||0)/1000))}k</span></button>`).join('')}</div>
     ${leitura}
     <div class="tablecard"><div class="tscroll"><table style="min-width:900px">
-      <thead><tr><th style="text-align:left">Semana</th><th>Tabela pond.</th><th>Realizado</th><th>BGT pond. (n)</th><th>Gap ×BGT</th><th>Unid.</th><th>Receita</th><th>Ads R$</th><th title="receita ÷ verba de ads (sobre receita, não lucro)">ROAS</th><th>Cliques</th><th>Acessos</th></tr></thead>
+      <thead><tr><th style="text-align:left">Semana</th><th title="MC 002 ÷ receita — lucro bruto transacional (BASE BBDI 2020). Bandas: <30% vermelho · 30-40% âmbar · ≥40% verde">Margem</th><th title="MC 002 ÷ verba de ads — régua da Pressão Ads vs mediana das semanas">ROAS MC</th><th>Ads R$</th><th title="receita ÷ unidades da semana (inclui descontos e mix)">Ticket médio</th><th title="BGT ponderado na cesta fixa 30d; (n) = produtos com preço BGT">Ticket BGT (n)</th><th title="nosso preço ponderado na cesta comum ÷ BGT">Gap ×BGT</th><th title="receita ÷ verba de ads (sobre receita, não lucro)">ROAS</th><th>Cliques</th><th>Acessos</th></tr></thead>
       <tbody>${rows.map((r,i)=>{
         const p=rows[i-1]||{};
         const gap=(N(r.p_tab_bgt)&&N(r.p_bgt))?(N(r.p_tab_bgt)/N(r.p_bgt)-1)*100:null;
+        const marg=(N(r.receita)>0&&r.mc!=null)?N(r.mc)/N(r.receita)*100:null;
+        const rmc=(N(r.ads_custo)>0&&r.mc!=null)?N(r.mc)/N(r.ads_custo):null;
         return `<tr>
         <td style="text-align:left"><b>${r.seg.slice(8,10)}/${r.seg.slice(5,7)}</b>${r.seg===segHoje?'<span class="gr">*</span>':''}</td>
-        <td>${r.p_tabela!=null?rf2.format(N(r.p_tabela)):'—'}${seta(dpc(N(r.p_tabela),N(p.p_tabela)))}</td>
+        <td style="${diCorMC(marg)}">${marg!=null?nf1.format(marg)+'%':'—'}</td>
+        <td style="${diCorRmc(rmc,medVg)}">${rmc!=null?nf1.format(rmc)+'×':'—'}</td>
+        <td>${r.ads_custo!=null?nf.format(Math.round(N(r.ads_custo))):'—'}</td>
         <td>${r.p_realizado!=null?rf2.format(N(r.p_realizado)):'—'}${seta(dpc(N(r.p_realizado),N(p.p_realizado)))}</td>
         <td>${r.p_bgt!=null?`${rf2.format(N(r.p_bgt))} <span class="gr">(${r.n_bgt})</span>`:'—'}${seta(dpc(N(r.p_bgt),N(p.p_bgt)),'bgt')}</td>
         <td style="${gap!=null?'font-weight:700':''}">${gap!=null?nf1.format(gap)+'%':'—'}</td>
-        <td>${r.qtd!=null?nf.format(N(r.qtd)):'—'}${seta(dpc(N(r.qtd),N(p.qtd)),'qtd')}</td>
-        <td>${r.receita!=null?nf.format(Math.round(N(r.receita))):'—'}</td>
-        <td>${r.ads_custo!=null?nf.format(Math.round(N(r.ads_custo))):'—'}</td>
         <td>${(N(r.receita)&&N(r.ads_custo))?`<b>${nf1.format(N(r.receita)/N(r.ads_custo))}×</b>`:'—'}${seta(dpc((N(r.receita)&&N(r.ads_custo))?N(r.receita)/N(r.ads_custo):null,(N(p.receita)&&N(p.ads_custo))?N(p.receita)/N(p.ads_custo):null),'qtd')}</td>
         <td>${r.cliques!=null?nf.format(N(r.cliques)):'—'}${seta(dpc(N(r.cliques),N(p.cliques)),'qtd')}</td>
         <td>${r.acessos!=null?nf.format(N(r.acessos)):'—'}${seta(dpc(N(r.acessos),N(p.acessos)),'qtd')}</td></tr>`;}).join('')}</tbody>
     </table></div></div>
-    <p class="gr" style="margin:10px 2px 0">Setas = variação vs semana anterior. Na BGT, queda em <span style="color:var(--crit)">vermelho</span> (pressão competitiva); em unidades/cliques/acessos, queda vermelha e alta verde. Grupos = mesas de analista (mesma consolidação da curva ABC).</p>`;
+    <p class="gr" style="margin:10px 2px 0">Setas = variação vs semana anterior. Na BGT, queda em <span style="color:var(--crit)">vermelho</span> (pressão competitiva); em cliques/acessos, queda vermelha e alta verde. Grupos = mesas de analista (mesma consolidação da curva ABC).</p>
+    <div class="tablecard" style="margin-top:16px;padding:12px 16px">
+      <div class="eyebrow">📈 Margem BBDI 2020 por grupo — indexada (1ª semana = 100)</div>
+      <p class="gr" style="margin:4px 0 8px">Margem = MC 002 ÷ receita da semana. Todas as mesas partem de 100 — acima da linha tracejada a margem <b>melhorou</b> vs o início da janela (~3 meses); abaixo, piorou. Legenda ordenada do melhor pro pior desempenho final: o placar taco a taco dos analistas. Passe o mouse nos pontos para ver o valor real.</p>
+      ${svgMultiIdx(sMargem,{fmt:v=>nf1.format(v)+'%'})}
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px 0">${legVg(sMargem)}</div>
+    </div>
+    <div class="tablecard" style="margin-top:14px;padding:12px 16px">
+      <div class="eyebrow">📈 ROAS MC por grupo — indexado (1ª semana = 100)</div>
+      <p class="gr" style="margin:4px 0 8px">ROAS MC = MC 002 ÷ verba de ads da semana. Mesma leitura: acima de 100, cada real de ads está gerando <b>mais margem</b> do que no início da janela; abaixo, menos.</p>
+      ${svgMultiIdx(sRmc,{fmt:v=>nf1.format(v)+'×'})}
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px 0">${legVg(sRmc)}</div>
+    </div>`;
   document.querySelectorAll('.kpi[data-vg]').forEach(b=>b.onclick=()=>{st.vgG=b.dataset.vg;renderGlobal();});
 }
 
