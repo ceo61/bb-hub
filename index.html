@@ -1710,6 +1710,7 @@ async function renderDiario(){
     let rows=base.filter(p=>!f||p.cod.toUpperCase().includes(f)||(D[p.cod]||'').toUpperCase().includes(f));
     const k=st.diSort;
     rows=rows.slice().sort((a,b)=>{ const x=a[k],y=b[k]; if(x==null)return 1; if(y==null)return -1; return st.diDir?(+y>+x?1:-1):(+x>+y?1:-1); });
+    st.diLista=rows.map(p=>({cod:p.cod,desc:D[p.cod]||''}));
     $('#diCorpo').innerHTML=rows.map(p=>`<tr>
       <td style="text-align:left"><a href="javascript:void 0" class="diAbre" data-cod="${esc(p.cod)}" style="font-weight:600">${esc(p.cod)}</a> <a href="#sugestoes/${encodeURIComponent(p.cod)}" title="abrir o extrato semanal (CTRL)" style="opacity:.55;text-decoration:none">🎛️</a><br><span class="gr" style="font-size:11px">${esc((D[p.cod]||'').slice(0,36))}</span></td>
       <td><b>${nf1.format(+p.un_sem)}</b></td>
@@ -1741,11 +1742,11 @@ async function abreDiario(cod, desc){
   let ov=document.getElementById('mcModal');
   if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
   ov.className='aclov';
-  ov.innerHTML='<div class="aclcard" style="width:min(1080px,97vw);padding:14px 16px"><div class="carregando">Carregando extrato diário…</div></div>';
+  ov.innerHTML='<div class="aclcard" style="width:min(1340px,98vw);padding:14px 16px"><div class="carregando">Carregando extrato diário…</div></div>';
   ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
   if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
   const hojeISO=new Date().toLocaleDateString('sv-SE');
-  const iniD=new Date(); iniD.setDate(iniD.getDate()-21);
+  const iniD=new Date(); iniD.setDate(iniD.getDate()-14);
   const ini=iniD.toLocaleDateString('sv-SE');
   const [vd,ad,cv,pr,cc,es]=await Promise.all([
     sb.from('fato_vendas_diaria').select('data,qtd_b2c,val_b2c,lucro_b2c,qtd_atac,qtd_ml').eq('cod',cod).gte('data',ini),
@@ -1763,7 +1764,7 @@ async function abreDiario(cod, desc){
   (pr.data||[]).forEach(r=>{ if(String(r.filial).trim()==='10') dd(r.snapshot).pix=+r.preco_real||null; });
   (cc.data||[]).forEach(r=>{ dd(r.data).bgt=+r.cc_avista||null; });
   (es.data||[]).forEach(r=>{ dd(r.snapshot).saldo=+r.estoque_util; });
-  const dias=[]; for(let i=21;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); dias.push(d.toLocaleDateString('sv-SE')); }
+  const dias=[]; for(let i=14;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); dias.push(d.toLocaleDateString('sv-SE')); }
   const rmcs=dias.map(d=>{ const a=DD[d]; return (a&&a.ads>0)?a.mc/a.ads:null; }).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
   const med=rmcs.length?rmcs[Math.floor(rmcs.length/2)]:null;
   const SEM=['dom','seg','ter','qua','qui','sex','sáb'];
@@ -1818,9 +1819,10 @@ async function abreDiario(cod, desc){
       <a href="https://www.bbbaterias.com.br/${encodeURIComponent(cod.toLowerCase())}" target="_blank" rel="noopener" style="flex:none;color:var(--accent);font-weight:600;font-size:12.5px;text-decoration:none;border:1px solid var(--hair);border-radius:8px;padding:4px 10px">🌐 site ↗</a>
       <a href="#sugestoes/${encodeURIComponent(cod)}" onclick="document.getElementById('mcModal')?.remove()" style="flex:none;color:var(--accent);font-weight:600;font-size:12.5px;text-decoration:none;border:1px solid var(--hair);border-radius:8px;padding:4px 10px">🎛️ extrato semanal</a>
       <span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(desc||'')} · extrato diário</span>
+      ${(st.diLista&&st.diLista.length>1)?`<button id="diProx" class="btn" style="flex:none;background:var(--good);color:#fff;font-weight:700;padding:8px 20px;font-size:13px;border-radius:9px">PRÓXIMO →</button>`:''}
       <span id="diX" style="cursor:pointer;font-size:20px">✕</span></div>
-    <p class="gr" style="margin:6px 0 10px">Últimos 22 dias (site/002; * = hoje, parcial — Σ soma só os ${nFech} dias fechados). MC = lucro bruto transacional (BASE BBDI) · <b>ROAS MC</b> = MC ÷ Ads, régua da Pressão Ads (<b style="color:var(--good)">verde</b> ≥ +30% da mediana dos dias · <b style="color:var(--crit)">vermelho</b> ≤ −30%) · <b>Gap</b> = PIX ÷ BGT − 1 (<b style="color:var(--good)">verde</b> = abaixo do concorrente) · Conv = un 002 ÷ views GA4 · BGT diária desde 27/08/26 (antes, sábados) · <b>001 · ML</b> = unidades atacado e Mercado Livre.</p>
-    <div class="tscroll" style="max-height:62vh"><table style="width:auto;min-width:0">
+    <p class="gr" style="margin:6px 0 10px">Últimos 15 dias (site/002; * = hoje, parcial — Σ soma só os ${nFech} dias fechados). MC = lucro bruto transacional (BASE BBDI) · <b>ROAS MC</b> = MC ÷ Ads, régua da Pressão Ads (<b style="color:var(--good)">verde</b> ≥ +30% da mediana dos dias · <b style="color:var(--crit)">vermelho</b> ≤ −30%) · <b>Gap</b> = PIX ÷ BGT − 1 (<b style="color:var(--good)">verde</b> = abaixo do concorrente) · Conv = un 002 ÷ views GA4 · BGT diária desde 27/08/26 (antes, sábados) · <b>001 · ML</b> = unidades atacado e Mercado Livre.</p>
+    <div class="tscroll" style="max-height:70vh"><table style="width:100%;min-width:0;font-size:12.5px">
       <thead><tr>
         <th style="padding:6px 8px;text-align:left;position:sticky;left:0;top:0;background:var(--surface);z-index:3">Dia</th>
         <th title="estoque útil no snapshot do dia">Saldo</th><th title="unidades site (002)">Un 002</th><th title="receita site">Receita</th>
@@ -1833,6 +1835,13 @@ async function abreDiario(cod, desc){
       </tr></thead>
       <tbody>${linhas}${rodape}</tbody></table></div>`;
   ov.querySelector('#diX').onclick=()=>ov.remove();
+  const bp=ov.querySelector('#diProx');
+  if(bp) bp.onclick=()=>{
+    const L=st.diLista||[]; if(!L.length) return;
+    const i=L.findIndex(x=>x.cod===cod);
+    const nx=L[(i+1)%L.length];
+    abreDiario(nx.cod, nx.desc);
+  };
 }
 
 async function renderPressao(){
