@@ -242,6 +242,7 @@ th.ord .seta{font-size:9px;margin-left:3px}
     <a href="#painel" data-pg="painel">📈 Painel do produto</a>
     <a href="#skus" data-pg="skus">🧩 SKUs</a>
     <a href="#global" data-pg="global">🌐 Visão Global</a>
+    <a href="#diario" data-pg="diario">📆 Diário</a>
     <div class="navsec">Gestão</div>
     <a href="#sugestoes" data-pg="sugestoes">🎛️ CTRL ONLINE</a>
     <a href="#aprovacoes" data-pg="aprovacoes">🔍 Aprovações</a>
@@ -531,7 +532,7 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', diario:'Acompanhamento Diário — 20+ un/semana', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -539,6 +540,7 @@ function navega(pg){
   if(st.acl && !st.acl.has(pg)) pg=[...st.acl][0]||'config';
   if(pg==='skus') st.skCod = param ? param.toUpperCase() : st.skCod;
   else if(pg==='sugestoes'&&param){ st.sgQ=param.toUpperCase(); st.sgAbrirExtrato=param.toUpperCase(); st.sgClasse=null; st.sgClasseAuto=true; st.sgOut=null; st.sgG=''; st.sgGer=''; st.sgVer='tudo'; }
+  else if(pg==='diario'&&param){ st.diAbrir=param.toUpperCase(); }
   else st.pnCod = param || st.pnCod;
   st.pg=pg; st.shown=120;
   $('#tituloPagina').textContent = TITULOS[pg];
@@ -553,6 +555,7 @@ function navega(pg){
   else if(pg==='painel') renderPainel();
   else if(pg==='skus') renderSkus();
   else if(pg==='global') renderGlobal();
+  else if(pg==='diario') renderDiario();
   else if(pg==='pressao') renderPressao();
   else if(pg==='config') renderConfig();
   else renderEmBreve(pg);
@@ -1633,6 +1636,191 @@ function montaDiagnostico(ov, cod){
   inp.onkeydown=e=>{ if(e.key==='Enter') envia(); };
 }
 /* ---------- pressão ads (80/20 por grupo) ---------- */
+/* ---------- Acompanhamento Diário: produtos 20+ un/semana ---------- */
+const diCorMC=p=>p==null?'':p<0?'color:var(--crit);font-weight:700':p<30?'color:var(--crit)':p<40?'color:var(--warn)':'color:var(--good)';
+const diCorGap=g=>g==null?'':g<0?'color:var(--good);font-weight:700':g>10?'color:var(--crit);font-weight:600':'';
+const diCorRmc=(v,med)=>{ if(v==null||med==null||med<=0) return ''; if(v>=med*1.3) return 'color:var(--good);font-weight:700'; if(v<=med*0.7) return 'color:var(--crit);font-weight:600'; return ''; };
+
+async function renderDiario(){
+  $('#conteudo').innerHTML='<div class="carregando">Carregando acompanhamento diário…</div>';
+  let eleg;
+  try{ eleg=await tudo('diario_elegiveis',{mod:q=>q.order('un_sem',{ascending:false})}); }
+  catch(e){ $('#conteudo').innerHTML='<p class="gr">Erro ao carregar: '+esc(e.message||String(e))+'</p>'; return; }
+  if(!eleg.length){ $('#conteudo').innerHTML='<p class="gr">Nenhum produto vende 20+ unidades/semana nos últimos 28 dias.</p>'; return; }
+  const cods=eleg.map(e=>e.cod);
+  const d7=new Date(Date.now()-7*864e5).toLocaleDateString('sv-SE');
+  const [ads7,dim,se,sp,sc]=await Promise.all([
+    tudo('fato_ads',{select:'cod,custo',mod:q=>q.gte('data',d7).in('cod',cods)}),
+    tudo('dim_produto',{select:'cod,descricao',mod:q=>q.in('cod',cods)}),
+    sb.from('fato_estoque').select('snapshot').order('snapshot',{ascending:false}).limit(1),
+    sb.from('fato_precos').select('snapshot').order('snapshot',{ascending:false}).limit(1),
+    sb.from('fato_concorrencia').select('data').order('data',{ascending:false}).limit(1),
+  ]);
+  const snapE=se.data?.[0]?.snapshot, snapP=sp.data?.[0]?.snapshot, snapC=sc.data?.[0]?.data;
+  const [est,pr,cc]=await Promise.all([
+    snapE?tudo('fato_estoque',{select:'cod,estoque_util',eq:[['snapshot',snapE]],mod:q=>q.in('cod',cods)}):[],
+    snapP?tudo('fato_precos',{select:'cod,filial,preco_real',eq:[['snapshot',snapP],['codtab','002']],mod:q=>q.in('cod',cods)}):[],
+    snapC?tudo('fato_concorrencia',{select:'cod,cc_avista',eq:[['data',snapC]],mod:q=>q.in('cod',cods)}):[],
+  ]);
+  const A={},D={},E={},P={},C={};
+  ads7.forEach(r=>A[r.cod]=(A[r.cod]||0)+(+r.custo||0));
+  dim.forEach(r=>D[r.cod]=r.descricao||'');
+  est.forEach(r=>E[r.cod]=+r.estoque_util);
+  pr.forEach(r=>{ if(String(r.filial).trim()==='10') P[r.cod]=+r.preco_real||null; });
+  cc.forEach(r=>C[r.cod]=+r.cc_avista||null);
+  for(const p of eleg){
+    p._ads=A[p.cod]||0;
+    p._rmc=p._ads>0?(+p.mc7_b2c||0)/p._ads:null;
+    p._pix=P[p.cod]??null; p._bgt=C[p.cod]??null;
+    p._gap=(p._pix&&p._bgt)?(p._pix/p._bgt-1)*100:null;
+    p._saldo=E[p.cod]??null;
+    p._mcp=(+p.rec7_b2c>0)?(+p.mc7_b2c)/(+p.rec7_b2c)*100:null;
+  }
+  const medArr=eleg.map(p=>p._rmc).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
+  const medRmc=medArr.length?medArr[Math.floor(medArr.length/2)]:null;
+  st.diSort=st.diSort||'un_sem'; st.diDir=st.diDir??true;
+  $('#conteudo').innerHTML=`
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>${eleg.length} produtos com 20+ unidades/semana</b> (todos os canais, últimos 28 dias). Resumo = últimos 7 dias no site (002). <b>ROAS MC</b> = MC 002 ÷ Ads — <b style="color:var(--good)">verde</b> 30%+ acima da mediana da lista, <b style="color:var(--crit)">vermelho</b> 30%+ abaixo. <b>Gap</b> = PIX ÷ BGT − 1 (<b style="color:var(--good)">verde</b> = abaixo do concorrente). Clique no produto para abrir o <b>extrato diário</b>; 🎛️ abre o extrato semanal da CTRL. BGT diária desde 27/08/26.</p>
+    <div style="margin:0 0 10px"><input id="diBusca" placeholder="buscar produto…" style="padding:6px 12px;width:min(320px,90vw)"></div>
+    <div class="tablecard"><div class="tscroll"><table><thead id="diHead"><tr>
+      <th style="text-align:left">Produto</th>
+      <th data-k="un_sem" title="unidades/semana — média dos últimos 28 dias, todos os canais" style="cursor:pointer">Un/sem</th>
+      <th data-k="un7_b2c" title="unidades vendidas no site (002) nos últimos 7 dias" style="cursor:pointer">Un 002 7d</th>
+      <th data-k="rec7_b2c" title="receita site 7d" style="cursor:pointer">Receita 7d</th>
+      <th data-k="mc7_b2c" title="MC 002 7d (lucro bruto BASE BBDI) e MC%" style="cursor:pointer">MC 7d</th>
+      <th data-k="_ads" title="investimento Google Ads 7d" style="cursor:pointer">Ads 7d</th>
+      <th data-k="_rmc" title="MC 002 7d ÷ Ads 7d — régua da Pressão Ads vs mediana da lista" style="cursor:pointer">ROAS MC 7d</th>
+      <th data-k="_pix" title="preço à vista PIX hoje (002/10)" style="cursor:pointer">PIX</th>
+      <th data-k="_bgt" title="BGT à vista — último scrape" style="cursor:pointer">BGT</th>
+      <th data-k="_gap" title="PIX ÷ BGT − 1" style="cursor:pointer">Gap</th>
+      <th data-k="_saldo" title="estoque útil hoje" style="cursor:pointer">Saldo</th>
+    </tr></thead><tbody id="diCorpo"></tbody></table></div></div>`;
+  const desenha=()=>{
+    const f=($('#diBusca').value||'').toUpperCase();
+    let rows=eleg.filter(p=>!f||p.cod.toUpperCase().includes(f)||(D[p.cod]||'').toUpperCase().includes(f));
+    const k=st.diSort;
+    rows=rows.slice().sort((a,b)=>{ const x=a[k],y=b[k]; if(x==null)return 1; if(y==null)return -1; return st.diDir?(+y>+x?1:-1):(+x>+y?1:-1); });
+    $('#diCorpo').innerHTML=rows.map(p=>`<tr>
+      <td style="text-align:left"><a href="javascript:void 0" class="diAbre" data-cod="${esc(p.cod)}" style="font-weight:600">${esc(p.cod)}</a> <a href="#sugestoes/${encodeURIComponent(p.cod)}" title="abrir o extrato semanal (CTRL)" style="opacity:.55;text-decoration:none">🎛️</a><br><span class="gr" style="font-size:11px">${esc((D[p.cod]||'').slice(0,36))}</span></td>
+      <td><b>${nf1.format(+p.un_sem)}</b></td>
+      <td>${nf.format(+p.un7_b2c||0)}</td>
+      <td>${rf.format(+p.rec7_b2c||0)}</td>
+      <td>${rf.format(+p.mc7_b2c||0)}${p._mcp!=null?` <small style="${diCorMC(p._mcp)}">${nf.format(p._mcp)}%</small>`:''}</td>
+      <td>${rf.format(p._ads)}</td>
+      <td style="${diCorRmc(p._rmc,medRmc)}">${p._rmc!=null?nf1.format(p._rmc):'—'}</td>
+      <td>${p._pix!=null?rf2.format(p._pix):'—'}</td>
+      <td style="color:var(--muted)">${p._bgt!=null?rf2.format(p._bgt):'—'}</td>
+      <td style="${diCorGap(p._gap)}">${p._gap!=null?(p._gap>0?'+':'')+nf1.format(p._gap)+'%':'—'}</td>
+      <td>${p._saldo!=null?nf.format(Math.round(p._saldo)):'—'}</td>
+    </tr>`).join('');
+  };
+  desenha();
+  $('#diBusca').oninput=desenha;
+  $('#diHead').onclick=e=>{ const th=e.target.closest('th'); if(!th||!th.dataset.k) return;
+    if(st.diSort===th.dataset.k) st.diDir=!st.diDir; else { st.diSort=th.dataset.k; st.diDir=true; }
+    desenha(); };
+  $('#diCorpo').onclick=e=>{ const a=e.target.closest('.diAbre'); if(a) abreDiario(a.dataset.cod, D[a.dataset.cod]||''); };
+  if(st.diAbrir){ const c=st.diAbrir; st.diAbrir=null; abreDiario(c, D[c]||''); }
+}
+
+async function abreDiario(cod, desc){
+  let ov=document.getElementById('mcModal');
+  if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
+  ov.className='aclov';
+  ov.innerHTML='<div class="aclcard" style="width:min(1080px,97vw);padding:14px 16px"><div class="carregando">Carregando extrato diário…</div></div>';
+  ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
+  if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
+  const hojeISO=new Date().toLocaleDateString('sv-SE');
+  const iniD=new Date(); iniD.setDate(iniD.getDate()-21);
+  const ini=iniD.toLocaleDateString('sv-SE');
+  const [vd,ad,cv,pr,cc,es]=await Promise.all([
+    sb.from('fato_vendas_diaria').select('data,qtd_b2c,val_b2c,lucro_b2c,qtd_atac,qtd_ml').eq('cod',cod).gte('data',ini),
+    sb.from('fato_ads').select('data,custo,cliques').eq('cod',cod).gte('data',ini),
+    sb.from('fato_conversao').select('data,views').eq('cod',cod).gte('data',ini),
+    sb.from('fato_precos').select('snapshot,filial,preco_real').eq('cod',cod).eq('codtab','002').gte('snapshot',ini),
+    sb.from('fato_concorrencia').select('data,cc_avista').eq('cod',cod).gte('data',ini),
+    sb.from('fato_estoque').select('snapshot,estoque_util').eq('cod',cod).gte('snapshot',ini),
+  ]);
+  const DD={};
+  const dd=d=>DD[d]=DD[d]||{un2:0,rec:0,mc:0,un1:0,unm:0,ads:null,clq:null,vw:null,pix:null,bgt:null,saldo:null};
+  (vd.data||[]).forEach(r=>{ const a=dd(r.data); a.un2+=+r.qtd_b2c||0; a.rec+=+r.val_b2c||0; a.mc+=+r.lucro_b2c||0; a.un1+=+r.qtd_atac||0; a.unm+=+r.qtd_ml||0; });
+  (ad.data||[]).forEach(r=>{ const a=dd(r.data); a.ads=(a.ads||0)+(+r.custo||0); a.clq=(a.clq||0)+(+r.cliques||0); });
+  (cv.data||[]).forEach(r=>{ const a=dd(r.data); a.vw=(a.vw||0)+(+r.views||0); });
+  (pr.data||[]).forEach(r=>{ if(String(r.filial).trim()==='10') dd(r.snapshot).pix=+r.preco_real||null; });
+  (cc.data||[]).forEach(r=>{ dd(r.data).bgt=+r.cc_avista||null; });
+  (es.data||[]).forEach(r=>{ dd(r.snapshot).saldo=+r.estoque_util; });
+  const dias=[]; for(let i=21;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); dias.push(d.toLocaleDateString('sv-SE')); }
+  const rmcs=dias.map(d=>{ const a=DD[d]; return (a&&a.ads>0)?a.mc/a.ads:null; }).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
+  const med=rmcs.length?rmcs[Math.floor(rmcs.length/2)]:null;
+  const SEM=['dom','seg','ter','qua','qui','sex','sáb'];
+  const tdc='padding:6px 8px;text-align:right;white-space:nowrap;';
+  const T={un2:0,rec:0,mc:0,un1:0,unm:0,ads:0,clq:0,vw:0,gaps:[]}; let nFech=0;
+  const linhas=dias.map(dt=>{
+    const a=DD[dt]||dd(dt);
+    const hoje=dt===hojeISO, dow=new Date(dt+'T12:00:00').getDay(), fds=dow===0||dow===6;
+    const ticket=a.un2>0?a.rec/a.un2:null, conv=a.vw>0?a.un2/a.vw*100:null;
+    const roas=a.ads>0?a.rec/a.ads:null, rmc=a.ads>0?a.mc/a.ads:null;
+    const gap=(a.pix&&a.bgt)?(a.pix/a.bgt-1)*100:null, mcp=a.rec>0?a.mc/a.rec*100:null;
+    if(!hoje){ T.un2+=a.un2; T.rec+=a.rec; T.mc+=a.mc; T.un1+=a.un1; T.unm+=a.unm; T.ads+=a.ads||0; T.clq+=a.clq||0; T.vw+=a.vw||0; if(gap!=null)T.gaps.push(gap); nFech++; }
+    return `<tr${hoje?' style="opacity:.75"':''}>
+      <td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${dt.slice(8,10)}/${dt.slice(5,7)}</b> <span style="font-size:10.5px;color:${fds?'var(--warn)':'var(--muted)'}">${SEM[dow]}</span>${hoje?' <span class="gr" title="hoje — números parciais">*</span>':''}</td>
+      <td style="${tdc}">${a.saldo!=null?nf.format(Math.round(a.saldo)):'—'}</td>
+      <td style="${tdc}"><b>${a.un2?nf.format(a.un2):'—'}</b></td>
+      <td style="${tdc}">${a.rec?rf.format(a.rec):'—'}</td>
+      <td style="${tdc}">${a.rec?`${rf.format(a.mc)} <small style="${diCorMC(mcp)}">${mcp!=null?nf.format(mcp)+'%':''}</small>`:'—'}</td>
+      <td style="${tdc}">${ticket!=null?rf2.format(ticket):'—'}</td>
+      <td style="${tdc}">${a.pix!=null?rf2.format(a.pix):'—'}</td>
+      <td style="${tdc}color:var(--muted)">${a.bgt!=null?rf2.format(a.bgt):'—'}</td>
+      <td style="${tdc}${diCorGap(gap)}">${gap!=null?(gap>0?'+':'')+nf1.format(gap)+'%':'—'}</td>
+      <td style="${tdc}border-left:2px solid var(--hair)">${a.ads!=null?rf.format(a.ads):'—'}</td>
+      <td style="${tdc}">${a.clq!=null?nf.format(a.clq):'—'}</td>
+      <td style="${tdc}color:var(--ch1)">${a.vw!=null?nf.format(a.vw):'—'}</td>
+      <td style="${tdc}">${conv!=null?nf1.format(conv)+'%':'—'}</td>
+      <td style="${tdc}">${roas!=null?nf1.format(roas):'—'}</td>
+      <td style="${tdc}${diCorRmc(rmc,med)}">${rmc!=null?nf1.format(rmc):'—'}</td>
+      <td style="${tdc}border-left:2px solid var(--hair);color:var(--muted)">${a.un1||a.unm?`${nf.format(a.un1)} · ${nf.format(a.unm)}`:'—'}</td>
+    </tr>`; }).join('');
+  const gapMed=T.gaps.length?T.gaps.reduce((s,x)=>s+x,0)/T.gaps.length:null;
+  const tConv=T.vw>0?T.un2/T.vw*100:null, tRoas=T.ads>0?T.rec/T.ads:null, tRmc=T.ads>0?T.mc/T.ads:null, tMcp=T.rec>0?T.mc/T.rec*100:null, tTick=T.un2>0?T.rec/T.un2:null;
+  const rodape=`<tr style="font-weight:700;border-top:2px solid var(--hair)">
+      <td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1">Σ ${nFech}d</td>
+      <td style="${tdc}"></td>
+      <td style="${tdc}">${nf.format(T.un2)}</td>
+      <td style="${tdc}">${rf.format(T.rec)}</td>
+      <td style="${tdc}">${rf.format(T.mc)} <small style="${diCorMC(tMcp)}">${tMcp!=null?nf.format(tMcp)+'%':''}</small></td>
+      <td style="${tdc}">${tTick!=null?rf2.format(tTick):'—'}</td>
+      <td style="${tdc}"></td><td style="${tdc}"></td>
+      <td style="${tdc}${diCorGap(gapMed)}" title="gap médio dos dias com BGT">${gapMed!=null?(gapMed>0?'+':'')+nf1.format(gapMed)+'%':'—'}</td>
+      <td style="${tdc}border-left:2px solid var(--hair)">${rf.format(T.ads)}</td>
+      <td style="${tdc}">${nf.format(T.clq)}</td>
+      <td style="${tdc}color:var(--ch1)">${nf.format(T.vw)}</td>
+      <td style="${tdc}">${tConv!=null?nf1.format(tConv)+'%':'—'}</td>
+      <td style="${tdc}">${tRoas!=null?nf1.format(tRoas):'—'}</td>
+      <td style="${tdc}">${tRmc!=null?nf1.format(tRmc):'—'}</td>
+      <td style="${tdc}border-left:2px solid var(--hair);color:var(--muted)">${nf.format(T.un1)} · ${nf.format(T.unm)}</td>
+    </tr>`;
+  ov.querySelector('.aclcard').innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📆 ${esc(cod)}</h2>
+      <a href="https://www.bbbaterias.com.br/${encodeURIComponent(cod.toLowerCase())}" target="_blank" rel="noopener" style="flex:none;color:var(--accent);font-weight:600;font-size:12.5px;text-decoration:none;border:1px solid var(--hair);border-radius:8px;padding:4px 10px">🌐 site ↗</a>
+      <a href="#sugestoes/${encodeURIComponent(cod)}" onclick="document.getElementById('mcModal')?.remove()" style="flex:none;color:var(--accent);font-weight:600;font-size:12.5px;text-decoration:none;border:1px solid var(--hair);border-radius:8px;padding:4px 10px">🎛️ extrato semanal</a>
+      <span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(desc||'')} · extrato diário</span>
+      <span id="diX" style="cursor:pointer;font-size:20px">✕</span></div>
+    <p class="gr" style="margin:6px 0 10px">Últimos 22 dias (site/002; * = hoje, parcial — Σ soma só os ${nFech} dias fechados). MC = lucro bruto transacional (BASE BBDI) · <b>ROAS MC</b> = MC ÷ Ads, régua da Pressão Ads (<b style="color:var(--good)">verde</b> ≥ +30% da mediana dos dias · <b style="color:var(--crit)">vermelho</b> ≤ −30%) · <b>Gap</b> = PIX ÷ BGT − 1 (<b style="color:var(--good)">verde</b> = abaixo do concorrente) · Conv = un 002 ÷ views GA4 · BGT diária desde 27/08/26 (antes, sábados) · <b>001 · ML</b> = unidades atacado e Mercado Livre.</p>
+    <div class="tscroll" style="max-height:62vh"><table style="width:auto;min-width:0">
+      <thead><tr>
+        <th style="padding:6px 8px;text-align:left;position:sticky;left:0;top:0;background:var(--surface);z-index:3">Dia</th>
+        <th title="estoque útil no snapshot do dia">Saldo</th><th title="unidades site (002)">Un 002</th><th title="receita site">Receita</th>
+        <th title="MC 002 (lucro bruto BASE BBDI) e MC%: <30% vermelho · 30-40% âmbar · ≥40% verde">MC 002</th>
+        <th title="receita ÷ unidades do dia">Ticket</th><th title="preço à vista PIX (002/10, snapshot do dia)">PIX</th>
+        <th title="BGT à vista (scrape do dia; diário desde 27/08)">BGT</th><th title="PIX ÷ BGT − 1">Gap</th>
+        <th title="investimento Google Ads">Ads</th><th title="cliques pagos">Cliq</th><th title="acessos GA4 (todas as origens)">Views</th>
+        <th title="un 002 ÷ views">Conv</th><th title="receita ÷ Ads">ROAS</th><th title="MC ÷ Ads — régua da Pressão Ads">ROAS MC</th>
+        <th title="unidades atacado (001) · Mercado Livre (005)">001 · ML</th>
+      </tr></thead>
+      <tbody>${linhas}${rodape}</tbody></table></div>`;
+  ov.querySelector('#diX').onclick=()=>ov.remove();
+}
+
 async function renderPressao(){
   $('#conteudo').innerHTML='<div class="carregando">Carregando painel 80/20…</div>';
   let user=null; try{ user=(await sb.auth.getUser()).data.user; }catch(e){}
