@@ -1741,7 +1741,7 @@ async function renderPressao(){
   $('#przBusca').oninput=desenha;
   let przT; const fNum=v=>{ const x=parseFloat(v); return isFinite(x)?x:null; };
   [['przFSaldo','przFSaldo'],['przFFolga','przFFolga'],['przFRoas','przFRoas']].forEach(([id,key])=>{
-    $('#'+id).oninput=e=>{ clearTimeout(przT); przT=setTimeout(()=>{ st[key]=fNum(e.target.value); desenha(); },250); };
+    $('#'+id).oninput=e=>{ st[key]=fNum(e.target.value); clearTimeout(przT); przT=setTimeout(desenha,250); };
   });
   $('#przHead').onclick=e=>{
     const th=e.target.closest('th'); if(!th||!th.dataset.k) return;
