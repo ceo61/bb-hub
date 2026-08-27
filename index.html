@@ -1670,7 +1670,12 @@ async function renderPressao(){
     ${blocoAcomp}
     <div style="display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap;align-items:center">
       ${grupos.map(g=>`<button class="btn przG" data-g="${esc(g)}" style="padding:4px 14px;${g===st.przGrupo?'background:var(--accent);color:#fff;border-radius:8px':''}">${esc(g)}</button>`).join('')}
-      <input id="przBusca" placeholder="filtrar\u2026" style="margin-left:auto;min-width:160px">
+      <span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center;border:1px solid var(--hair);border-radius:10px;padding:4px 10px;font-size:11px;color:var(--muted)">
+        Saldo\u2265<input id="przFSaldo" type="number" min="0" value="${st.przFSaldo??''}" style="width:64px;padding:2px 6px;font-size:12px">
+        Folga\u2265<input id="przFFolga" type="number" min="0" step="0.5" value="${st.przFFolga??''}" style="width:52px;padding:2px 6px;font-size:12px">m
+        ROAS MC 30d\u2265<input id="przFRoas" type="number" min="0" step="0.5" value="${st.przFRoas??''}" style="width:52px;padding:2px 6px;font-size:12px">
+      </span>
+      <input id="przBusca" placeholder="filtrar\u2026" style="min-width:160px">
     </div>
     <div class="tablecard"><div class="tscroll"><table><thead><tr id="przHead">
       <th data-k="cod">Produto</th>
@@ -1699,7 +1704,13 @@ async function renderPressao(){
       for(const k in PESOS){ const v=p[k], m=meds[k]; if(v!=null&&m!=null&&m>0){ sv+=PESOS[k]*(v/m); sw+=PESOS[k]; } }
       p._idx = sw>0 ? Math.round(100*sv/sw) : null;
     }
-    let rows=doGrupo.filter(p=>(!f||p.cod.toUpperCase().includes(f)||(p.descricao||'').toUpperCase().includes(f)));
+    let rows=doGrupo.filter(p=>{
+      if(f&&!(p.cod.toUpperCase().includes(f)||(p.descricao||'').toUpperCase().includes(f))) return false;
+      if(st.przFSaldo!=null&&!((+p.estoque||0)>=st.przFSaldo)) return false;
+      if(st.przFFolga!=null&&!((+p.folga_dias||0)/30.44>=st.przFFolga)) return false;
+      if(st.przFRoas!=null&&!(p.roas_mc_30d!=null&&+p.roas_mc_30d>=st.przFRoas)) return false;
+      return true;
+    });
     const k=st.przSort;
     rows.sort((a,b)=>{ const x=a[k],y=b[k]; if(x==null)return 1; if(y==null)return -1; return st.przDir?(y>x?1:-1):(x>y?1:-1); });
     const cel=(v,k)=>{
@@ -1728,6 +1739,10 @@ async function renderPressao(){
   }
   desenha();
   $('#przBusca').oninput=desenha;
+  let przT; const fNum=v=>{ const x=parseFloat(v); return isFinite(x)?x:null; };
+  [['przFSaldo','przFSaldo'],['przFFolga','przFFolga'],['przFRoas','przFRoas']].forEach(([id,key])=>{
+    $('#'+id).oninput=e=>{ clearTimeout(przT); przT=setTimeout(()=>{ st[key]=fNum(e.target.value); desenha(); },250); };
+  });
   $('#przHead').onclick=e=>{
     const th=e.target.closest('th'); if(!th||!th.dataset.k) return;
     if(st.przSort===th.dataset.k) st.przDir=!st.przDir; else { st.przSort=th.dataset.k; st.przDir=true; }
