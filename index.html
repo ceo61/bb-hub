@@ -1649,9 +1649,10 @@ async function renderDiario(){
   if(!eleg.length){ $('#conteudo').innerHTML='<p class="gr">Nenhum produto vende 20+ unidades/semana nos últimos 28 dias.</p>'; return; }
   const cods=eleg.map(e=>e.cod);
   const d7=new Date(Date.now()-7*864e5).toLocaleDateString('sv-SE');
-  const [ads7,dim,se,sp,sc]=await Promise.all([
+  const [ads7,dim,abc,se,sp,sc]=await Promise.all([
     tudo('fato_ads',{select:'cod,custo',mod:q=>q.gte('data',d7).in('cod',cods)}),
     tudo('dim_produto',{select:'cod,descricao',mod:q=>q.in('cod',cods)}),
+    tudo('abc_produto',{select:'cod,grupo_abc',mod:q=>q.in('cod',cods)}),
     sb.from('fato_estoque').select('snapshot').order('snapshot',{ascending:false}).limit(1),
     sb.from('fato_precos').select('snapshot').order('snapshot',{ascending:false}).limit(1),
     sb.from('fato_concorrencia').select('data').order('data',{ascending:false}).limit(1),
@@ -1665,6 +1666,7 @@ async function renderDiario(){
   const A={},D={},E={},P={},C={};
   ads7.forEach(r=>A[r.cod]=(A[r.cod]||0)+(+r.custo||0));
   dim.forEach(r=>D[r.cod]=r.descricao||'');
+  const G={}; abc.forEach(r=>G[r.cod]=r.grupo_abc||'OUTROS');
   est.forEach(r=>E[r.cod]=+r.estoque_util);
   pr.forEach(r=>{ if(String(r.filial).trim()==='10') P[r.cod]=+r.preco_real||null; });
   cc.forEach(r=>C[r.cod]=+r.cc_avista||null);
@@ -1676,12 +1678,17 @@ async function renderDiario(){
     p._saldo=E[p.cod]??null;
     p._mcp=(+p.rec7_b2c>0)?(+p.mc7_b2c)/(+p.rec7_b2c)*100:null;
   }
-  const medArr=eleg.map(p=>p._rmc).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
-  const medRmc=medArr.length?medArr[Math.floor(medArr.length/2)]:null;
   st.diSort=st.diSort||'un_sem'; st.diDir=st.diDir??true;
+  const unG={}; eleg.forEach(p=>{ const g=G[p.cod]||'OUTROS'; unG[g]=(unG[g]||0)+(+p.un_sem||0); });
+  const gruposDi=Object.keys(unG).sort((a,b)=>unG[b]-unG[a]);
+  if(st.diGrupo&&!gruposDi.includes(st.diGrupo)) st.diGrupo=null;
   $('#conteudo').innerHTML=`
     <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>${eleg.length} produtos com 20+ unidades/semana</b> (todos os canais, últimos 28 dias). Resumo = últimos 7 dias no site (002). <b>ROAS MC</b> = MC 002 ÷ Ads — <b style="color:var(--good)">verde</b> 30%+ acima da mediana da lista, <b style="color:var(--crit)">vermelho</b> 30%+ abaixo. <b>Gap</b> = PIX ÷ BGT − 1 (<b style="color:var(--good)">verde</b> = abaixo do concorrente). Clique no produto para abrir o <b>extrato diário</b>; 🎛️ abre o extrato semanal da CTRL. BGT diária desde 27/08/26.</p>
-    <div style="margin:0 0 10px"><input id="diBusca" placeholder="buscar produto…" style="padding:6px 12px;width:min(320px,90vw)"></div>
+    <div id="diGrupos" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px">
+      <button class="btn diG" data-g="" style="padding:4px 14px;${!st.diGrupo?'background:var(--accent);color:#fff;border-radius:8px':''}">Todos</button>
+      ${gruposDi.map(g=>`<button class="btn diG" data-g="${esc(g)}" style="padding:4px 14px;${g===st.diGrupo?'background:var(--accent);color:#fff;border-radius:8px':''}">${esc(g)}</button>`).join('')}
+      <input id="diBusca" placeholder="buscar produto…" style="margin-left:auto;padding:6px 12px;width:min(240px,60vw)">
+    </div>
     <div class="tablecard"><div class="tscroll"><table><thead id="diHead"><tr>
       <th style="text-align:left">Produto</th>
       <th data-k="un_sem" title="unidades/semana — média dos últimos 28 dias, todos os canais" style="cursor:pointer">Un/sem</th>
@@ -1697,7 +1704,10 @@ async function renderDiario(){
     </tr></thead><tbody id="diCorpo"></tbody></table></div></div>`;
   const desenha=()=>{
     const f=($('#diBusca').value||'').toUpperCase();
-    let rows=eleg.filter(p=>!f||p.cod.toUpperCase().includes(f)||(D[p.cod]||'').toUpperCase().includes(f));
+    const base=st.diGrupo?eleg.filter(p=>(G[p.cod]||'OUTROS')===st.diGrupo):eleg;
+    const medArr=base.map(p=>p._rmc).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
+    const medRmc=medArr.length?medArr[Math.floor(medArr.length/2)]:null;
+    let rows=base.filter(p=>!f||p.cod.toUpperCase().includes(f)||(D[p.cod]||'').toUpperCase().includes(f));
     const k=st.diSort;
     rows=rows.slice().sort((a,b)=>{ const x=a[k],y=b[k]; if(x==null)return 1; if(y==null)return -1; return st.diDir?(+y>+x?1:-1):(+x>+y?1:-1); });
     $('#diCorpo').innerHTML=rows.map(p=>`<tr>
@@ -1716,6 +1726,10 @@ async function renderDiario(){
   };
   desenha();
   $('#diBusca').oninput=desenha;
+  $('#diGrupos').onclick=e=>{ const b=e.target.closest('.diG'); if(!b) return;
+    st.diGrupo=b.dataset.g||null;
+    document.querySelectorAll('.diG').forEach(x=>x.style.cssText='padding:4px 14px;'+((x.dataset.g||null)===st.diGrupo?'background:var(--accent);color:#fff;border-radius:8px':''));
+    desenha(); };
   $('#diHead').onclick=e=>{ const th=e.target.closest('th'); if(!th||!th.dataset.k) return;
     if(st.diSort===th.dataset.k) st.diDir=!st.diDir; else { st.diSort=th.dataset.k; st.diDir=true; }
     desenha(); };
