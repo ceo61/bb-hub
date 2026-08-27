@@ -1716,7 +1716,7 @@ async function renderDiario(){
       <td><b>${nf1.format(+p.un_sem)}</b></td>
       <td>${nf.format(+p.un7_b2c||0)}</td>
       <td>${rf.format(+p.rec7_b2c||0)}</td>
-      <td>${rf.format(+p.mc7_b2c||0)}${p._mcp!=null?` <small style="${diCorMC(p._mcp)}">${nf.format(p._mcp)}%</small>`:''}</td>
+      <td>${rf.format(+p.mc7_b2c||0)}${p._mcp!=null?` <small style="${diCorMC(p._mcp)}">${nf1.format(p._mcp)}%</small>`:''}</td>
       <td>${rf.format(p._ads)}</td>
       <td style="${diCorRmc(p._rmc,medRmc)}">${p._rmc!=null?nf1.format(p._rmc):'—'}</td>
       <td>${p._pix!=null?rf2.format(p._pix):'—'}</td>
@@ -1782,7 +1782,7 @@ async function abreDiario(cod, desc){
       <td style="${tdc}">${a.saldo!=null?nf.format(Math.round(a.saldo)):'—'}</td>
       <td style="${tdc}"><b>${a.un2?nf.format(a.un2):'—'}</b></td>
       <td style="${tdc}">${a.rec?rf.format(a.rec):'—'}</td>
-      <td style="${tdc}">${a.rec?`${rf.format(a.mc)} <small style="${diCorMC(mcp)}">${mcp!=null?nf.format(mcp)+'%':''}</small>`:'—'}</td>
+      <td style="${tdc}">${a.rec?`${rf.format(a.mc)} <small style="${diCorMC(mcp)}">${mcp!=null?nf1.format(mcp)+'%':''}</small>`:'—'}</td>
       <td style="${tdc}">${ticket!=null?rf2.format(ticket):'—'}</td>
       <td style="${tdc}">${a.pix!=null?rf2.format(a.pix):'—'}</td>
       <td style="${tdc}color:var(--muted)">${a.bgt!=null?rf2.format(a.bgt):'—'}</td>
@@ -1802,7 +1802,7 @@ async function abreDiario(cod, desc){
       <td style="${tdc}"></td>
       <td style="${tdc}">${nf.format(T.un2)}</td>
       <td style="${tdc}">${rf.format(T.rec)}</td>
-      <td style="${tdc}">${rf.format(T.mc)} <small style="${diCorMC(tMcp)}">${tMcp!=null?nf.format(tMcp)+'%':''}</small></td>
+      <td style="${tdc}">${rf.format(T.mc)} <small style="${diCorMC(tMcp)}">${tMcp!=null?nf1.format(tMcp)+'%':''}</small></td>
       <td style="${tdc}">${tTick!=null?rf2.format(tTick):'—'}</td>
       <td style="${tdc}"></td><td style="${tdc}"></td>
       <td style="${tdc}${diCorGap(gapMed)}" title="gap médio dos dias com BGT">${gapMed!=null?(gapMed>0?'+':'')+nf1.format(gapMed)+'%':'—'}</td>
@@ -3138,7 +3138,7 @@ async function renderGlobal(){
     if(mgU!=null) f.push(`margem <b>${nf1.format(mgU)}%</b>${mgP!=null?` (${mgU>=mgP?'+':''}${nf1.format(mgU-mgP)}pp)`:''}`);
     const rmU=(N(u.ads_custo)>0&&u.mc!=null)?N(u.mc)/N(u.ads_custo):null, rmP=(N(p.ads_custo)>0&&p.mc!=null)?N(p.mc)/N(p.ads_custo):null;
     if(rmU!=null) f.push(`ROAS MC <b>${nf1.format(rmU)}×</b>${rmP!=null?` (${rmU>=rmP?'+':''}${nf1.format(rmU-rmP)})`:''}`);
-    if(N(u.p_tab_bgt)&&N(u.p_bgt)) f.push(`gap tabela×BGT (cesta comum): <b>${nf1.format((N(u.p_tab_bgt)/N(u.p_bgt)-1)*100)}%</b>`);
+    if(N(u.p_realizado)&&N(u.p_bgt)) f.push(`gap ticket×BGT: <b>${nf1.format((N(u.p_realizado)/N(u.p_bgt)-1)*100)}%</b>`);
     if(dq!=null) f.push(`unidades ${dq>0?'+':''}${nf.format(Math.round(dq))}%`);
     if(dk!=null) f.push(`cliques ${dk>0?'+':''}${nf.format(Math.round(dk))}%`);
     if(da!=null) f.push(`acessos ${da>0?'+':''}${nf.format(Math.round(da))}%`);
@@ -3175,19 +3175,19 @@ async function renderGlobal(){
   const cardsMargem=cardsVg(r=>N(r.mc), v=>nf.format(Math.round(v/1000))+'k');
   const cardsRmc=cardsVg(r=>{ const a=N(r.ads_custo), m=N(r.mc); return (a>0&&m!=null)?m/a:null; }, v=>nf1.format(v)+'×');
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Semanal, site/002. <b>Margem R$</b> = MC da semana em reais (lucro bruto transacional BASE BBDI 2020; o % pequeno é MC ÷ receita) · <b>ROAS MC</b> = MC ÷ verba de ads (régua: <b style="color:var(--good)">verde</b> ≥ +30% da mediana das semanas, <b style="color:var(--crit)">vermelho</b> ≤ −30%) · <b>Ticket médio</b> = receita ÷ unidades da semana · <b>Ticket BGT</b> = concorrente ponderado na cesta fixa 30d; (n) = produtos com preço · <b>Gap ×BGT na cesta comum</b> (nosso preço ponderado só nos produtos que a BGT cobre ÷ BGT; scrape diário desde 27/08/26, antes sábados) · <b>ROAS</b> = receita ÷ verba · <b>Cliques</b> = pagos Google Ads · <b>Acessos</b> = views GA4 (todas as origens). Semana com * está em curso (sem MC fechada).</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Semanal, site/002. <b>Margem R$</b> = MC da semana em reais (lucro bruto transacional BASE BBDI 2020; o % pequeno é MC ÷ receita) · <b>ROAS MC</b> = MC ÷ verba de ads (régua: <b style="color:var(--good)">verde</b> ≥ +30% da mediana das semanas, <b style="color:var(--crit)">vermelho</b> ≤ −30%) · <b>Ticket médio</b> = receita ÷ unidades da semana · <b>Ticket BGT</b> = concorrente ponderado na cesta fixa 30d; (n) = produtos com preço · <b>Gap ×BGT</b> = Ticket médio ÷ Ticket BGT − 1, direto das duas colunas (BGT: scrape diário desde 27/08/26, antes sábados) · <b>ROAS</b> = receita ÷ verba · <b>Cliques</b> = pagos Google Ads · <b>Acessos</b> = views GA4 (todas as origens). Semana com * está em curso (sem MC fechada).</p>
     <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px">${grupos.map(g=>`<button class="kpi" data-vg="${esc(g)}" style="padding:7px 14px;${st.vgG===g?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${esc(g)} <span class="gr">${nf.format(Math.round((recG[g]||0)/1000))}k</span></button>`).join('')}</div>
     ${leitura}
     <div class="tablecard"><div class="tscroll"><table style="min-width:900px">
-      <thead><tr><th style="text-align:left">Semana</th><th title="MC 002 em R$ (lucro bruto transacional BASE BBDI 2020); o % ao lado é MC ÷ receita, bandas <30% vermelho · 30-40% âmbar · ≥40% verde">Margem R$</th><th title="MC 002 ÷ verba de ads — régua da Pressão Ads vs mediana das semanas">ROAS MC</th><th>Ads R$</th><th title="receita ÷ unidades da semana (inclui descontos e mix)">Ticket médio</th><th title="BGT ponderado na cesta fixa 30d; (n) = produtos com preço BGT">Ticket BGT (n)</th><th title="nosso preço ponderado na cesta comum ÷ BGT">Gap ×BGT</th><th title="receita ÷ verba de ads (sobre receita, não lucro)">ROAS</th><th>Cliques</th><th>Acessos</th></tr></thead>
+      <thead><tr><th style="text-align:left">Semana</th><th title="MC 002 em R$ (lucro bruto transacional BASE BBDI 2020); o % ao lado é MC ÷ receita, bandas <30% vermelho · 30-40% âmbar · ≥40% verde">Margem R$</th><th title="MC 002 ÷ verba de ads — régua da Pressão Ads vs mediana das semanas">ROAS MC</th><th>Ads R$</th><th title="receita ÷ unidades da semana (inclui descontos e mix)">Ticket médio</th><th title="BGT ponderado na cesta fixa 30d; (n) = produtos com preço BGT">Ticket BGT (n)</th><th title="Ticket médio ÷ Ticket BGT − 1 — direto das duas colunas ao lado">Gap ×BGT</th><th title="receita ÷ verba de ads (sobre receita, não lucro)">ROAS</th><th>Cliques</th><th>Acessos</th></tr></thead>
       <tbody>${rows.map((r,i)=>{
         const p=rows[i-1]||{};
-        const gap=(N(r.p_tab_bgt)&&N(r.p_bgt))?(N(r.p_tab_bgt)/N(r.p_bgt)-1)*100:null;
+        const gap=(N(r.p_realizado)&&N(r.p_bgt))?(N(r.p_realizado)/N(r.p_bgt)-1)*100:null;
         const marg=(N(r.receita)>0&&r.mc!=null)?N(r.mc)/N(r.receita)*100:null;
         const rmc=(N(r.ads_custo)>0&&r.mc!=null)?N(r.mc)/N(r.ads_custo):null;
         return `<tr>
         <td style="text-align:left"><b>${r.seg.slice(8,10)}/${r.seg.slice(5,7)}</b>${r.seg===segHoje?'<span class="gr">*</span>':''}</td>
-        <td>${r.mc!=null?nf.format(Math.round(N(r.mc))):'—'}${marg!=null?` <small style="${diCorMC(marg)}">${nf.format(marg)}%</small>`:''}</td>
+        <td>${r.mc!=null?nf.format(Math.round(N(r.mc))):'—'}${marg!=null?` <small style="${diCorMC(marg)}">${nf1.format(marg)}%</small>`:''}</td>
         <td style="${diCorRmc(rmc,medVg)}">${rmc!=null?nf1.format(rmc)+'×':'—'}</td>
         <td>${r.ads_custo!=null?nf.format(Math.round(N(r.ads_custo))):'—'}</td>
         <td style="${r.seg===segHoje?'':tcTick(N(r.p_realizado))}">${r.p_realizado!=null?rf2.format(N(r.p_realizado)):'—'}</td>
