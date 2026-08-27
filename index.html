@@ -3089,32 +3089,17 @@ async function renderSkus(){
 }
 
 /* ---------- Visão Global — semana a semana por grupo ---------- */
-function svgMultiIdx(series, opts){
-  const W=(opts&&opts.W)||960, H=(opts&&opts.h)||270, mL=46, mR=14, mT=12, mB=26, fmt=(opts&&opts.fmt)||(v=>nf1.format(v));
-  const segs=[...new Set(series.flatMap(s=>s.pts.map(p=>p.seg)))].sort();
-  if(segs.length<3||!series.length) return '<p class="gr">ainda não há semanas suficientes para o gráfico</p>';
-  const xs=sg=>mL+(W-mL-mR)*(segs.indexOf(sg)/Math.max(1,segs.length-1));
-  const vals=series.flatMap(s=>s.pts.map(p=>p.idx)).filter(v=>v!=null&&isFinite(v));
-  let lo=Math.min(...vals,100), hi=Math.max(...vals,100);
-  const pad=(hi-lo)*0.08||5; lo-=pad; hi+=pad;
-  const ys=v=>mT+(H-mT-mB)*(1-(v-lo)/(hi-lo));
-  let g='';
-  for(const fr of [0.25,0.5,0.75]){ const v=lo+(hi-lo)*fr;
-    g+=`<line x1="${mL}" x2="${W-mR}" y1="${ys(v).toFixed(1)}" y2="${ys(v).toFixed(1)}" stroke="var(--hair)" stroke-width="1"/>`;
-    g+=`<text x="${mL-6}" y="${(ys(v)+4).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--muted)">${Math.round(v)}</text>`; }
-  g+=`<line x1="${mL}" x2="${W-mR}" y1="${ys(100).toFixed(1)}" y2="${ys(100).toFixed(1)}" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="5 4"/>`;
-  g+=`<text x="${mL-6}" y="${(ys(100)+4).toFixed(1)}" text-anchor="end" font-size="11" font-weight="700" fill="var(--muted)">100</text>`;
-  const stepX=Math.ceil(segs.length/7);
-  segs.forEach((sg,i)=>{ if(i%stepX===0||i===segs.length-1)
-    g+=`<text x="${xs(sg).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="11" fill="var(--muted)">${sg.slice(8,10)}/${sg.slice(5,7)}</text>`; });
-  const linhas=series.map(s=>{
-    const pts=s.pts.filter(p=>p.idx!=null&&isFinite(p.idx));
-    if(pts.length<2) return '';
-    const d=pts.map((p,i)=>`${i?'L':'M'}${xs(p.seg).toFixed(1)} ${ys(p.idx).toFixed(1)}`).join(' ');
-    const dots=pts.map(p=>`<circle cx="${xs(p.seg).toFixed(1)}" cy="${ys(p.idx).toFixed(1)}" r="3" fill="${s.cor}"><title>${s.nome} · sem ${p.seg.slice(8,10)}/${p.seg.slice(5,7)} · ${fmt(p.val)} · índice ${Math.round(p.idx)}</title></circle>`).join('');
-    return `<path d="${d}" fill="none" stroke="${s.cor}" stroke-width="2.2" stroke-linejoin="round"/>${dots}`;
-  }).join('');
-  return `<svg style="width:100%;height:auto" viewBox="0 0 ${W} ${H}" role="img">${g}${linhas}</svg>`;
+function sparkVg(pts, cor, fmt){
+  if(pts.length<2) return '';
+  const W=200,H=46,m=4;
+  const vs=pts.map(p=>p.val); const lo=Math.min(...vs), hi=Math.max(...vs); const rng=(hi-lo)||1;
+  const x=k=>m+(W-2*m)*k/(pts.length-1), y=v=>m+(H-2*m)*(1-(v-lo)/rng);
+  const d=pts.map((p,k)=>`${k?'L':'M'}${x(k).toFixed(1)} ${y(p.val).toFixed(1)}`).join(' ');
+  const tt=pts.map(p=>`${p.seg.slice(8,10)}/${p.seg.slice(5,7)}: ${fmt(p.val)}`).join('\n');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:46px" preserveAspectRatio="none"><title>${tt}</title>
+    <path d="${d} L${x(pts.length-1).toFixed(1)} ${H-1} L${x(0).toFixed(1)} ${H-1} Z" fill="${cor}" opacity=".12" stroke="none"/>
+    <path d="${d}" fill="none" stroke="${cor}" stroke-width="2"/>
+    <circle cx="${x(pts.length-1).toFixed(1)}" cy="${y(pts[pts.length-1].val).toFixed(1)}" r="3" fill="${cor}"/></svg>`;
 }
 
 async function renderGlobal(){
@@ -3128,14 +3113,18 @@ async function renderGlobal(){
   const segHoje=seg0.toISOString().slice(0,10);
   const N=v=>v==null?null:+v;
   const dpc=(c,p)=>(c!=null&&p!=null&&p>0)?(c/p-1)*100:null;
-  const seta=(d,moral)=>{ if(d==null||Math.abs(d)<0.05) return '';
-    let cor='var(--ink2)';
-    if(moral==='qtd') cor=d>0?'var(--good)':'var(--crit)';
-    if(moral==='bgt') cor=d<0?'var(--crit)':'var(--good)';
-    return ` <span style="font-size:10px;color:${cor}">${d>0?'▲':'▼'}${nf1.format(Math.abs(d))}%</span>`; };
+  const terCor=vals=>{ const v=vals.filter(x=>x!=null&&isFinite(x)).sort((a,b)=>a-b);
+    return x=>{ if(x==null||v.length<3) return '';
+      const lo=v[Math.floor((v.length-1)/3)], hi=v[Math.ceil((v.length-1)*2/3)];
+      if(x>=hi&&x>lo) return 'color:var(--good);font-weight:600';
+      if(x<=lo&&x<hi) return 'color:var(--crit);font-weight:600';
+      return ''; }; };
   const fechadas=rows.filter(r=>r.seg!==segHoje);
   const _mv=rows.map(r=>(N(r.ads_custo)>0&&r.mc!=null)?N(r.mc)/N(r.ads_custo):null).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
   const medVg=_mv.length?_mv[Math.floor(_mv.length/2)]:null;
+  const tcTick=terCor(fechadas.map(r=>N(r.p_realizado))), tcBgt=terCor(fechadas.map(r=>N(r.p_bgt))),
+        tcRoas=terCor(fechadas.map(r=>(N(r.receita)&&N(r.ads_custo))?N(r.receita)/N(r.ads_custo):null)),
+        tcClq=terCor(fechadas.map(r=>N(r.cliques))), tcAcc=terCor(fechadas.map(r=>N(r.acessos)));
   let leitura='';
   if(fechadas.length>=2){
     const u=fechadas[fechadas.length-1], p=fechadas[fechadas.length-2];
@@ -3155,32 +3144,42 @@ async function renderGlobal(){
     if(da!=null) f.push(`acessos ${da>0?'+':''}${nf.format(Math.round(da))}%`);
     leitura=`<div class="banner ambar" style="background:var(--accent-soft);color:var(--accent);font-weight:400">🔍 <b>Semana fechada (${u.seg.slice(8,10)}/${u.seg.slice(5,7)}) vs anterior:</b> ${f.join(' · ')}</div>`;
   }
-  // séries indexadas por grupo (todas as mesas, semanas fechadas com MC)
-  const CORESVG=['var(--ch1)','var(--ch2)','var(--ch3)','var(--ch4)','#d6552a','#0e8f9e','#b8437e','#6b7f2a','#8a6d3b','#5a5f66'];
+  // cartões ranqueados por mesa (semanas fechadas com MC): tendência = média da 2ª metade vs 1ª
   const porG={};
   st.vg.forEach(r=>{ if(r.seg===segHoje||r.mc==null) return; (porG[r.grupo_abc]=porG[r.grupo_abc]||[]).push(r); });
-  const mkSerie=calc=>{
-    const out=[];
-    grupos.forEach((g,gi)=>{
+  const cardsVg=(calc, fmt)=>{
+    const items=[];
+    grupos.forEach(g=>{
       const rs=(porG[g]||[]).slice().sort((a,b)=>a.seg<b.seg?-1:1);
-      const raw=rs.map(r=>({seg:r.seg, val:calc(r)})).filter(pt=>pt.val!=null&&isFinite(pt.val));
-      const base=raw.find(pt=>pt.val>0);
-      if(!base||raw.length<3) return;
-      out.push({nome:g, cor:CORESVG[gi%CORESVG.length], pts:raw.map(pt=>({...pt, idx:pt.val/base.val*100}))});
+      const pts=rs.map(r=>({seg:r.seg, val:calc(r)})).filter(pt=>pt.val!=null&&isFinite(pt.val));
+      if(pts.length<4) return;
+      const h=Math.floor(pts.length/2);
+      const a1=pts.slice(0,h).reduce((s,pt)=>s+pt.val,0)/h;
+      const a2=pts.slice(-h).reduce((s,pt)=>s+pt.val,0)/h;
+      const tr=a1>0?(a2/a1-1)*100:null;
+      items.push({g, pts, tr, a1, a2, last:pts[pts.length-1].val});
     });
-    return out;
+    items.sort((a,b)=>(b.tr??-1e9)-(a.tr??-1e9));
+    if(!items.length) return '<p class="gr">ainda não há semanas suficientes</p>';
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px">`+items.map((it,i)=>{
+      const cor=it.tr==null?'var(--muted)':it.tr>=0?'var(--good)':'var(--crit)';
+      return `<div style="border:1px solid var(--hair);border-radius:10px;padding:10px 12px;min-width:0">
+        <div style="display:flex;align-items:baseline;gap:6px">
+          <span class="gr" style="font-size:11px">${i+1}º</span><b style="font-size:13px">${esc(it.g)}</b>
+          <b style="margin-left:auto;color:${cor};font-size:13px" title="média da 2ª metade da janela (${fmt(it.a2)}) vs 1ª metade (${fmt(it.a1)})">${it.tr==null?'—':(it.tr>=0?'▲ +':'▼ −')+nf1.format(Math.abs(it.tr))+'%'}</b>
+        </div>
+        ${sparkVg(it.pts, cor, fmt)}
+        <div class="gr" style="font-size:11px;display:flex;justify-content:space-between"><span>início ${fmt(it.pts[0].val)}</span><span>últ. sem <b>${fmt(it.last)}</b></span></div>
+      </div>`; }).join('')+`</div>`;
   };
-  const sMargem=mkSerie(r=>{ const v=N(r.receita), m=N(r.mc); return (v>0&&m!=null)?m/v*100:null; });
-  const sRmc=mkSerie(r=>{ const a=N(r.ads_custo), m=N(r.mc); return (a>0&&m!=null)?m/a:null; });
-  const legVg=S=>S.slice().sort((a,b)=>(b.pts[b.pts.length-1]?.idx||0)-(a.pts[a.pts.length-1]?.idx||0))
-    .map(s=>{ const u=s.pts[s.pts.length-1];
-      return `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:16px;font-size:12px"><span style="width:10px;height:10px;border-radius:3px;background:${s.cor};display:inline-block"></span>${esc(s.nome)} <b style="color:${u.idx>=100?'var(--good)':'var(--crit)'}">${Math.round(u.idx)}</b></span>`; }).join('');
+  const cardsMargem=cardsVg(r=>N(r.mc), v=>nf.format(Math.round(v/1000))+'k');
+  const cardsRmc=cardsVg(r=>{ const a=N(r.ads_custo), m=N(r.mc); return (a>0&&m!=null)?m/a:null; }, v=>nf1.format(v)+'×');
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Semanal, site/002. <b>Margem</b> = MC ÷ receita (lucro bruto transacional BASE BBDI 2020) · <b>ROAS MC</b> = MC ÷ verba de ads (régua: <b style="color:var(--good)">verde</b> ≥ +30% da mediana das semanas, <b style="color:var(--crit)">vermelho</b> ≤ −30%) · <b>Ticket médio</b> = receita ÷ unidades da semana · <b>Ticket BGT</b> = concorrente ponderado na cesta fixa 30d; (n) = produtos com preço · <b>Gap ×BGT na cesta comum</b> (nosso preço ponderado só nos produtos que a BGT cobre ÷ BGT; scrape diário desde 27/08/26, antes sábados) · <b>ROAS</b> = receita ÷ verba · <b>Cliques</b> = pagos Google Ads · <b>Acessos</b> = views GA4 (todas as origens). Semana com * está em curso (sem MC fechada).</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Semanal, site/002. <b>Margem R$</b> = MC da semana em reais (lucro bruto transacional BASE BBDI 2020; o % pequeno é MC ÷ receita) · <b>ROAS MC</b> = MC ÷ verba de ads (régua: <b style="color:var(--good)">verde</b> ≥ +30% da mediana das semanas, <b style="color:var(--crit)">vermelho</b> ≤ −30%) · <b>Ticket médio</b> = receita ÷ unidades da semana · <b>Ticket BGT</b> = concorrente ponderado na cesta fixa 30d; (n) = produtos com preço · <b>Gap ×BGT na cesta comum</b> (nosso preço ponderado só nos produtos que a BGT cobre ÷ BGT; scrape diário desde 27/08/26, antes sábados) · <b>ROAS</b> = receita ÷ verba · <b>Cliques</b> = pagos Google Ads · <b>Acessos</b> = views GA4 (todas as origens). Semana com * está em curso (sem MC fechada).</p>
     <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px">${grupos.map(g=>`<button class="kpi" data-vg="${esc(g)}" style="padding:7px 14px;${st.vgG===g?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${esc(g)} <span class="gr">${nf.format(Math.round((recG[g]||0)/1000))}k</span></button>`).join('')}</div>
     ${leitura}
     <div class="tablecard"><div class="tscroll"><table style="min-width:900px">
-      <thead><tr><th style="text-align:left">Semana</th><th title="MC 002 ÷ receita — lucro bruto transacional (BASE BBDI 2020). Bandas: <30% vermelho · 30-40% âmbar · ≥40% verde">Margem</th><th title="MC 002 ÷ verba de ads — régua da Pressão Ads vs mediana das semanas">ROAS MC</th><th>Ads R$</th><th title="receita ÷ unidades da semana (inclui descontos e mix)">Ticket médio</th><th title="BGT ponderado na cesta fixa 30d; (n) = produtos com preço BGT">Ticket BGT (n)</th><th title="nosso preço ponderado na cesta comum ÷ BGT">Gap ×BGT</th><th title="receita ÷ verba de ads (sobre receita, não lucro)">ROAS</th><th>Cliques</th><th>Acessos</th></tr></thead>
+      <thead><tr><th style="text-align:left">Semana</th><th title="MC 002 em R$ (lucro bruto transacional BASE BBDI 2020); o % ao lado é MC ÷ receita, bandas <30% vermelho · 30-40% âmbar · ≥40% verde">Margem R$</th><th title="MC 002 ÷ verba de ads — régua da Pressão Ads vs mediana das semanas">ROAS MC</th><th>Ads R$</th><th title="receita ÷ unidades da semana (inclui descontos e mix)">Ticket médio</th><th title="BGT ponderado na cesta fixa 30d; (n) = produtos com preço BGT">Ticket BGT (n)</th><th title="nosso preço ponderado na cesta comum ÷ BGT">Gap ×BGT</th><th title="receita ÷ verba de ads (sobre receita, não lucro)">ROAS</th><th>Cliques</th><th>Acessos</th></tr></thead>
       <tbody>${rows.map((r,i)=>{
         const p=rows[i-1]||{};
         const gap=(N(r.p_tab_bgt)&&N(r.p_bgt))?(N(r.p_tab_bgt)/N(r.p_bgt)-1)*100:null;
@@ -3188,28 +3187,26 @@ async function renderGlobal(){
         const rmc=(N(r.ads_custo)>0&&r.mc!=null)?N(r.mc)/N(r.ads_custo):null;
         return `<tr>
         <td style="text-align:left"><b>${r.seg.slice(8,10)}/${r.seg.slice(5,7)}</b>${r.seg===segHoje?'<span class="gr">*</span>':''}</td>
-        <td style="${diCorMC(marg)}">${marg!=null?nf1.format(marg)+'%':'—'}</td>
+        <td>${r.mc!=null?nf.format(Math.round(N(r.mc))):'—'}${marg!=null?` <small style="${diCorMC(marg)}">${nf.format(marg)}%</small>`:''}</td>
         <td style="${diCorRmc(rmc,medVg)}">${rmc!=null?nf1.format(rmc)+'×':'—'}</td>
         <td>${r.ads_custo!=null?nf.format(Math.round(N(r.ads_custo))):'—'}</td>
-        <td>${r.p_realizado!=null?rf2.format(N(r.p_realizado)):'—'}${seta(dpc(N(r.p_realizado),N(p.p_realizado)))}</td>
-        <td>${r.p_bgt!=null?`${rf2.format(N(r.p_bgt))} <span class="gr">(${r.n_bgt})</span>`:'—'}${seta(dpc(N(r.p_bgt),N(p.p_bgt)),'bgt')}</td>
+        <td style="${r.seg===segHoje?'':tcTick(N(r.p_realizado))}">${r.p_realizado!=null?rf2.format(N(r.p_realizado)):'—'}</td>
+        <td style="${r.seg===segHoje?'':tcBgt(N(r.p_bgt))}">${r.p_bgt!=null?`${rf2.format(N(r.p_bgt))} <span class="gr">(${r.n_bgt})</span>`:'—'}</td>
         <td style="${gap!=null?'font-weight:700':''}">${gap!=null?nf1.format(gap)+'%':'—'}</td>
-        <td>${(N(r.receita)&&N(r.ads_custo))?`<b>${nf1.format(N(r.receita)/N(r.ads_custo))}×</b>`:'—'}${seta(dpc((N(r.receita)&&N(r.ads_custo))?N(r.receita)/N(r.ads_custo):null,(N(p.receita)&&N(p.ads_custo))?N(p.receita)/N(p.ads_custo):null),'qtd')}</td>
-        <td>${r.cliques!=null?nf.format(N(r.cliques)):'—'}${seta(dpc(N(r.cliques),N(p.cliques)),'qtd')}</td>
-        <td>${r.acessos!=null?nf.format(N(r.acessos)):'—'}${seta(dpc(N(r.acessos),N(p.acessos)),'qtd')}</td></tr>`;}).join('')}</tbody>
+        <td style="${r.seg===segHoje?'':tcRoas((N(r.receita)&&N(r.ads_custo))?N(r.receita)/N(r.ads_custo):null)}">${(N(r.receita)&&N(r.ads_custo))?nf1.format(N(r.receita)/N(r.ads_custo))+'×':'—'}</td>
+        <td style="${r.seg===segHoje?'':tcClq(N(r.cliques))}">${r.cliques!=null?nf.format(N(r.cliques)):'—'}</td>
+        <td style="${r.seg===segHoje?'':tcAcc(N(r.acessos))}">${r.acessos!=null?nf.format(N(r.acessos)):'—'}</td></tr>`;}).join('')}</tbody>
     </table></div></div>
-    <p class="gr" style="margin:10px 2px 0">Setas = variação vs semana anterior. Na BGT, queda em <span style="color:var(--crit)">vermelho</span> (pressão competitiva); em cliques/acessos, queda vermelha e alta verde. Grupos = mesas de analista (mesma consolidação da curva ABC).</p>
+    <p class="gr" style="margin:10px 2px 0">Cores nos valores = posição na distribuição das próprias semanas do grupo: <span style="color:var(--good);font-weight:600">verde</span> = terço alto · <span style="color:var(--crit);font-weight:600">vermelho</span> = terço baixo (na BGT, preço alto do concorrente = verde). Semana em curso (*) fica sem cor. Grupos = mesas de analista (mesma consolidação da curva ABC).</p>
     <div class="tablecard" style="margin-top:16px;padding:12px 16px">
-      <div class="eyebrow">📈 Margem BBDI 2020 por grupo — indexada (1ª semana = 100)</div>
-      <p class="gr" style="margin:4px 0 8px">Margem = MC 002 ÷ receita da semana. Todas as mesas partem de 100 — acima da linha tracejada a margem <b>melhorou</b> vs o início da janela (~3 meses); abaixo, piorou. Legenda ordenada do melhor pro pior desempenho final: o placar taco a taco dos analistas. Passe o mouse nos pontos para ver o valor real.</p>
-      ${svgMultiIdx(sMargem,{fmt:v=>nf1.format(v)+'%'})}
-      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px 0">${legVg(sMargem)}</div>
+      <div class="eyebrow">🏁 Margem BBDI 2020 (R$/semana) — placar das mesas</div>
+      <p class="gr" style="margin:4px 0 10px">Um cartão por mesa, <b>ordenado do que mais cresce ao que mais cai</b>. ▲/▼ = média de MC das <b>últimas semanas vs as primeiras</b> (metades da janela de ~3 meses — robusto a uma semana atípica). A linha é a MC semanal real em R$; passe o mouse para os valores.</p>
+      ${cardsMargem}
     </div>
     <div class="tablecard" style="margin-top:14px;padding:12px 16px">
-      <div class="eyebrow">📈 ROAS MC por grupo — indexado (1ª semana = 100)</div>
-      <p class="gr" style="margin:4px 0 8px">ROAS MC = MC 002 ÷ verba de ads da semana. Mesma leitura: acima de 100, cada real de ads está gerando <b>mais margem</b> do que no início da janela; abaixo, menos.</p>
-      ${svgMultiIdx(sRmc,{fmt:v=>nf1.format(v)+'×'})}
-      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px 0">${legVg(sRmc)}</div>
+      <div class="eyebrow">🏁 ROAS MC — placar das mesas</div>
+      <p class="gr" style="margin:4px 0 10px">Mesma leitura, sobre MC ÷ verba de ads: quem está transformando cada real de ads em <b>mais margem</b> do que no início da janela.</p>
+      ${cardsRmc}
     </div>`;
   document.querySelectorAll('.kpi[data-vg]').forEach(b=>b.onclick=()=>{st.vgG=b.dataset.vg;renderGlobal();});
 }
