@@ -1412,7 +1412,7 @@ async function abreExtrato(cod, m, acao){
       </span>`;
   }
   ov.querySelector('.aclcard').innerHTML=`
-    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><a href="https://www.bbbaterias.com.br/${encodeURIComponent(cod.toLowerCase())}" target="_blank" rel="noopener" title="abrir a página do produto no site (nova aba)" style="flex:none;color:var(--accent);font-weight:600;font-size:12.5px;text-decoration:none;border:1px solid var(--hair);border-radius:8px;padding:4px 10px">🌐 ver no site ↗</a><span id="xDiaBtn" style="flex:none"></span><span id="xPrzTag" style="flex:none"></span><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato do produto</span><button class="btn" id="xDiagBtn" style="padding:6px 14px;flex:none;font-size:12.5px" title="A IA lê folga, mercado, funil e margem deste produto e classifica na matriz de diagnóstico">🧠 Diagnóstico IA</button><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
+    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><a href="https://www.bbbaterias.com.br/${encodeURIComponent(cod.toLowerCase())}" target="_blank" rel="noopener" title="abrir a página do produto no site (nova aba)" style="flex:none;color:var(--accent);font-weight:600;font-size:12.5px;text-decoration:none;border:1px solid var(--hair);border-radius:8px;padding:4px 10px">🌐 ver no site ↗</a><span id="xPrzTag" style="flex:none"></span><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato do produto</span><button class="btn" id="xDiagBtn" style="padding:6px 14px;flex:none;font-size:12.5px" title="A IA lê folga, mercado, funil e margem deste produto e classifica na matriz de diagnóstico">🧠 Diagnóstico IA</button><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
     <div class="tablecard" style="padding:11px 16px;margin:10px 0 12px">
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;font-size:12.5px">
         ${topoHtml}
@@ -1420,6 +1420,7 @@ async function abreExtrato(cod, m, acao){
     </div>
     <div id="xDiagBox"></div>
     <div style="display:flex;gap:6px;align-items:center;margin:0 0 8px">
+      <span id="xVwDia" style="flex:none"></span>
       <button id="xVwS" class="btn" style="padding:5px 14px;font-size:12px;flex:none">Semanal</button>
       <button id="xVwM" style="padding:5px 14px;font-size:12px;flex:none;border:1px solid var(--hair);border-radius:9px;color:var(--ink2)">Mensal</button>
       <span class="gr" id="xVwNota">${NW} semanas fechadas (seg–dom)</span>
@@ -1450,13 +1451,13 @@ async function abreExtrato(cod, m, acao){
       }).join('')}</div></div>`:''}
     <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom. Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões). ${acao?'Topo = a sugestão do analista exatamente como registrada (era → fica, markup resultante e alvo que ele viu); aplicar/devolver é na página Aprovações.':'Preencha o preço novo em cima, JUSTIFIQUE e OK — entra na MESMA fila de execução do Aprovar.'}</p>`;
   ov.querySelector('#mcX').onclick=()=>ov.remove();
-  // botão azul: extrato DIÁRIO para produtos elegíveis (20+ un/semana)
+  // botão verde "Diário" na linha Semanal/Mensal — só para elegíveis (20+ un/semana)
   (async()=>{
     try{
       const {data:eleg}=await sb.from('diario_elegiveis').select('cod').eq('cod',cod).maybeSingle();
-      const sp=ov.querySelector('#xDiaBtn');
+      const sp=ov.querySelector('#xVwDia');
       if(!eleg||!sp) return;
-      sp.innerHTML=`<button class="btn" title="produto vende 20+ unidades/semana — abrir o acompanhamento dia a dia (15 dias)" style="background:var(--accent);color:#fff;font-weight:700;padding:5px 14px;font-size:12.5px;border-radius:9px">📆 Extrato diário</button>`;
+      sp.innerHTML=`<button class="btn" title="produto vende 20+ unidades/semana — abrir o acompanhamento dia a dia (15 dias)" style="background:var(--good);color:#fff;font-weight:700;padding:5px 16px;font-size:12px;border-radius:9px">📆 Diário</button>`;
       sp.querySelector('button').onclick=()=>abreDiario(cod, m?.descricao||'');
     }catch(e){}
   })();
