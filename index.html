@@ -1277,11 +1277,7 @@ async function abreExtrato(cod, m, acao){
   const corMC=p=>p==null?'':p<0?'color:var(--crit);font-weight:700':p<30?'color:var(--crit)':p<40?'color:var(--warn)':'color:var(--good)';
   const mcCell=(l,v)=>{ const p=mcp(l,v); return `${l?rf.format(l):'—'}${p!=null?` <span style="font-size:11px;${corMC(p)}">${nf1.format(p)}%</span>`:''}`; };
   const tdc='padding:5px 8px;white-space:nowrap;font-size:12px;text-align:right;';
-  // ROAS MC (régua da Pressão Ads): valor vs mediana do período mostrado — ≥1,3× verde, ≤0,7× vermelho
-  const _medDe=arr=>{ const v=arr.filter(x=>x!=null&&isFinite(x)).sort((a,b)=>a-b); return v.length?v[Math.floor(v.length/2)]:null; };
-  const corRmc=(v,med)=>{ if(v==null||med==null||med<=0) return ''; if(v>=med*1.3) return 'color:var(--good);font-weight:700;'; if(v<=med*0.7) return 'color:var(--crit);font-weight:600;'; return ''; };
-  const _rmcMedS=_medDe(mondays.map(w=>{ const x=W[w]; return (x.ads>0&&x.l2!=null)?x.l2/x.ads:null; }));
-  const linhas=mondays.map((w,wi)=>{ const a=W[w]; const _rmcMed=_rmcMedS;
+  const linhas=mondays.map((w,wi)=>{ const a=W[w];
     const g=giro60(w), folga=(a.saldo!=null&&g>0)?a.saldo/g:null;
     const mkS=(a.porReal&&a.custo)?a.porReal/a.custo:null;  // mesma régua da 1ª página: à vista PIX ÷ custo
     const mkA=(a.atacTab&&a.custo)?a.atacTab/a.custo:null;
@@ -1310,7 +1306,7 @@ async function abreExtrato(cod, m, acao){
       <td style="${tdc}color:var(--ch1)">${F.n(a.vw)}</td>
       <td style="${tdc}">${F.r(a.ads)}</td>
       <td style="${tdc}">${F.d1(roas)}</td>
-      <td style="${tdc}${corRmc(roasMc,_rmcMed)}">${F.d1(roasMc)}</td>
+      <td style="${tdc}${corRmcFix(roasMc)}">${F.d1(roasMc)}</td>
       <td style="${tdc}${sep}">${F.n(a.qm)}</td>
       <td style="${tdc}color:var(--ch4)">${mcCell(a.lm,a.vm)}</td>
       <td style="${tdc}">${F.m(a.mlTab)}</td>
@@ -1320,8 +1316,7 @@ async function abreExtrato(cod, m, acao){
   const MESLB=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
   const fseq=(arr,fmt)=>arr.length?arr.map(fmt).join(' → '):'—';
   const ult=arr=>arr.length?arr[arr.length-1]:null;
-  const _rmcMedM=_medDe(meses.map(ms=>{ const x=M[mesDe(ms)]; return (x.ads>0&&x.l2!=null)?x.l2/x.ads:null; }));
-  const linhasM=meses.map((ms,mi)=>{ const a=M[mesDe(ms)]; const _rmcMed=_rmcMedM;
+  const linhasM=meses.map((ms,mi)=>{ const a=M[mesDe(ms)];
     const parcial=mi===meses.length-1;
     const fimMes=new Date(ms+'T12:00:00'); fimMes.setMonth(fimMes.getMonth()+1); fimMes.setDate(0);
     const fim=parcial?new Date():fimMes;
@@ -1355,7 +1350,7 @@ async function abreExtrato(cod, m, acao){
       <td style="${tdc}color:var(--ch1)">${F.n(a.vw)}</td>
       <td style="${tdc}">${F.r(a.ads)}</td>
       <td style="${tdc}">${F.d1(roas)}</td>
-      <td style="${tdc}${corRmc(roasMc,_rmcMed)}">${F.d1(roasMc)}</td>
+      <td style="${tdc}${corRmcFix(roasMc)}">${F.d1(roasMc)}</td>
       <td style="${tdc}${sep}">${F.n(a.qm)}</td>
       <td style="${tdc}color:var(--ch4)">${mcCell(a.lm,a.vm)}</td>
       <td style="${tdc}">${fseq(a.mlTab,v=>rf2.format(v))}</td>
@@ -1435,7 +1430,7 @@ async function abreExtrato(cod, m, acao){
       <tr>
         ${th('Saldo','estoque útil no fim da semana (snapshot; histórico desde 15/07/26)')}${th('Folga','saldo ÷ giro 60d÷2 (aprox — total c/ lotões)')}${th('Custo','custo unitário (desde 16/07/26)')}
         ${th('un','unidades atacado no período (semana ou mês)',1)}${th('MC 001','lucro bruto do período no Atacado e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('Tab','preço tabela 001 (real; desde 15/07/26)')}${th('Ticket','ticket médio atacado')}${th('BGT','concorrente B2B cash (desde 13/06/26)')}${th('Mkup','tabela 001 ÷ custo')}
-        ${th('un','unidades site no período (semana ou mês)',1)}${th('MC 002','lucro bruto do período no Site e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('PIX','preço FINAL à vista = POR×0,95 — o que o cliente paga (mesma régua da 1ª página)')}${th('Prat.','preço praticado site')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('Mkup','PIX (à vista real) ÷ custo — mesmo mk da 1ª página')}${th('Conv','qtd 002 ÷ views')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS','faturado 002 ÷ Ads')}${th('ROAS MC','MC 002 (lucro bruto BASE BBDI) ÷ Ads do período — régua da Pressão Ads: verde ≥ +30% da mediana do período mostrado · vermelho ≤ −30%')}
+        ${th('un','unidades site no período (semana ou mês)',1)}${th('MC 002','lucro bruto do período no Site e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('PIX','preço FINAL à vista = POR×0,95 — o que o cliente paga (mesma régua da 1ª página)')}${th('Prat.','preço praticado site')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('Mkup','PIX (à vista real) ÷ custo — mesmo mk da 1ª página')}${th('Conv','qtd 002 ÷ views')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS','faturado 002 ÷ Ads')}${th('ROAS MC','MC 002 (lucro bruto BASE BBDI) ÷ Ads do período — régua fixa: <3 vermelho · 3 a 5 laranja · ≥5 verde')}
         ${th('un','unidades Mercado Livre no período',1)}${th('MC 005','lucro bruto do período no ML e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('Tab','preço tabela 401')}${th('Ticket','ticket médio ML')}${th('Mkup','tabela 401 ÷ custo')}</tr>
       </thead>
       <tbody id="xTbody">${linhas}</tbody></table></div>
@@ -1651,6 +1646,7 @@ function montaDiagnostico(ov, cod){
 const diCorMC=p=>p==null?'':p<0?'color:var(--crit);font-weight:700':p<30?'color:var(--crit)':p<40?'color:var(--warn)':'color:var(--good)';
 const diCorGap=g=>g==null?'':g<0?'color:var(--good);font-weight:700':g>10?'color:var(--crit);font-weight:600':'';
 const diCorRmc=(v,med)=>{ if(v==null||med==null||med<=0) return ''; if(v>=med*1.3) return 'color:var(--good);font-weight:700'; if(v<=med*0.7) return 'color:var(--crit);font-weight:600'; return ''; };
+const corRmcFix=v=>(v==null||!isFinite(v))?'':v<3?'color:var(--crit);font-weight:600':v<5?'color:var(--lar);font-weight:600':'color:var(--good);font-weight:700';
 
 async function renderDiario(){
   $('#conteudo').innerHTML='<div class="carregando">Carregando acompanhamento diário…</div>';
@@ -1776,8 +1772,6 @@ async function abreDiario(cod, desc){
   (cc.data||[]).forEach(r=>{ dd(r.data).bgt=+r.cc_avista||null; });
   (es.data||[]).forEach(r=>{ dd(r.snapshot).saldo=+r.estoque_util; });
   const dias=[]; for(let i=14;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); dias.push(d.toLocaleDateString('sv-SE')); }
-  const rmcs=dias.map(d=>{ const a=DD[d]; return (a&&a.ads>0)?a.mc/a.ads:null; }).filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
-  const med=rmcs.length?rmcs[Math.floor(rmcs.length/2)]:null;
   const SEM=['dom','seg','ter','qua','qui','sex','sáb'];
   const tdc='padding:6px 8px;text-align:right;white-space:nowrap;';
   const T={un2:0,rec:0,mc:0,un1:0,unm:0,ads:0,clq:0,vw:0,gaps:[]}; let nFech=0;
@@ -1803,7 +1797,7 @@ async function abreDiario(cod, desc){
       <td style="${tdc}color:var(--ch1)">${a.vw!=null?nf.format(a.vw):'—'}</td>
       <td style="${tdc}">${conv!=null?nf1.format(conv)+'%':'—'}</td>
       <td style="${tdc}">${roas!=null?nf1.format(roas):'—'}</td>
-      <td style="${tdc}${diCorRmc(rmc,med)}">${rmc!=null?nf1.format(rmc):'—'}</td>
+      <td style="${tdc}${corRmcFix(rmc)}">${rmc!=null?nf1.format(rmc):'—'}</td>
       <td style="${tdc}border-left:2px solid var(--hair);color:var(--muted)">${a.un1||a.unm?`${nf.format(a.un1)} · ${nf.format(a.unm)}`:'—'}</td>
     </tr>`; }).join('');
   const gapMed=T.gaps.length?T.gaps.reduce((s,x)=>s+x,0)/T.gaps.length:null;
@@ -1822,7 +1816,7 @@ async function abreDiario(cod, desc){
       <td style="${tdc}color:var(--ch1)">${nf.format(T.vw)}</td>
       <td style="${tdc}">${tConv!=null?nf1.format(tConv)+'%':'—'}</td>
       <td style="${tdc}">${tRoas!=null?nf1.format(tRoas):'—'}</td>
-      <td style="${tdc}">${tRmc!=null?nf1.format(tRmc):'—'}</td>
+      <td style="${tdc}${corRmcFix(tRmc)}">${tRmc!=null?nf1.format(tRmc):'—'}</td>
       <td style="${tdc}border-left:2px solid var(--hair);color:var(--muted)">${nf.format(T.un1)} · ${nf.format(T.unm)}</td>
     </tr>`;
   ov.querySelector('.aclcard').innerHTML=`
@@ -1832,7 +1826,7 @@ async function abreDiario(cod, desc){
       <span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(desc||'')} · extrato diário</span>
       ${(st.diLista&&st.diLista.length>1)?`<button id="diProx" class="btn" style="flex:none;background:var(--good);color:#fff;font-weight:700;padding:8px 20px;font-size:13px;border-radius:9px">PRÓXIMO →</button>`:''}
       <span id="diX" style="cursor:pointer;font-size:20px">✕</span></div>
-    <p class="gr" style="margin:6px 0 10px">Últimos 15 dias (site/002; * = hoje, parcial — Σ soma só os ${nFech} dias fechados). MC = lucro bruto transacional (BASE BBDI) · <b>ROAS MC</b> = MC ÷ Ads, régua da Pressão Ads (<b style="color:var(--good)">verde</b> ≥ +30% da mediana dos dias · <b style="color:var(--crit)">vermelho</b> ≤ −30%) · <b>Gap</b> = PIX ÷ BGT − 1 (<b style="color:var(--good)">verde</b> = abaixo do concorrente) · Conv = un 002 ÷ views GA4 · BGT diária desde 27/08/26 (antes, sábados) · <b>001 · ML</b> = unidades atacado e Mercado Livre.</p>
+    <p class="gr" style="margin:6px 0 10px">Últimos 15 dias (site/002; * = hoje, parcial — Σ soma só os ${nFech} dias fechados). MC = lucro bruto transacional (BASE BBDI) · <b>ROAS MC</b> = MC ÷ Ads, régua fixa: <b style="color:var(--crit)">&lt;3</b> · <b style="color:var(--lar)">3 a 5</b> · <b style="color:var(--good)">≥5</b> · <b>Gap</b> = PIX ÷ BGT − 1 (<b style="color:var(--good)">verde</b> = abaixo do concorrente) · Conv = un 002 ÷ views GA4 · BGT diária desde 27/08/26 (antes, sábados) · <b>001 · ML</b> = unidades atacado e Mercado Livre.</p>
     <div class="tscroll" style="max-height:70vh"><table style="width:100%;min-width:0;font-size:12.5px">
       <thead><tr>
         <th style="padding:6px 8px;text-align:left;position:sticky;left:0;top:0;background:var(--surface);z-index:3">Dia</th>
@@ -1841,7 +1835,7 @@ async function abreDiario(cod, desc){
         <th title="receita ÷ unidades do dia">Ticket</th><th title="preço à vista PIX (002/10, snapshot do dia)">PIX</th>
         <th title="BGT à vista (scrape do dia; diário desde 27/08)">BGT</th><th title="PIX ÷ BGT − 1">Gap</th>
         <th title="investimento Google Ads">Ads</th><th title="cliques pagos">Cliq</th><th title="acessos GA4 (todas as origens)">Views</th>
-        <th title="un 002 ÷ views">Conv</th><th title="receita ÷ Ads">ROAS</th><th title="MC ÷ Ads — régua da Pressão Ads">ROAS MC</th>
+        <th title="un 002 ÷ views">Conv</th><th title="receita ÷ Ads">ROAS</th><th title="MC ÷ Ads — régua fixa: <3 vermelho · 3 a 5 laranja · ≥5 verde">ROAS MC</th>
         <th title="unidades atacado (001) · Mercado Livre (005)">001 · ML</th>
       </tr></thead>
       <tbody>${linhas}${rodape}</tbody></table></div>`;
