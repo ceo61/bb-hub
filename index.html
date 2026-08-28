@@ -3142,7 +3142,7 @@ async function renderGlobal(){
         tcClqD=terCor(fechD.map(r=>N(r.cliques))), tcAccD=terCor(fechD.map(r=>N(r.acessos)));
   const SEMLB=['dom','seg','ter','qua','qui','sex','sáb'];
   const tabelaDiaHtml=`<div class="tablecard"><div class="tscroll"><table style="min-width:820px">
-      <thead><tr><th style="text-align:left">Dia</th><th title="MC 002 do dia em R$ (lucro bruto transacional); % = MC ÷ receita">Margem R$</th><th title="MC ÷ verba de ads do dia — régua ±30% vs mediana dos dias">ROAS MC</th><th>Ads R$</th><th title="receita ÷ unidades do dia">Ticket médio</th><th title="BGT ponderado na cesta fixa 30d; diária desde 27/08/26">Ticket BGT (n)</th><th title="Ticket médio ÷ Ticket BGT − 1">Gap ×BGT</th><th>Cliques</th><th>Acessos</th></tr></thead>
+      <thead><tr><th style="text-align:left">Dia</th><th title="MC 002 do dia em R$ (lucro bruto transacional); % = MC ÷ receita">Margem R$</th><th title="MC ÷ verba de ads do dia — régua ±30% vs mediana dos dias">ROAS MC</th><th title="${st.vgG==='TUDO'?'capturado por produto, soma de todos os grupos':'investimento Google Ads capturado por produto'}">Ads R$</th>${st.vgG==='TUDO'?'<th title="gasto TOTAL da conta Google Ads do dia menos o capturado por produto — Search, Display, Demand Gen, institucional e não-atribuído">Ads adicional</th>':''}<th title="receita ÷ unidades do dia">Ticket médio</th><th title="BGT ponderado na cesta fixa 30d; diária desde 27/08/26">Ticket BGT (n)</th><th title="Ticket médio ÷ Ticket BGT − 1">Gap ×BGT</th><th>Cliques</th><th>Acessos</th></tr></thead>
       <tbody>${rowsD.map(r=>{
         const hoje=r.dia===hojeISO, dow=new Date(r.dia+'T12:00:00').getDay(), fds=dow===0||dow===6;
         const gap=(N(r.p_realizado)&&N(r.p_bgt))?(N(r.p_realizado)/N(r.p_bgt)-1)*100:null;
@@ -3153,6 +3153,7 @@ async function renderGlobal(){
         <td>${r.mc!=null?nf.format(Math.round(N(r.mc))):'—'}${marg!=null?` <small style="${diCorMC(marg)}">${nf1.format(marg)}%</small>`:''}</td>
         <td style="${diCorRmc(rmc,medVgD)}">${rmc!=null?nf1.format(rmc)+'×':'—'}</td>
         <td>${r.ads_custo!=null?nf.format(Math.round(N(r.ads_custo))):'—'}</td>
+        ${st.vgG==='TUDO'?`<td style="color:var(--ser)" title="total da conta ${r.ads_total!=null?nf.format(Math.round(N(r.ads_total))):'—'}">${(r.ads_total!=null&&r.ads_custo!=null)?'+'+nf.format(Math.round(N(r.ads_total)-N(r.ads_custo))):'—'}</td>`:''}
         <td style="${hoje?'':tcTickD(N(r.p_realizado))}">${r.p_realizado!=null?rf2.format(N(r.p_realizado)):'—'}</td>
         <td style="${hoje?'':tcBgtD(N(r.p_bgt))}">${r.p_bgt!=null?`${rf2.format(N(r.p_bgt))} <span class="gr">(${r.n_bgt})</span>`:'—'}</td>
         <td style="${gap!=null?'font-weight:700':''}">${gap!=null?nf1.format(gap)+'%':'—'}</td>
@@ -3179,7 +3180,7 @@ async function renderGlobal(){
   }
   // cartões ranqueados por mesa (semanas fechadas com MC): tendência = média da 2ª metade vs 1ª
   const porG={};
-  st.vg.forEach(r=>{ if(r.seg===segHoje||r.mc==null) return; (porG[r.grupo_abc]=porG[r.grupo_abc]||[]).push(r); });
+  st.vg.forEach(r=>{ if(r.seg===segHoje||r.mc==null||r.grupo_abc==='TUDO') return; (porG[r.grupo_abc]=porG[r.grupo_abc]||[]).push(r); });
   const cardsVg=(calc, fmt)=>{
     const items=[];
     grupos.forEach(g=>{
@@ -3208,7 +3209,7 @@ async function renderGlobal(){
   const cardsMargem=cardsVg(r=>N(r.mc), v=>nf.format(Math.round(v/1000))+'k');
   const cardsRmc=cardsVg(r=>{ const a=N(r.ads_custo), m=N(r.mc); return (a>0&&m!=null)?m/a:null; }, v=>nf1.format(v)+'×');
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Site/002 · alterne <b>Semanal × Diário (14 dias)</b> abaixo — mesmos indicadores (o diário omite o ROAS). <b>Margem R$</b> = MC da semana em reais (lucro bruto transacional BASE BBDI 2020; o % pequeno é MC ÷ receita) · <b>ROAS MC</b> = MC ÷ verba de ads (régua: <b style="color:var(--good)">verde</b> ≥ +30% da mediana das semanas, <b style="color:var(--crit)">vermelho</b> ≤ −30%) · <b>Ticket médio</b> = receita ÷ unidades da semana · <b>Ticket BGT</b> = concorrente ponderado na cesta fixa 30d; (n) = produtos com preço · <b>Gap ×BGT</b> = Ticket médio ÷ Ticket BGT − 1, direto das duas colunas (BGT: scrape diário desde 27/08/26, antes sábados) · <b>ROAS</b> = receita ÷ verba · <b>Cliques</b> = pagos Google Ads · <b>Acessos</b> = views GA4 (todas as origens). Semana com * está em curso (sem MC fechada).</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Site/002 · alterne <b>Semanal × Diário (14 dias)</b> abaixo — mesmos indicadores (o diário omite o ROAS). O card <b>TUDO</b> soma a empresa inteira: margem/receita = toda a 002, acessos = GA4 inteiro, cliques = todas as campanhas da conta, e ganha a coluna <b>Ads adicional</b> = gasto total da conta − capturado por produto (Search, Display, Demand Gen, institucional). <b>Margem R$</b> = MC da semana em reais (lucro bruto transacional BASE BBDI 2020; o % pequeno é MC ÷ receita) · <b>ROAS MC</b> = MC ÷ verba de ads (régua: <b style="color:var(--good)">verde</b> ≥ +30% da mediana das semanas, <b style="color:var(--crit)">vermelho</b> ≤ −30%) · <b>Ticket médio</b> = receita ÷ unidades da semana · <b>Ticket BGT</b> = concorrente ponderado na cesta fixa 30d; (n) = produtos com preço · <b>Gap ×BGT</b> = Ticket médio ÷ Ticket BGT − 1, direto das duas colunas (BGT: scrape diário desde 27/08/26, antes sábados) · <b>ROAS</b> = receita ÷ verba · <b>Cliques</b> = pagos Google Ads · <b>Acessos</b> = views GA4 (todas as origens). Semana com * está em curso (sem MC fechada).</p>
     <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px">${grupos.map(g=>`<button class="kpi" data-vg="${esc(g)}" style="padding:7px 14px;${st.vgG===g?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${esc(g)} <span class="gr">${nf.format(Math.round((recG[g]||0)/1000))}k</span></button>`).join('')}</div>
     <div style="display:flex;gap:6px;align-items:center;margin:0 0 10px">
       <button id="vgVSem" ${st.vgVista==='sem'?'class="btn"':''} style="padding:5px 14px;font-size:12px;${st.vgVista==='sem'?'':'border:1px solid var(--hair);border-radius:9px;color:var(--ink2);background:none'}">Semanal</button>
@@ -3216,7 +3217,7 @@ async function renderGlobal(){
     </div>
     ${st.vgVista==='sem'?leitura:''}
     ${st.vgVista==='dia'?tabelaDiaHtml:`<div class="tablecard"><div class="tscroll"><table style="min-width:900px">
-      <thead><tr><th style="text-align:left">Semana</th><th title="MC 002 em R$ (lucro bruto transacional BASE BBDI 2020); o % ao lado é MC ÷ receita, bandas <30% vermelho · 30-40% âmbar · ≥40% verde">Margem R$</th><th title="MC 002 ÷ verba de ads — régua da Pressão Ads vs mediana das semanas">ROAS MC</th><th>Ads R$</th><th title="receita ÷ unidades da semana (inclui descontos e mix)">Ticket médio</th><th title="BGT ponderado na cesta fixa 30d; (n) = produtos com preço BGT">Ticket BGT (n)</th><th title="Ticket médio ÷ Ticket BGT − 1 — direto das duas colunas ao lado">Gap ×BGT</th><th title="receita ÷ verba de ads (sobre receita, não lucro)">ROAS</th><th>Cliques</th><th>Acessos</th></tr></thead>
+      <thead><tr><th style="text-align:left">Semana</th><th title="MC 002 em R$ (lucro bruto transacional BASE BBDI 2020); o % ao lado é MC ÷ receita, bandas <30% vermelho · 30-40% âmbar · ≥40% verde">Margem R$</th><th title="MC 002 ÷ verba de ads — régua da Pressão Ads vs mediana das semanas">ROAS MC</th><th title="${st.vgG==='TUDO'?'investimento capturado por produto (shopping/P.Max), soma de todos os grupos':'investimento Google Ads capturado por produto'}">Ads R$</th>${st.vgG==='TUDO'?'<th title="gasto TOTAL da conta Google Ads menos o capturado por produto — Search, Display, Demand Gen, institucional e não-atribuído">Ads adicional</th>':''}<th title="receita ÷ unidades da semana (inclui descontos e mix)">Ticket médio</th><th title="BGT ponderado na cesta fixa 30d; (n) = produtos com preço BGT">Ticket BGT (n)</th><th title="Ticket médio ÷ Ticket BGT − 1 — direto das duas colunas ao lado">Gap ×BGT</th><th title="receita ÷ verba de ads (sobre receita, não lucro)">ROAS</th><th>Cliques</th><th>Acessos</th></tr></thead>
       <tbody>${rows.map((r,i)=>{
         const p=rows[i-1]||{};
         const gap=(N(r.p_realizado)&&N(r.p_bgt))?(N(r.p_realizado)/N(r.p_bgt)-1)*100:null;
@@ -3227,6 +3228,7 @@ async function renderGlobal(){
         <td>${r.mc!=null?nf.format(Math.round(N(r.mc))):'—'}${marg!=null?` <small style="${diCorMC(marg)}">${nf1.format(marg)}%</small>`:''}</td>
         <td style="${diCorRmc(rmc,medVg)}">${rmc!=null?nf1.format(rmc)+'×':'—'}</td>
         <td>${r.ads_custo!=null?nf.format(Math.round(N(r.ads_custo))):'—'}</td>
+        ${st.vgG==='TUDO'?`<td style="color:var(--ser)" title="total da conta ${r.ads_total!=null?nf.format(Math.round(N(r.ads_total))):'—'}">${(r.ads_total!=null&&r.ads_custo!=null)?'+'+nf.format(Math.round(N(r.ads_total)-N(r.ads_custo))):'—'}</td>`:''}
         <td style="${r.seg===segHoje?'':tcTick(N(r.p_realizado))}">${r.p_realizado!=null?rf2.format(N(r.p_realizado)):'—'}</td>
         <td style="${r.seg===segHoje?'':tcBgt(N(r.p_bgt))}">${r.p_bgt!=null?`${rf2.format(N(r.p_bgt))} <span class="gr">(${r.n_bgt})</span>`:'—'}</td>
         <td style="${gap!=null?'font-weight:700':''}">${gap!=null?nf1.format(gap)+'%':'—'}</td>
