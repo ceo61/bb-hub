@@ -3094,14 +3094,15 @@ async function renderSkus(){
 }
 
 /* ---------- Visão Global — semana a semana por grupo ---------- */
-function sparkVg(pts, cor, fmt){
+function sparkVg(pts, cor, fmt, mark){
   if(pts.length<2) return '';
   const W=200,H=46,m=4;
   const vs=pts.map(p=>p.val); const lo=Math.min(...vs), hi=Math.max(...vs); const rng=(hi-lo)||1;
   const x=k=>m+(W-2*m)*k/(pts.length-1), y=v=>m+(H-2*m)*(1-(v-lo)/rng);
   const d=pts.map((p,k)=>`${k?'L':'M'}${x(k).toFixed(1)} ${y(p.val).toFixed(1)}`).join(' ');
   const tt=pts.map(p=>`${p.seg.slice(8,10)}/${p.seg.slice(5,7)}: ${fmt(p.val)}`).join('\n');
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:46px" preserveAspectRatio="none"><title>${tt}</title>
+  const mk=(mark!=null&&mark>0&&mark<pts.length)?`<line x1="${x(mark).toFixed(1)}" x2="${x(mark).toFixed(1)}" y1="1" y2="${H-1}" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="4 3"/>`:'';
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:46px" preserveAspectRatio="none"><title>${tt}</title>${mk}
     <path d="${d} L${x(pts.length-1).toFixed(1)} ${H-1} L${x(0).toFixed(1)} ${H-1} Z" fill="${cor}" opacity=".12" stroke="none"/>
     <path d="${d}" fill="none" stroke="${cor}" stroke-width="2"/>
     <circle cx="${x(pts.length-1).toFixed(1)}" cy="${y(pts[pts.length-1].val).toFixed(1)}" r="3" fill="${cor}"/></svg>`;
@@ -3114,6 +3115,12 @@ async function renderGlobal(){
   const recG={}; st.vg.forEach(r=>recG[r.grupo_abc]=(recG[r.grupo_abc]||0)+(+r.receita||0));
   const grupos=[...new Set(st.vg.map(r=>r.grupo_abc))].sort((a,b)=>(recG[b]||0)-(recG[a]||0));
   if(!st.vgG||!grupos.includes(st.vgG)) st.vgG=grupos[0];
+  // mesas de gerente dentro de BNOT (início = 1ª ação deles na CTRL)
+  const MESAS={
+    'BNOT ALE':{quem:'Ale (CEO)', marcas:'AC·AP·AS·DE·LE·LG·IT+', full:'Acer, Apple, Asus, Dell, Lenovo, LG, Itautec e demais marcas A–L'},
+    'BNOT RICHARD':{quem:'Richard', ini:'2026-08-17', marcas:'HP', full:'HP'},
+    'BNOT DIOGO':{quem:'Diogo', ini:'2026-08-17', marcas:'SS·SO·TO·PO·MS·NA', full:'Samsung, Sony, Toshiba, Positivo, MSI, Nacional (marcas M–Z)'},
+  };
   const rows=st.vg.filter(r=>r.grupo_abc===st.vgG).sort((a,b)=>a.seg<b.seg?-1:1);
   const dHoje=new Date(); const seg0=new Date(dHoje); seg0.setDate(dHoje.getDate()-((dHoje.getDay()+6)%7));
   const segHoje=seg0.toISOString().slice(0,10);
@@ -3143,12 +3150,14 @@ async function renderGlobal(){
   const SEMLB=['dom','seg','ter','qua','qui','sex','sáb'];
   const tabelaDiaHtml=`<div class="tablecard"><div class="tscroll"><table style="min-width:820px">
       <thead><tr><th style="text-align:left">Dia</th><th title="MC 002 do dia em R$ (lucro bruto transacional); % = MC ÷ receita">Margem R$</th><th title="MC ÷ verba de ads do dia — régua ±30% vs mediana dos dias">ROAS MC</th><th title="${st.vgG==='TUDO'?'capturado por produto, soma de todos os grupos':'investimento Google Ads capturado por produto'}">Ads R$</th>${st.vgG==='TUDO'?'<th title="gasto TOTAL da conta Google Ads do dia menos o capturado por produto — Search, Display, Demand Gen, institucional e não-atribuído">Ads adicional</th>':''}<th title="receita ÷ unidades do dia">Ticket médio</th><th title="BGT ponderado na cesta fixa 30d; diária desde 27/08/26">Ticket BGT (n)</th><th title="preço puro, sem efeito de mix: nosso realizado ÷ BGT na mesma cesta (produtos vendidos no dia que têm preço BGT) — mouse mostra os dois valores">Gap ×BGT</th><th>Cliques</th><th>Acessos</th></tr></thead>
-      <tbody>${rowsD.map(r=>{
+      <tbody>${rowsD.map((r,i)=>{
         const hoje=r.dia===hojeISO, dow=new Date(r.dia+'T12:00:00').getDay(), fds=dow===0||dow===6;
+        const _gi=MESAS[st.vgG]?.ini;
+        const _div=(_gi&&i>0&&rowsD[i-1].dia<_gi&&r.dia>=_gi)?`<tr><td colspan="99" style="padding:3px 10px;text-align:left;border-top:2px dashed var(--accent);color:var(--accent);font-size:11px;font-weight:700">⬇ início da gestão do ${MESAS[st.vgG].quem} (${_gi.slice(8,10)}/${_gi.slice(5,7)})</td></tr>`:'';
         const gap=(N(r.p_real_cc)&&N(r.p_bgt_cc))?(N(r.p_real_cc)/N(r.p_bgt_cc)-1)*100:null;
         const marg=(N(r.receita)>0&&r.mc!=null)?N(r.mc)/N(r.receita)*100:null;
         const rmc=(N(r.ads_custo)>0&&r.mc!=null)?N(r.mc)/N(r.ads_custo):null;
-        return `<tr${hoje?' style="opacity:.75"':''}>
+        return `${_div}<tr${hoje?' style="opacity:.75"':''}>
         <td style="text-align:left"><b>${r.dia.slice(8,10)}/${r.dia.slice(5,7)}</b> <span style="font-size:10.5px;color:${fds?'var(--warn)':'var(--muted)'}">${SEMLB[dow]}</span>${hoje?'<span class="gr">*</span>':''}</td>
         <td>${r.mc!=null?nf.format(Math.round(N(r.mc))):'—'}${marg!=null?` <small style="${diCorMC(marg)}">${nf1.format(marg)}%</small>`:''}</td>
         <td style="${diCorRmc(rmc,medVgD)}">${rmc!=null?nf1.format(rmc)+'×':'—'}</td>
@@ -3191,7 +3200,9 @@ async function renderGlobal(){
       const a1=pts.slice(0,h).reduce((s,pt)=>s+pt.val,0)/h;
       const a2=pts.slice(-h).reduce((s,pt)=>s+pt.val,0)/h;
       const tr=a1>0?(a2/a1-1)*100:null;
-      items.push({g, pts, tr, a1, a2, last:pts[pts.length-1].val});
+      const _mi=MESAS[g]?.ini;
+      const mk=_mi?pts.findIndex(pt=>pt.seg>=_mi):-1;
+      items.push({g, pts, tr, a1, a2, last:pts[pts.length-1].val, mk});
     });
     items.sort((a,b)=>(b.tr??-1e9)-(a.tr??-1e9));
     if(!items.length) return '<p class="gr">ainda não há semanas suficientes</p>';
@@ -3199,22 +3210,23 @@ async function renderGlobal(){
       const cor=it.tr==null?'var(--muted)':it.tr>=0?'var(--good)':'var(--crit)';
       return `<div style="border:1px solid var(--hair);border-radius:10px;padding:10px 12px;min-width:0">
         <div style="display:flex;align-items:baseline;gap:6px">
-          <span class="gr" style="font-size:11px">${i+1}º</span><b style="font-size:13px">${esc(it.g)}</b>
+          <span class="gr" style="font-size:11px">${i+1}º</span><b style="font-size:13px" title="${MESAS[it.g]?esc('mesa do '+MESAS[it.g].quem+' — '+MESAS[it.g].full):''}">${esc(it.g)}</b>
           <b style="margin-left:auto;color:${cor};font-size:13px" title="média da 2ª metade da janela (${fmt(it.a2)}) vs 1ª metade (${fmt(it.a1)})">${it.tr==null?'—':(it.tr>=0?'▲ +':'▼ −')+nf1.format(Math.abs(it.tr))+'%'}</b>
         </div>
-        ${sparkVg(it.pts, cor, fmt)}
-        <div class="gr" style="font-size:11px;display:flex;justify-content:space-between"><span>início ${fmt(it.pts[0].val)}</span><span>últ. sem <b>${fmt(it.last)}</b></span></div>
+        ${sparkVg(it.pts, cor, fmt, it.mk>0?it.mk:null)}
+        <div class="gr" style="font-size:11px;display:flex;justify-content:space-between"><span>${it.mk>0?`<span style="color:var(--accent);font-weight:700" title="linha tracejada no gráfico — antes dela, gestão anterior">⬇ gestão ${it.pts[it.mk].seg.slice(8,10)}/${it.pts[it.mk].seg.slice(5,7)}</span>`:`início ${fmt(it.pts[0].val)}`}</span><span>últ. sem <b>${fmt(it.last)}</b></span></div>
       </div>`; }).join('')+`</div>`;
   };
   const cardsMargem=cardsVg(r=>N(r.mc), v=>nf.format(Math.round(v/1000))+'k');
   const cardsRmc=cardsVg(r=>{ const a=N(r.ads_custo), m=N(r.mc); return (a>0&&m!=null)?m/a:null; }, v=>nf1.format(v)+'×');
   $('#conteudo').innerHTML=`
     <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Site/002 · alterne <b>Semanal × Diário (14 dias)</b> abaixo — mesmos indicadores (o diário omite o ROAS). O card <b>TUDO</b> soma a empresa inteira: margem/receita = toda a 002, acessos = GA4 inteiro, cliques = todas as campanhas da conta, e ganha a coluna <b>Ads adicional</b> = gasto total da conta − capturado por produto (Search, Display, Demand Gen, institucional). <b>Margem R$</b> = MC da semana em reais (lucro bruto transacional BASE BBDI 2020; o % pequeno é MC ÷ receita) · <b>ROAS MC</b> = MC ÷ verba de ads (régua: <b style="color:var(--good)">verde</b> ≥ +30% da mediana das semanas, <b style="color:var(--crit)">vermelho</b> ≤ −30%) · <b>Ticket médio</b> = receita ÷ unidades da semana · <b>Ticket BGT</b> = concorrente ponderado na cesta fixa 30d; (n) = produtos com preço · <b>Gap ×BGT</b> = preço puro na <b>cesta comum</b>: nosso realizado ÷ BGT, os dois só nos produtos vendidos no período que têm preço BGT e com o mesmo peso — sem efeito de mix (BGT: scrape diário desde 27/08/26, antes sábados) · <b>ROAS</b> = receita ÷ verba · <b>Cliques</b> = pagos Google Ads · <b>Acessos</b> = views GA4 (todas as origens). Semana com * está em curso (sem MC fechada).</p>
-    <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px">${grupos.map(g=>`<button class="kpi" data-vg="${esc(g)}" style="padding:7px 14px;${st.vgG===g?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${esc(g)} <span class="gr">${nf.format(Math.round((recG[g]||0)/1000))}k</span></button>`).join('')}</div>
+    <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px">${grupos.map(g=>`<button class="kpi" data-vg="${esc(g)}" title="${MESAS[g]?esc('mesa do '+MESAS[g].quem+' — '+MESAS[g].full+(MESAS[g].ini?' · gestão desde 17/08/26':'')):''}" style="padding:7px 14px;${st.vgG===g?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${esc(g)} <span class="gr">${nf.format(Math.round((recG[g]||0)/1000))}k</span></button>`).join('')}</div>
     <div style="display:flex;gap:6px;align-items:center;margin:0 0 10px">
       <button id="vgVSem" ${st.vgVista==='sem'?'class="btn"':''} style="padding:5px 14px;font-size:12px;${st.vgVista==='sem'?'':'border:1px solid var(--hair);border-radius:9px;color:var(--ink2);background:none'}">Semanal</button>
       <button id="vgVDia" ${st.vgVista==='dia'?'class="btn"':''} style="padding:5px 14px;font-size:12px;${st.vgVista==='dia'?'':'border:1px solid var(--hair);border-radius:9px;color:var(--ink2);background:none'}">Diário (14d)</button>
     </div>
+    ${MESAS[st.vgG]?`<p class="gr" style="margin:0 0 10px">👤 <b>Mesa do ${MESAS[st.vgG].quem}</b> — marcas: ${MESAS[st.vgG].marcas}${MESAS[st.vgG].ini?` · <b style="color:var(--accent)">gestão desde 17/08/26</b> (⬇ marcado na tabela e nos gráficos — antes disso, gestão anterior)`:''}</p>`:''}
     ${st.vgVista==='sem'?leitura:''}
     ${st.vgVista==='dia'?tabelaDiaHtml:`<div class="tablecard"><div class="tscroll"><table style="min-width:900px">
       <thead><tr><th style="text-align:left">Semana</th><th title="MC 002 em R$ (lucro bruto transacional BASE BBDI 2020); o % ao lado é MC ÷ receita, bandas <30% vermelho · 30-40% âmbar · ≥40% verde">Margem R$</th><th title="MC 002 ÷ verba de ads — régua da Pressão Ads vs mediana das semanas">ROAS MC</th><th title="${st.vgG==='TUDO'?'investimento capturado por produto (shopping/P.Max), soma de todos os grupos':'investimento Google Ads capturado por produto'}">Ads R$</th>${st.vgG==='TUDO'?'<th title="gasto TOTAL da conta Google Ads menos o capturado por produto — Search, Display, Demand Gen, institucional e não-atribuído">Ads adicional</th>':''}<th title="receita ÷ unidades da semana (inclui descontos e mix)">Ticket médio</th><th title="BGT ponderado na cesta fixa 30d; (n) = produtos com preço BGT">Ticket BGT (n)</th><th title="preço puro, sem efeito de mix: nosso realizado ÷ BGT, os DOIS na mesma cesta (produtos vendidos na semana que têm preço BGT, ponderados pela venda da semana) — passe o mouse para ver os dois valores">Gap ×BGT</th><th title="receita ÷ verba de ads (sobre receita, não lucro)">ROAS</th><th>Cliques</th><th>Acessos</th></tr></thead>
@@ -3223,7 +3235,9 @@ async function renderGlobal(){
         const gap=(N(r.p_real_cc)&&N(r.p_bgt_cc))?(N(r.p_real_cc)/N(r.p_bgt_cc)-1)*100:null;
         const marg=(N(r.receita)>0&&r.mc!=null)?N(r.mc)/N(r.receita)*100:null;
         const rmc=(N(r.ads_custo)>0&&r.mc!=null)?N(r.mc)/N(r.ads_custo):null;
-        return `<tr>
+        const _gi=MESAS[st.vgG]?.ini;
+        const _div=(_gi&&i>0&&rows[i-1].seg<_gi&&r.seg>=_gi)?`<tr><td colspan="99" style="padding:3px 10px;text-align:left;border-top:2px dashed var(--accent);color:var(--accent);font-size:11px;font-weight:700">⬇ início da gestão do ${MESAS[st.vgG].quem} (${_gi.slice(8,10)}/${_gi.slice(5,7)}) — linhas acima = gestão anterior</td></tr>`:'';
+        return `${_div}<tr>
         <td style="text-align:left"><b>${r.seg.slice(8,10)}/${r.seg.slice(5,7)}</b>${r.seg===segHoje?'<span class="gr">*</span>':''}</td>
         <td>${r.mc!=null?nf.format(Math.round(N(r.mc))):'—'}${marg!=null?` <small style="${diCorMC(marg)}">${nf1.format(marg)}%</small>`:''}</td>
         <td style="${diCorRmc(rmc,medVg)}">${rmc!=null?nf1.format(rmc)+'×':'—'}</td>
