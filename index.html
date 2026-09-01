@@ -3178,7 +3178,7 @@ function gaugeMon(pMc,pAds,corMc){
   }
   const needle=(p,len,cor,w)=>{ if(p==null) return ''; const [x,y]=pt(ang(p),len);
     return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="${cor}" stroke-width="${w}" stroke-linecap="round"/>`; };
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:min(200px,100%);height:auto">
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:min(250px,100%);height:auto">
     <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--hair)" stroke-width="2.4"/>
     ${g}
     ${needle(pAds,46,'var(--accent)',3.6)}
@@ -3311,7 +3311,7 @@ async function renderGlobal(){
       const iso=d.toLocaleDateString('sv-SE'); if(iso>=hojeIm) break;
       const v=S[iso]||{mc:0,ads:0}; rM+=v.mc; rA+=v.ads; eM+=b.oM[o]; eA+=b.oA[o]; dias++; }
     const fM=b.mc>0?eM/b.mc:0, fA=b.ads>0?eA/b.ads:0;
-    return {dias, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null}; };
+    return {dias, rMc:rM, rAds:rA, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null}; };
   const benchMes=g=>{ const S=MGm[g]||{};
     // perfil por DIA DA SEMANA (sáb/dom quase não faturam; ads de fds ≈ meio dia) aplicado ao calendário real do mês
     const wM=Array(7).fill(0), wA=Array(7).fill(0), wN=Array(7).fill(0);
@@ -3331,7 +3331,7 @@ async function renderGlobal(){
       fullM+=b.wM[dw]; fullA+=b.wA[dw];
       if(iso<hojeIm){ const v=S[iso]||{mc:0,ads:0}; rM+=v.mc; rA+=v.ads; eM+=b.wM[dw]; eA+=b.wA[dw]; dias++; } }
     const fM=fullM>0?eM/fullM:0, fA=fullA>0?eA/fullA:0;
-    return {dias, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null}; };
+    return {dias, rMc:rM, rAds:rA, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null}; };
   const MET={}; metasArr.forEach(r=>MET[r.tipo+'|'+r.chave+'|'+r.grupo]=r);
   const cardMon=(tipo,chave,g,b,proj)=>{
     if(!b) return `<div style="border:1px solid var(--hair);border-radius:12px;padding:10px;text-align:center"><b>${MONG[g]}</b><p class="gr">sem histórico</p></div>`;
@@ -3341,17 +3341,22 @@ async function renderGlobal(){
     const pMc=(proj&&proj.projMc!=null&&metaMc>0)?proj.projMc/metaMc*100:null;
     const pAds=(proj&&proj.projAds!=null&&metaAds>0)?proj.projAds/metaAds*100:null;
     const corMc=pMc==null?'var(--muted)':pMc>=100?'var(--good)':pMc>=80?'var(--lar)':'var(--crit)';
-    return `<div style="border:1px solid var(--hair);border-radius:12px;padding:10px 8px;text-align:center;min-width:0">
-      <b style="font-size:13px" title="analista: ${esc(ANALISTA[g]||MONG[g])}">${MONG[g]}</b>
+    const lbl=tipo==='semana'?'na semana':'no mês';
+    const temDia=proj&&proj.dias>0;
+    return `<div style="border:1px solid var(--hair);border-radius:12px;padding:12px 10px;text-align:center;min-width:0">
+      <b style="font-size:14px" title="analista: ${esc(ANALISTA[g]||MONG[g])}">${MONG[g]}</b>
       ${gaugeMon(pMc,pAds,corMc)}
-      <div style="font-size:12.5px;margin-top:2px"><b style="color:${corMc}">MC ${pMc!=null?Math.round(pMc)+'%':'—'}</b> · <span style="color:var(--accent)">Ads ${pAds!=null?Math.round(pAds)+'%':'—'}</span></div>
-      <div class="gr" style="font-size:10.5px">${proj&&proj.dias?`proj. ${tipo==='semana'?'da semana':'do mês'} (${proj.dias}d): MC ${nf.format(Math.round(proj.projMc||0))} · Ads ${nf.format(Math.round(proj.projAds||0))}`:'aguardando o 1º dia fechado'}</div>
-      <div style="display:flex;gap:4px;justify-content:center;align-items:center;margin-top:6px;font-size:10.5px;flex-wrap:wrap">
-        MC<input id="monMc-${tipo}-${g}" type="number" value="${metaMc}" style="width:76px;padding:2px 4px;font-size:11px;text-align:right">
-        Ads<input id="monAds-${tipo}-${g}" type="number" value="${metaAds}" style="width:64px;padding:2px 4px;font-size:11px;text-align:right">
-        <button class="btn monSalva" data-tipo="${tipo}" data-chave="${chave}" data-g="${g}" title="salvar o esperado — vale só para ${tipo==='semana'?'esta semana':'este mês'}" style="padding:2px 8px;font-size:11px">💾</button>
+      <div style="font-size:11.5px;text-align:left;max-width:250px;margin:6px auto 0;line-height:1.6">
+        <div style="display:flex;justify-content:space-between;gap:8px"><span class="gr">Realizado (${temDia?proj.dias+'d':'0d'}):</span><span style="white-space:nowrap">MC <b>${temDia?nf.format(Math.round(proj.rMc)):'—'}</b> · Ads ${temDia?nf.format(Math.round(proj.rAds)):'—'}</span></div>
+        <div style="display:flex;justify-content:space-between;gap:8px"><span class="gr">Projetado ${lbl}:</span><span style="white-space:nowrap">MC <b>${temDia&&proj.projMc!=null?nf.format(Math.round(proj.projMc)):'—'}</b> · Ads ${temDia&&proj.projAds!=null?nf.format(Math.round(proj.projAds)):'—'}</span></div>
+        <div style="border-top:1px dashed var(--hair);margin:6px 0"></div>
+        <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;flex-wrap:wrap">
+          <span class="gr" title="média das ${tipo==='semana'?'mesmas semanas':'somas mensais'} dos últimos 12 meses: MC ${nf.format(Math.round(b.mc))} · Ads ${nf.format(Math.round(b.ads))}">Meta${ov?' <b style="color:var(--accent)">editada</b>':' (média 12m)'}:</span>
+          <span style="white-space:nowrap">MC<input id="monMc-${tipo}-${g}" type="number" value="${metaMc}" style="width:72px;padding:2px 4px;font-size:11px;text-align:right;margin:0 4px 0 3px">Ads<input id="monAds-${tipo}-${g}" type="number" value="${metaAds}" style="width:60px;padding:2px 4px;font-size:11px;text-align:right;margin:0 4px 0 3px"><button class="btn monSalva" data-tipo="${tipo}" data-chave="${chave}" data-g="${g}" title="salvar o esperado — vale só para ${tipo==='semana'?'esta semana':'este mês'}" style="padding:2px 8px;font-size:11px">💾</button></span>
+        </div>
       </div>
-      <div class="gr" style="font-size:10px;margin-top:3px">média 12m: ${nf.format(Math.round(b.mc))} · ${nf.format(Math.round(b.ads))}${ov?' · <b style="color:var(--accent)">meta editada</b>':''}</div>
+      <div class="gr" style="font-size:10px;letter-spacing:.12em;margin-top:10px">POSIÇÃO HOJE</div>
+      <div style="font-size:18px;margin-top:2px"><b style="color:${corMc}">MC ${pMc!=null?Math.round(pMc)+'%':'—'}</b> · <b style="color:var(--accent)">Ads ${pAds!=null?Math.round(pAds)+'%':'—'}</b></div>
     </div>`; };
   const cardsMonSem=GRM.map(g=>{ const b=benchSem(g); return cardMon('semana',segNow,g,b,b?projSem(g,b):null); }).join('');
   const cardsMonMes=GRM.map(g=>{ const b=benchMes(g); return cardMon('mes',mesKey,g,b,b?projMes(g,b):null); }).join('');
@@ -3390,12 +3395,12 @@ async function renderGlobal(){
     <div class="tablecard" style="margin-top:16px;padding:12px 16px">
       <div class="eyebrow">⏱ Monitor da semana — ${nAtual}ª semana do mês (${segNow.slice(8,10)}/${segNow.slice(5,7)} a ${fimSemMon.slice(8,10)}/${fimSemMon.slice(5,7)})</div>
       <p class="gr" style="margin:4px 0 10px"><b>12h = 100% do esperado</b> (escala: 9h = 0% · 3h = 200%). Ponteiro <b>comprido</b> = MC · <b>curto azul</b> = Ads. <b>Ads = investimento da categoria pelo NOME das campanhas</b> (Shopping, P.Max, Search, Display… — ativas ou pausadas; institucionais/gerais ficam fora). Esperado = média das ${nAtual}ªs semanas dos <b>últimos 12 meses</b> — ajuste nas caixas e salve (💾 vale só para esta semana; na virada, volta o histórico da semana nova). A projeção pega o realizado dos dias já fechados e divide pela fração que esses dias representam na semana histórica — com 1 dia você já vê a perspectiva. <b>Sábado e domingo já pesam pouco sozinhos</b>: o padrão é por dia da semana (dom quase não fatura; ads de fds ≈ meio dia útil cada).</p>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px">${cardsMonSem}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px">${cardsMonSem}</div>
     </div>
     <div class="tablecard" style="margin-top:14px;padding:12px 16px">
       <div class="eyebrow">⏱ Monitor do mês — ${MESNM[+mesKey.slice(5,7)-1]}/${mesKey.slice(2,4)}</div>
       <p class="gr" style="margin:4px 0 10px">Mesma leitura, agregando os dias do mês que vão passando e <b>projetando o fechamento</b> contra a média dos últimos 12 meses — cada dia pesa pelo seu padrão de dia da semana no calendário real do mês (fds conta quase nada na MC e ~meio dia no Ads). Metas editáveis por mês.</p>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px">${cardsMonMes}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px">${cardsMonMes}</div>
     </div>`;
   document.querySelectorAll('.kpi[data-vg]').forEach(b=>b.onclick=()=>{st.vgG=b.dataset.vg;renderGlobal();});
   $('#vgVSem').onclick=()=>{st.vgVista='sem';renderGlobal();};
