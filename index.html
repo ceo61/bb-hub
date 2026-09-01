@@ -3165,7 +3165,7 @@ function sparkVg(pts, cor, fmt, mark){
     <circle cx="${x(pts.length-1).toFixed(1)}" cy="${y(pts[pts.length-1].val).toFixed(1)}" r="3" fill="${cor}"/></svg>`;
 }
 
-function gaugeMon(pMc,pAds,corMc){
+function gaugeMon(pMc,pAds,corMc,trilha){
   const W=200,H=166,cx=100,cy=92,R=70;
   const ang=p=>Math.max(-135,Math.min(135,(p-100)*0.9));
   const pt=(a,r)=>{ const rad=a*Math.PI/180; return [(cx+r*Math.sin(rad)).toFixed(1),(cy-r*Math.cos(rad)).toFixed(1)]; };
@@ -3176,11 +3176,14 @@ function gaugeMon(pMc,pAds,corMc){
     const [tx,ty]=pt(a,R+13);
     g+=`<text x="${tx}" y="${ty}" text-anchor="middle" dominant-baseline="middle" font-size="11" fill="var(--muted)"${a===0?' font-weight="700"':''}>${lb}</text>`;
   }
-  const needle=(p,len,cor,w)=>{ if(p==null) return ''; const [x,y]=pt(ang(p),len);
-    return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="${cor}" stroke-width="${w}" stroke-linecap="round"/>`; };
+  const needle=(p,len,cor,w,op)=>{ if(p==null) return ''; const [x,y]=pt(ang(p),len);
+    return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="${cor}" stroke-width="${w}" stroke-linecap="round"${op?` stroke-opacity="${op}"`:''}/>`; };
+  const rastro=(trilha||[]).map(t=>
+    needle(t.pAds,42,'var(--accent)',2.4,t.op)+needle(t.pMc,57,corMc,2.8,t.op)).join('');
   return `<svg viewBox="0 0 ${W} ${H}" style="width:min(250px,100%);height:auto">
     <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--hair)" stroke-width="2.4"/>
     ${g}
+    ${rastro}
     ${needle(pAds,46,'var(--accent)',3.6)}
     ${needle(pMc,62,corMc,4.4)}
     <circle cx="${cx}" cy="${cy}" r="5" fill="var(--ink)"/>
@@ -3305,10 +3308,10 @@ async function renderGlobal(){
       if(tem){ tM+=wM; tA+=wA; n++; } }
     if(!n) return null;
     return {mc:tM/n, ads:tA/n, oM:oM.map((v,i2)=>oN[i2]?v/oN[i2]:0), oA:oA.map((v,i2)=>oN[i2]?v/oN[i2]:0)}; };
-  const projSem=(g,b)=>{ const S=MGm[g]||{};
+  const projSem=(g,b,corte)=>{ const S=MGm[g]||{};
     let rM=0,rA=0,eM=0,eA=0,dias=0;
     for(let o=0;o<7;o++){ const d=new Date(segNow+'T12:00:00'); d.setDate(d.getDate()+o);
-      const iso=d.toLocaleDateString('sv-SE'); if(iso>=hojeIm) break;
+      const iso=d.toLocaleDateString('sv-SE'); if(iso>=corte) break;
       const v=S[iso]||{mc:0,ads:0}; rM+=v.mc; rA+=v.ads; eM+=b.oM[o]; eA+=b.oA[o]; dias++; }
     const fM=b.mc>0?eM/b.mc:0, fA=b.ads>0?eA/b.ads:0;
     return {dias, rMc:rM, rAds:rA, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null}; };
@@ -3323,17 +3326,17 @@ async function renderGlobal(){
       if(tem){ tM+=mM; tA+=mA; n++; } }
     if(!n) return null;
     return {mc:tM/n, ads:tA/n, wM:wM.map((v,i2)=>wN[i2]?v/wN[i2]:0), wA:wA.map((v,i2)=>wN[i2]?v/wN[i2]:0)}; };
-  const projMes=(g,b)=>{ const S=MGm[g]||{};
+  const projMes=(g,b,corte)=>{ const S=MGm[g]||{};
     const [y,m]=mesKey.split('-').map(Number), nd=new Date(y,m,0).getDate();
     let rM=0,rA=0,eM=0,eA=0,fullM=0,fullA=0,dias=0;
     for(let dd=1;dd<=nd;dd++){ const iso=mesKey+'-'+String(dd).padStart(2,'0');
       const dw=new Date(iso+'T12:00:00').getDay();
       fullM+=b.wM[dw]; fullA+=b.wA[dw];
-      if(iso<hojeIm){ const v=S[iso]||{mc:0,ads:0}; rM+=v.mc; rA+=v.ads; eM+=b.wM[dw]; eA+=b.wA[dw]; dias++; } }
+      if(iso<corte){ const v=S[iso]||{mc:0,ads:0}; rM+=v.mc; rA+=v.ads; eM+=b.wM[dw]; eA+=b.wA[dw]; dias++; } }
     const fM=fullM>0?eM/fullM:0, fA=fullA>0?eA/fullA:0;
     return {dias, rMc:rM, rAds:rA, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null}; };
   const MET={}; metasArr.forEach(r=>MET[r.tipo+'|'+r.chave+'|'+r.grupo]=r);
-  const cardMon=(tipo,chave,g,b,proj)=>{
+  const cardMon=(tipo,chave,g,b,proj,trilha)=>{
     if(!b) return `<div style="border:1px solid var(--hair);border-radius:12px;padding:10px;text-align:center"><b>${MONG[g]}</b><p class="gr">sem histórico</p></div>`;
     const ov=MET[tipo+'|'+chave+'|'+g];
     const metaMc=(ov&&ov.mc_meta!=null)?+ov.mc_meta:Math.round(b.mc);
@@ -3341,11 +3344,15 @@ async function renderGlobal(){
     const pMc=(proj&&proj.projMc!=null&&metaMc>0)?proj.projMc/metaMc*100:null;
     const pAds=(proj&&proj.projAds!=null&&metaAds>0)?proj.projAds/metaAds*100:null;
     const corMc=pMc==null?'var(--muted)':pMc>=100?'var(--good)':pMc>=80?'var(--lar)':'var(--crit)';
+    const tr=(trilha||[]).map((p,i2)=>({
+      pMc:(p&&p.projMc!=null&&metaMc>0)?p.projMc/metaMc*100:null,
+      pAds:(p&&p.projAds!=null&&metaAds>0)?p.projAds/metaAds*100:null,
+      op:i2===0?0.4:0.18 })).filter(t=>t.pMc!=null||t.pAds!=null);
     const lbl=tipo==='semana'?'na semana':'no mês';
     const temDia=proj&&proj.dias>0;
     return `<div style="border:1px solid var(--hair);border-radius:12px;padding:12px 10px;text-align:center;min-width:0">
       <b style="font-size:14px" title="analista: ${esc(ANALISTA[g]||MONG[g])}">${MONG[g]}</b>
-      ${gaugeMon(pMc,pAds,corMc)}
+      ${gaugeMon(pMc,pAds,corMc,tr)}
       <div style="font-size:11.5px;text-align:left;max-width:250px;margin:6px auto 0;line-height:1.6">
         <div style="display:flex;justify-content:space-between;gap:8px"><span class="gr">Realizado (${temDia?proj.dias+'d':'0d'}):</span><span style="white-space:nowrap">MC <b>${temDia?nf.format(Math.round(proj.rMc)):'—'}</b> · Ads ${temDia?nf.format(Math.round(proj.rAds)):'—'}</span></div>
         <div style="display:flex;justify-content:space-between;gap:8px"><span class="gr">Projetado ${lbl}:</span><span style="white-space:nowrap">MC <b>${temDia&&proj.projMc!=null?nf.format(Math.round(proj.projMc)):'—'}</b> · Ads ${temDia&&proj.projAds!=null?nf.format(Math.round(proj.projAds)):'—'}</span></div>
@@ -3358,8 +3365,11 @@ async function renderGlobal(){
       <div class="gr" style="font-size:10px;letter-spacing:.12em;margin-top:10px">POSIÇÃO HOJE</div>
       <div style="font-size:18px;margin-top:2px"><b style="color:${corMc}">MC ${pMc!=null?Math.round(pMc)+'%':'—'}</b> · <b style="color:var(--accent)">Ads ${pAds!=null?Math.round(pAds)+'%':'—'}</b></div>
     </div>`; };
-  const cardsMonSem=GRM.map(g=>{ const b=benchSem(g); return cardMon('semana',segNow,g,b,b?projSem(g,b):null); }).join('');
-  const cardsMonMes=GRM.map(g=>{ const b=benchMes(g); return cardMon('mes',mesKey,g,b,b?projMes(g,b):null); }).join('');
+  const dAtras=k=>{ const d=new Date(); d.setDate(d.getDate()-k); return d.toLocaleDateString('sv-SE'); };
+  const cardsMonSem=GRM.map(g=>{ const b=benchSem(g);
+    return cardMon('semana',segNow,g,b,b?projSem(g,b,hojeIm):null,b?[projSem(g,b,dAtras(1)),projSem(g,b,dAtras(2))]:[]); }).join('');
+  const cardsMonMes=GRM.map(g=>{ const b=benchMes(g);
+    return cardMon('mes',mesKey,g,b,b?projMes(g,b,hojeIm):null,b?[projMes(g,b,dAtras(1)),projMes(g,b,dAtras(2))]:[]); }).join('');
   const fimSemMon=(()=>{ const d=new Date(segNow+'T12:00:00'); d.setDate(d.getDate()+6); return d.toLocaleDateString('sv-SE'); })();
   const MESNM=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
   $('#conteudo').innerHTML=`
@@ -3394,7 +3404,7 @@ async function renderGlobal(){
     <p class="gr" style="margin:10px 2px 0">Cores nos valores = posição na distribuição das próprias semanas/dias do grupo: <span style="color:var(--good);font-weight:600">verde</span> = terço alto · <span style="color:var(--crit);font-weight:600">vermelho</span> = terço baixo (na BGT, preço alto do concorrente = verde). Semana/dia em curso (*) fica sem cor. Grupos = mesas de analista (mesma consolidação da curva ABC).</p>
     <div class="tablecard" style="margin-top:16px;padding:12px 16px">
       <div class="eyebrow">⏱ Monitor da semana — ${nAtual}ª semana do mês (${segNow.slice(8,10)}/${segNow.slice(5,7)} a ${fimSemMon.slice(8,10)}/${fimSemMon.slice(5,7)})</div>
-      <p class="gr" style="margin:4px 0 10px"><b>12h = 100% do esperado</b> (escala: 9h = 0% · 3h = 200%). Ponteiro <b>comprido</b> = MC · <b>curto azul</b> = Ads. <b>Ads = investimento da categoria pelo NOME das campanhas</b> (Shopping, P.Max, Search, Display… — ativas ou pausadas; institucionais/gerais ficam fora). Esperado = média das ${nAtual}ªs semanas dos <b>últimos 12 meses</b> — ajuste nas caixas e salve (💾 vale só para esta semana; na virada, volta o histórico da semana nova). A projeção pega o realizado dos dias já fechados e divide pela fração que esses dias representam na semana histórica — com 1 dia você já vê a perspectiva. <b>Sábado e domingo já pesam pouco sozinhos</b>: o padrão é por dia da semana (dom quase não fatura; ads de fds ≈ meio dia útil cada).</p>
+      <p class="gr" style="margin:4px 0 10px"><b>12h = 100% do esperado</b> (escala: 9h = 0% · 3h = 200%). Ponteiro <b>comprido</b> = MC · <b>curto azul</b> = Ads. <b>Ads = investimento da categoria pelo NOME das campanhas</b> (Shopping, P.Max, Search, Display… — ativas ou pausadas; institucionais/gerais ficam fora). Esperado = média das ${nAtual}ªs semanas dos <b>últimos 12 meses</b> — ajuste nas caixas e salve (💾 vale só para esta semana; na virada, volta o histórico da semana nova). A projeção pega o realizado dos dias já fechados e divide pela fração que esses dias representam na semana histórica — com 1 dia você já vê a perspectiva. <b>Sábado e domingo já pesam pouco sozinhos</b>: o padrão é por dia da semana (dom quase não fatura; ads de fds ≈ meio dia útil cada). <b>Rastro em degradê</b> = onde o ponteiro estava ontem e anteontem — dá pra ver se a semana está melhorando ou piorando.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px">${cardsMonSem}</div>
     </div>
     <div class="tablecard" style="margin-top:14px;padding:12px 16px">
