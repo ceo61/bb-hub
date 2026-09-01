@@ -1867,7 +1867,9 @@ async function renderPressao(){
 
   const badge=a=>{
     if(!a) return '';
-    if(a.status==='marcado')   return '<span style="background:var(--warn-soft);color:var(--warn);padding:2px 8px;border-radius:10px;font-size:11px">\u23f3 aguardando</span>';
+    if(a.status==='marcado')   return '<span style="background:var(--warn-soft);color:var(--warn);padding:2px 8px;border-radius:10px;font-size:11px">\u23f3 aguardando autoriza\u00e7\u00e3o</span>';
+    if(a.status==='autorizado') return '<span style="background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:10px;font-size:11px">\u2705 autorizado \u2014 montando em at\u00e9 2 min\u2026</span>';
+    if(a.status==='erro')       return `<span title="${esc(a.obs||'')}" style="background:var(--crit-soft);color:var(--crit);padding:2px 8px;border-radius:10px;font-size:11px">\u26a0 erro na montagem</span>`;
     if(a.status==='montado')   return `<span title="${esc(a.campanha||'')}" style="background:var(--good-soft);color:var(--good);padding:2px 8px;border-radius:10px;font-size:11px">\ud83d\ude80 em campanha${a.troas?' \u00b7 tROAS '+nf.format(a.troas*100)+'%':''}</span>`;
     if(a.status==='desmontar') return '<span style="background:var(--crit-soft);color:var(--crit);padding:2px 8px;border-radius:10px;font-size:11px">\ud83e\uddf9 desmonte pedido</span>';
     return `<span class="gr">${esc(a.status)}</span>`;
@@ -1942,7 +1944,7 @@ async function renderPressao(){
         <td>${p.estoque!=null?nf.format(Math.round(p.estoque)):'\u2014'}</td>
         <td title="${p.folga_dias!=null?nf.format(Math.round(p.folga_dias))+' dias':''}" style="${p.folga_dias!=null?(p.folga_dias<30?'color:var(--crit);font-weight:700':p.folga_dias<60?'color:var(--lar);font-weight:600':''):''}">${p.folga_dias!=null?nf1.format(p.folga_dias/30.44)+' m':'\u2014'}</td>
         <td>${spark}</td>
-        <td>${a.status==='montado'?`<button class="btn prDesm" data-id="${a.id}" style="padding:2px 10px;font-size:11px">pedir desmonte</button>`:a.status==='marcado'?`<button class="btn prMontei" data-id="${a.id}" style="padding:2px 10px;font-size:11px;background:var(--good)">\u2705 montei</button> <button class="btn prDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">desfazer</button>`:''}</td>
+        <td>${a.status==='montado'?`<button class="btn prDesm" data-id="${a.id}" style="padding:2px 10px;font-size:11px">pedir desmonte</button>`:a.status==='marcado'?`${st.admin?`<button class="btn prAut" data-id="${a.id}" data-cod="${esc(a.cod)}" title="autoriza e o executor insere na campanha em at\u00e9 2 min" style="padding:2px 10px;font-size:11px;background:var(--accent)">\u2714 autorizar</button> `:''}<button class="btn prMontei" data-id="${a.id}" style="padding:2px 10px;font-size:11px;background:var(--good)">\u2705 montei</button> <button class="btn prDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">desfazer</button>`:a.status==='erro'?`<button class="btn prMontei" data-id="${a.id}" style="padding:2px 10px;font-size:11px;background:var(--good)">\u2705 montei</button> <button class="btn prDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">desfazer</button>`:''}</td>
       </tr>`;}).join('')}
     </tbody></table></div></div></details>` : '';
 
@@ -1956,7 +1958,7 @@ async function renderPressao(){
   $('#conteudo').innerHTML=`
     <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">80/20 <b>dentro de cada um dos 6 maiores grupos</b> (receita B2C 28d \u00b7 ${painel.length} SKUs \u00b7 atualizado ${dt}).
     <b>ROAS fat</b> = faturamento site (Protheus) \u00f7 investimento Ads \u00b7 <b>ROAS MC</b> = margem de contribui\u00e7\u00e3o 002 (BASE BBDI) \u00f7 Ads \u00b7 <b>ROAS Ads</b> = valor de convers\u00e3o \u00f7 custo (todas as campanhas do produto, 30d).
-    <b style="color:var(--good)">Verde</b> = 30%+ acima da mediana do grupo (candidato a mais investimento) \u00b7 <b style="color:var(--crit)">vermelho</b> = 30%+ abaixo. Clique no t\u00edtulo da coluna para ordenar. Marcar \ud83d\ude80 s\u00f3 registra a aposta \u2014 o Claude monta o grupo com tROAS menor.</p>
+    <b style="color:var(--good)">Verde</b> = 30%+ acima da mediana do grupo (candidato a mais investimento) \u00b7 <b style="color:var(--crit)">vermelho</b> = 30%+ abaixo. Clique no t\u00edtulo da coluna para ordenar. Marcar \ud83d\ude80 registra a aposta; o gestor <b>\u2714 autoriza</b> e o executor insere sozinho no grupo CTRL da campanha (baterias e teclados; demais fam\u00edlias: montagem manual + \u2705 montei).</p>
     ${blocoAcomp}
     <h3 style="margin:4px 0 8px;font-size:14.5px">\ud83c\udfaf Todos os produtos 80/20 da conta: eleger press\u00e3o</h3>
     <div style="display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap;align-items:center">
@@ -2048,6 +2050,16 @@ async function renderPressao(){
     const mw=e.target.closest('[data-mcw]');
     if(mw){ e.preventDefault(); e.stopPropagation(); abreMCsemanal(mw.dataset.mcw, st.dim[mw.dataset.mcw]); return; }
     const b=e.target.closest('button'); if(!b) return;
+    if(b.classList.contains('prAut')){
+      const fam=(b.dataset.cod||'').split('-')[0];
+      if(!['BB11','KB'].includes(fam)){ alert('Família '+fam+' ainda não tem grupo CTRL mapeado no Google Ads — monta manual e usa o ✅ montei (ou me pede para mapear).'); return; }
+      if(!confirm('Autorizar '+b.dataset.cod+'? O executor insere no grupo CTRL da campanha em até 2 minutos.')) return;
+      let email='?'; try{ email=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e2){}
+      b.disabled=true;
+      const {error}=await sb.from('ads_pressao').update({status:'autorizado', autorizado_por:email, autorizado_em:new Date().toISOString()}).eq('id',b.dataset.id);
+      if(error){ alert('Erro: '+error.message); b.disabled=false; return; }
+      renderPressao(); return;
+    }
     if(b.classList.contains('prMontei')){
       const camp=prompt('Nome da campanha criada no Google Ads (como está lá):');
       if(camp===null) return;
