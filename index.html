@@ -3312,21 +3312,24 @@ async function renderGlobal(){
     const fM=b.mc>0?eM/b.mc:0, fA=b.ads>0?eA/b.ads:0;
     return {dias, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null}; };
   const benchMes=g=>{ const S=MGm[g]||{};
-    const dM=Array(32).fill(0), dA=Array(32).fill(0), dN=Array(32).fill(0);
+    // perfil por DIA DA SEMANA (sáb/dom quase não faturam; ads de fds ≈ meio dia) aplicado ao calendário real do mês
+    const wM=Array(7).fill(0), wA=Array(7).fill(0), wN=Array(7).fill(0);
     let tM=0,tA=0,n=0;
     for(const mes of m12mes){ let mM=0,mA=0,tem=false;
       const [y,mm]=mes.split('-').map(Number), nd=new Date(y,mm,0).getDate();
       for(let dd=1;dd<=nd;dd++){ const iso=mes+'-'+String(dd).padStart(2,'0'); const v=S[iso];
-        if(v){ tem=true; mM+=v.mc; mA+=v.ads; dM[dd]+=v.mc; dA[dd]+=v.ads; dN[dd]++; } }
+        if(v){ tem=true; mM+=v.mc; mA+=v.ads; const dw=new Date(iso+'T12:00:00').getDay(); wM[dw]+=v.mc; wA[dw]+=v.ads; wN[dw]++; } }
       if(tem){ tM+=mM; tA+=mA; n++; } }
     if(!n) return null;
-    return {mc:tM/n, ads:tA/n, dM:dM.map((v,i2)=>dN[i2]?v/dN[i2]:0), dA:dA.map((v,i2)=>dN[i2]?v/dN[i2]:0)}; };
+    return {mc:tM/n, ads:tA/n, wM:wM.map((v,i2)=>wN[i2]?v/wN[i2]:0), wA:wA.map((v,i2)=>wN[i2]?v/wN[i2]:0)}; };
   const projMes=(g,b)=>{ const S=MGm[g]||{};
     const [y,m]=mesKey.split('-').map(Number), nd=new Date(y,m,0).getDate();
-    let rM=0,rA=0,eM=0,eA=0,dias=0;
-    for(let dd=1;dd<=nd;dd++){ const iso=mesKey+'-'+String(dd).padStart(2,'0'); if(iso>=hojeIm) break;
-      const v=S[iso]||{mc:0,ads:0}; rM+=v.mc; rA+=v.ads; eM+=b.dM[dd]; eA+=b.dA[dd]; dias++; }
-    const fM=b.mc>0?eM/b.mc:0, fA=b.ads>0?eA/b.ads:0;
+    let rM=0,rA=0,eM=0,eA=0,fullM=0,fullA=0,dias=0;
+    for(let dd=1;dd<=nd;dd++){ const iso=mesKey+'-'+String(dd).padStart(2,'0');
+      const dw=new Date(iso+'T12:00:00').getDay();
+      fullM+=b.wM[dw]; fullA+=b.wA[dw];
+      if(iso<hojeIm){ const v=S[iso]||{mc:0,ads:0}; rM+=v.mc; rA+=v.ads; eM+=b.wM[dw]; eA+=b.wA[dw]; dias++; } }
+    const fM=fullM>0?eM/fullM:0, fA=fullA>0?eA/fullA:0;
     return {dias, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null}; };
   const MET={}; metasArr.forEach(r=>MET[r.tipo+'|'+r.chave+'|'+r.grupo]=r);
   const cardMon=(tipo,chave,g,b,proj)=>{
@@ -3385,12 +3388,12 @@ async function renderGlobal(){
     <p class="gr" style="margin:10px 2px 0">Cores nos valores = posição na distribuição das próprias semanas/dias do grupo: <span style="color:var(--good);font-weight:600">verde</span> = terço alto · <span style="color:var(--crit);font-weight:600">vermelho</span> = terço baixo (na BGT, preço alto do concorrente = verde). Semana/dia em curso (*) fica sem cor. Grupos = mesas de analista (mesma consolidação da curva ABC).</p>
     <div class="tablecard" style="margin-top:16px;padding:12px 16px">
       <div class="eyebrow">⏱ Monitor da semana — ${nAtual}ª semana do mês (${segNow.slice(8,10)}/${segNow.slice(5,7)} a ${fimSemMon.slice(8,10)}/${fimSemMon.slice(5,7)})</div>
-      <p class="gr" style="margin:4px 0 10px"><b>12h = 100% do esperado</b> (escala: 9h = 0% · 3h = 200%). Ponteiro <b>comprido</b> = MC · <b>curto azul</b> = Ads. Esperado = média das ${nAtual}ªs semanas dos <b>últimos 12 meses</b> — ajuste nas caixas e salve (💾 vale só para esta semana; na virada, volta o histórico da semana nova). A projeção pega o realizado dos dias já fechados e divide pela fração que esses dias representam na semana histórica — com 1 dia você já vê a perspectiva.</p>
+      <p class="gr" style="margin:4px 0 10px"><b>12h = 100% do esperado</b> (escala: 9h = 0% · 3h = 200%). Ponteiro <b>comprido</b> = MC · <b>curto azul</b> = Ads. Esperado = média das ${nAtual}ªs semanas dos <b>últimos 12 meses</b> — ajuste nas caixas e salve (💾 vale só para esta semana; na virada, volta o histórico da semana nova). A projeção pega o realizado dos dias já fechados e divide pela fração que esses dias representam na semana histórica — com 1 dia você já vê a perspectiva. <b>Sábado e domingo já pesam pouco sozinhos</b>: o padrão é por dia da semana (dom quase não fatura; ads de fds ≈ meio dia útil cada).</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px">${cardsMonSem}</div>
     </div>
     <div class="tablecard" style="margin-top:14px;padding:12px 16px">
       <div class="eyebrow">⏱ Monitor do mês — ${MESNM[+mesKey.slice(5,7)-1]}/${mesKey.slice(2,4)}</div>
-      <p class="gr" style="margin:4px 0 10px">Mesma leitura, agregando os dias do mês que vão passando e <b>projetando o fechamento</b> contra a média dos últimos 12 meses (metas editáveis por mês).</p>
+      <p class="gr" style="margin:4px 0 10px">Mesma leitura, agregando os dias do mês que vão passando e <b>projetando o fechamento</b> contra a média dos últimos 12 meses — cada dia pesa pelo seu padrão de dia da semana no calendário real do mês (fds conta quase nada na MC e ~meio dia no Ads). Metas editáveis por mês.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px">${cardsMonMes}</div>
     </div>`;
   document.querySelectorAll('.kpi[data-vg]').forEach(b=>b.onclick=()=>{st.vgG=b.dataset.vg;renderGlobal();});
