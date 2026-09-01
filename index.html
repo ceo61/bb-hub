@@ -1956,13 +1956,14 @@ async function renderPressao(){
 
   const dt = painel[0]?.atualizado_em ? new Date(painel[0].atualizado_em+'T12:00:00').toLocaleDateString('pt-BR') : '\u2014';
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">80/20 <b>dentro de cada um dos 6 maiores grupos</b> (receita B2C 28d \u00b7 ${painel.length} SKUs \u00b7 atualizado ${dt}).
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">80/20 <b>dentro de cada um dos 6 maiores grupos</b> (receita B2C 28d \u00b7 atualizado ${dt}); o bot\u00e3o <b style="color:var(--lar)">95/05</b> abre a cauda at\u00e9 95% da receita do grupo.
     <b>ROAS fat</b> = faturamento site (Protheus) \u00f7 investimento Ads \u00b7 <b>ROAS MC</b> = margem de contribui\u00e7\u00e3o 002 (BASE BBDI) \u00f7 Ads \u00b7 <b>ROAS Ads</b> = valor de convers\u00e3o \u00f7 custo (todas as campanhas do produto, 30d).
     <b style="color:var(--good)">Verde</b> = 30%+ acima da mediana do grupo (candidato a mais investimento) \u00b7 <b style="color:var(--crit)">vermelho</b> = 30%+ abaixo. Clique no t\u00edtulo da coluna para ordenar. Marcar \ud83d\ude80 registra a aposta; o gestor <b>\u2714 autoriza</b> e o executor insere sozinho no grupo CTRL da campanha (baterias e teclados; demais fam\u00edlias: montagem manual + \u2705 montei).</p>
     ${blocoAcomp}
     <h3 style="margin:4px 0 8px;font-size:14.5px">\ud83c\udfaf Todos os produtos 80/20 da conta: eleger press\u00e3o</h3>
     <div style="display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap;align-items:center">
       ${grupos.map(g=>`<button class="btn przG" data-g="${esc(g)}" style="padding:4px 14px;${g===st.przGrupo?'background:var(--accent);color:#fff;border-radius:8px':''}">${esc(g)}</button>`).join('')}
+      <button id="przP95" title="amplia o corte: mostra os produtos até 95% da receita do grupo (a cauda que não aparece no 80/20)" style="padding:4px 14px;margin-left:14px;border:1.5px solid var(--lar);border-radius:8px;font-weight:700;background:${st.przPareto==='95'?'var(--lar)':'none'};color:${st.przPareto==='95'?'#fff':'var(--lar)'}">95/05</button>
       <span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center;border:1px solid var(--hair);border-radius:10px;padding:4px 10px;font-size:11px;color:var(--muted)">
         Saldo\u2265<input id="przFSaldo" type="number" min="0" value="${st.przFSaldo??''}" style="width:64px;padding:2px 6px;font-size:12px">
         Folga\u2265<input id="przFFolga" type="number" min="0" step="0.5" value="${st.przFFolga??''}" style="width:52px;padding:2px 6px;font-size:12px">m
@@ -1991,14 +1992,20 @@ async function renderPressao(){
   function desenha(){
     const f=($('#przBusca').value||'').toUpperCase();
     const doGrupo=painel.filter(p=>p.grupo===st.przGrupo);
+    let base=doGrupo;
+    if(st.przPareto!=='95'){
+      const s80=new Set(); let prev=0;
+      doGrupo.slice().sort((a,b)=>(b.receita_b2c_28d||0)-(a.receita_b2c_28d||0)).forEach(p=>{ if(prev<0.80) s80.add(p.cod); prev=+p.pareto_grupo||prev; });
+      base=doGrupo.filter(p=>s80.has(p.cod));
+    }
     const meds={};
-    for(const k of ['roas_fat_sem','roas_fat_30d','roas_mc_sem','roas_mc_30d','roas_30d','roas_ads_sem']) meds[k]=mediana(doGrupo.map(p=>p[k]));
-    for(const p of doGrupo){
+    for(const k of ['roas_fat_sem','roas_fat_30d','roas_mc_sem','roas_mc_30d','roas_30d','roas_ads_sem']) meds[k]=mediana(base.map(p=>p[k]));
+    for(const p of base){
       let sv=0, sw=0;
       for(const k in PESOS){ const v=p[k], m=meds[k]; if(v!=null&&m!=null&&m>0){ sv+=PESOS[k]*(v/m); sw+=PESOS[k]; } }
       p._idx = sw>0 ? Math.round(100*sv/sw) : null;
     }
-    let rows=doGrupo.filter(p=>{
+    let rows=base.filter(p=>{
       if(f&&!(p.cod.toUpperCase().includes(f)||(p.descricao||'').toUpperCase().includes(f))) return false;
       if(st.przFSaldo!=null&&!((+p.estoque||0)>=st.przFSaldo)) return false;
       if(st.przFFolga!=null&&!((+p.folga_dias||0)/30.44>=st.przFFolga)) return false;
@@ -2039,6 +2046,10 @@ async function renderPressao(){
   [['przFSaldo','przFSaldo'],['przFFolga','przFFolga'],['przFRoas','przFRoas']].forEach(([id,key])=>{
     $('#'+id).oninput=e=>{ st[key]=fNum(e.target.value); clearTimeout(przT); przT=setTimeout(desenha,250); };
   });
+  $('#przP95').onclick=()=>{ st.przPareto=st.przPareto==='95'?'80':'95';
+    const b=$('#przP95'), on=st.przPareto==='95';
+    b.style.background=on?'var(--lar)':'none'; b.style.color=on?'#fff':'var(--lar)';
+    desenha(); };
   $('#przHead').onclick=e=>{
     const th=e.target.closest('th'); if(!th||!th.dataset.k) return;
     if(st.przSort===th.dataset.k) st.przDir=!st.przDir; else { st.przSort=th.dataset.k; st.przDir=true; }
