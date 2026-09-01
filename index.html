@@ -3165,10 +3165,34 @@ function sparkVg(pts, cor, fmt, mark){
     <circle cx="${x(pts.length-1).toFixed(1)}" cy="${y(pts[pts.length-1].val).toFixed(1)}" r="3" fill="${cor}"/></svg>`;
 }
 
+function gaugeMon(pMc,pAds,corMc){
+  const W=150,H=126,cx=75,cy=70,R=52;
+  const ang=p=>Math.max(-135,Math.min(135,(p-100)*0.9));
+  const pt=(a,r)=>{ const rad=a*Math.PI/180; return [(cx+r*Math.sin(rad)).toFixed(1),(cy-r*Math.cos(rad)).toFixed(1)]; };
+  let g='';
+  for(const [a,lb] of [[-90,'0'],[-45,'50'],[0,'100'],[45,'150'],[90,'200']]){
+    const [x1,y1]=pt(a,R-5),[x2,y2]=pt(a,R+1);
+    g+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--muted)" stroke-width="${a===0?2.4:1.1}"/>`;
+    const [tx,ty]=pt(a,R+11);
+    g+=`<text x="${tx}" y="${ty}" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="var(--muted)"${a===0?' font-weight="700"':''}>${lb}</text>`;
+  }
+  const needle=(p,len,cor,w)=>{ if(p==null) return ''; const [x,y]=pt(ang(p),len);
+    return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="${cor}" stroke-width="${w}" stroke-linecap="round"/>`; };
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:min(150px,100%);height:auto">
+    <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--hair)" stroke-width="2"/>
+    ${g}
+    ${needle(pAds,34,'var(--accent)',3)}
+    ${needle(pMc,46,corMc,3.6)}
+    <circle cx="${cx}" cy="${cy}" r="4" fill="var(--ink)"/>
+  </svg>`;
+}
+
 async function renderGlobal(){
   $('#conteudo').innerHTML='<div class="carregando">Montando visão global…</div>';
   if(!st.vg) st.vg=await tudo('visao_global_mat',{eq:[]});
   if(!st.vgd){ try{ st.vgd=await tudo('visao_global_dia_mat',{eq:[]}); }catch(e){ st.vgd=[]; } }
+  if(!st.mon){ try{ st.mon=await tudo('monitor_diario_grupo',{eq:[]}); }catch(e){ st.mon=[]; } }
+  let metasArr=[]; try{ metasArr=(await sb.from('monitor_metas').select('*')).data||[]; }catch(e){}
   const recG={}; st.vg.forEach(r=>recG[r.grupo_abc]=(recG[r.grupo_abc]||0)+(+r.receita||0));
   let grupos=[...new Set(st.vg.map(r=>r.grupo_abc))].sort((a,b)=>(recG[b]||0)-(recG[a]||0));
   if(!st.vgG||!grupos.includes(st.vgG)) st.vgG=grupos[0];
@@ -3253,37 +3277,82 @@ async function renderGlobal(){
     if(da!=null) f.push(`acessos ${da>0?'+':''}${nf.format(Math.round(da))}%`);
     leitura=`<div class="banner ambar" style="background:var(--accent-soft);color:var(--accent);font-weight:400">🔍 <b>Semana fechada (${u.seg.slice(8,10)}/${u.seg.slice(5,7)}) vs anterior:</b> ${f.join(' · ')}</div>`;
   }
-  // cartões ranqueados por mesa (semanas fechadas com MC): tendência = média da 2ª metade vs 1ª
-  const porG={};
-  st.vg.forEach(r=>{ if(r.seg===segHoje||r.mc==null||r.grupo_abc==='TUDO') return; (porG[r.grupo_abc]=porG[r.grupo_abc]||[]).push(r); });
-  const cardsVg=(calc, fmt)=>{
-    const items=[];
-    grupos.forEach(g=>{
-      const rs=(porG[g]||[]).slice().sort((a,b)=>a.seg<b.seg?-1:1);
-      const pts=rs.map(r=>({seg:r.seg, val:calc(r)})).filter(pt=>pt.val!=null&&isFinite(pt.val));
-      if(pts.length<4) return;
-      const h=Math.floor(pts.length/2);
-      const a1=pts.slice(0,h).reduce((s,pt)=>s+pt.val,0)/h;
-      const a2=pts.slice(-h).reduce((s,pt)=>s+pt.val,0)/h;
-      const tr=a1>0?(a2/a1-1)*100:null;
-      const mk=pts.findIndex(pt=>pt.seg>=GESTAO);
-      items.push({g, pts, tr, a1, a2, last:pts[pts.length-1].val, mk});
-    });
-    items.sort((a,b)=>(b.tr??-1e9)-(a.tr??-1e9));
-    if(!items.length) return '<p class="gr">ainda não há semanas suficientes</p>';
-    return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px">`+items.map((it,i)=>{
-      const cor=it.tr==null?'var(--muted)':it.tr>=0?'var(--good)':'var(--crit)';
-      return `<div style="border:1px solid var(--hair);border-radius:10px;padding:10px 12px;min-width:0">
-        <div style="display:flex;align-items:baseline;gap:6px">
-          <span class="gr" style="font-size:11px">${i+1}º</span><b style="font-size:13px" title="${esc('analista: '+(ANALISTA[it.g]||'sem analista definido'))}">${esc(it.g)}</b>
-          <b style="margin-left:auto;color:${cor};font-size:13px" title="média da 2ª metade da janela (${fmt(it.a2)}) vs 1ª metade (${fmt(it.a1)})">${it.tr==null?'—':(it.tr>=0?'▲ +':'▼ −')+nf1.format(Math.abs(it.tr))+'%'}</b>
-        </div>
-        ${sparkVg(it.pts, cor, fmt, it.mk>0?it.mk:null)}
-        <div class="gr" style="font-size:11px;display:flex;justify-content:space-between"><span>${it.mk>0?`<span style="color:var(--accent);font-weight:700" title="início da gestão atual — a linha tracejada no gráfico">⬇ gestão ${it.pts[it.mk].seg.slice(8,10)}/${it.pts[it.mk].seg.slice(5,7)}</span>`:`início ${fmt(it.pts[0].val)}`}</span><span>últ. sem <b>${fmt(it.last)}</b></span></div>
-      </div>`; }).join('')+`</div>`;
-  };
-  const cardsMargem=cardsVg(r=>N(r.mc), v=>nf.format(Math.round(v/1000))+'k');
-  const cardsRmc=cardsVg(r=>{ const a=N(r.ads_custo), m=N(r.mc); return (a>0&&m!=null)?m/a:null; }, v=>nf1.format(v)+'×');
+  // ---------- MONITOR DE RESULTADO: relógios semana/mês por grupo ----------
+  const MONG={BNOT:'Baterias',FONTES:'Fontes',LCD:'Telas',TECL:'Teclados'};
+  const GRM=['BNOT','FONTES','LCD','TECL'];
+  const MGm={}; (st.mon||[]).forEach(r=>{ (MGm[r.grupo]=MGm[r.grupo]||{})[r.data]={mc:+r.mc||0,ads:+r.ads||0}; });
+  const hojeIm=new Date().toLocaleDateString('sv-SE');
+  const segNow=(()=>{ const x=new Date(); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x.toLocaleDateString('sv-SE'); })();
+  const mesSem=s=>{ const q=new Date(s+'T12:00:00'); q.setDate(q.getDate()+3); return q.toLocaleDateString('sv-SE').slice(0,7); };
+  const ordSem=s=>{ let n=1; for(let k=1;k<6;k++){ const p=new Date(s+'T12:00:00'); p.setDate(p.getDate()-7*k); if(mesSem(p.toLocaleDateString('sv-SE'))===mesSem(s)) n++; else break; } return n; };
+  const segDoMesN=(mes,n)=>{ const [y,m]=mes.split('-').map(Number);
+    const d0=new Date(y,m-1,1,12); d0.setDate(d0.getDate()-((d0.getDay()+6)%7));
+    for(let i2=0;i2<7;i2++){ const s=new Date(d0); s.setDate(d0.getDate()+7*i2); const iso=s.toLocaleDateString('sv-SE');
+      if(mesSem(iso)===mes){ if(n===1) return iso; n--; } }
+    return null; };
+  const nAtual=ordSem(segNow), mesDaSem=mesSem(segNow), mesKey=hojeIm.slice(0,7);
+  const mesesAntes=(ref,k)=>{ const [y,m]=ref.split('-').map(Number); const out=[];
+    for(let i2=1;i2<=k;i2++){ const d=new Date(y,m-1-i2,1,12); out.push(d.toLocaleDateString('sv-SE').slice(0,7)); } return out; };
+  const m12sem=mesesAntes(mesDaSem,12), m12mes=mesesAntes(mesKey,12);
+  const benchSem=g=>{ const S=MGm[g]||{};
+    const oM=Array(7).fill(0), oA=Array(7).fill(0), oN=Array(7).fill(0);
+    let tM=0,tA=0,n=0;
+    for(const mes of m12sem){ const s0=segDoMesN(mes,nAtual); if(!s0) continue;
+      let wM=0,wA=0,tem=false;
+      for(let o=0;o<7;o++){ const d=new Date(s0+'T12:00:00'); d.setDate(d.getDate()+o); const iso=d.toLocaleDateString('sv-SE');
+        const v=S[iso]; if(v){ tem=true; wM+=v.mc; wA+=v.ads; oM[o]+=v.mc; oA[o]+=v.ads; oN[o]++; } }
+      if(tem){ tM+=wM; tA+=wA; n++; } }
+    if(!n) return null;
+    return {mc:tM/n, ads:tA/n, oM:oM.map((v,i2)=>oN[i2]?v/oN[i2]:0), oA:oA.map((v,i2)=>oN[i2]?v/oN[i2]:0)}; };
+  const projSem=(g,b)=>{ const S=MGm[g]||{};
+    let rM=0,rA=0,eM=0,eA=0,dias=0;
+    for(let o=0;o<7;o++){ const d=new Date(segNow+'T12:00:00'); d.setDate(d.getDate()+o);
+      const iso=d.toLocaleDateString('sv-SE'); if(iso>=hojeIm) break;
+      const v=S[iso]||{mc:0,ads:0}; rM+=v.mc; rA+=v.ads; eM+=b.oM[o]; eA+=b.oA[o]; dias++; }
+    const fM=b.mc>0?eM/b.mc:0, fA=b.ads>0?eA/b.ads:0;
+    return {dias, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null}; };
+  const benchMes=g=>{ const S=MGm[g]||{};
+    const dM=Array(32).fill(0), dA=Array(32).fill(0), dN=Array(32).fill(0);
+    let tM=0,tA=0,n=0;
+    for(const mes of m12mes){ let mM=0,mA=0,tem=false;
+      const [y,mm]=mes.split('-').map(Number), nd=new Date(y,mm,0).getDate();
+      for(let dd=1;dd<=nd;dd++){ const iso=mes+'-'+String(dd).padStart(2,'0'); const v=S[iso];
+        if(v){ tem=true; mM+=v.mc; mA+=v.ads; dM[dd]+=v.mc; dA[dd]+=v.ads; dN[dd]++; } }
+      if(tem){ tM+=mM; tA+=mA; n++; } }
+    if(!n) return null;
+    return {mc:tM/n, ads:tA/n, dM:dM.map((v,i2)=>dN[i2]?v/dN[i2]:0), dA:dA.map((v,i2)=>dN[i2]?v/dN[i2]:0)}; };
+  const projMes=(g,b)=>{ const S=MGm[g]||{};
+    const [y,m]=mesKey.split('-').map(Number), nd=new Date(y,m,0).getDate();
+    let rM=0,rA=0,eM=0,eA=0,dias=0;
+    for(let dd=1;dd<=nd;dd++){ const iso=mesKey+'-'+String(dd).padStart(2,'0'); if(iso>=hojeIm) break;
+      const v=S[iso]||{mc:0,ads:0}; rM+=v.mc; rA+=v.ads; eM+=b.dM[dd]; eA+=b.dA[dd]; dias++; }
+    const fM=b.mc>0?eM/b.mc:0, fA=b.ads>0?eA/b.ads:0;
+    return {dias, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null}; };
+  const MET={}; metasArr.forEach(r=>MET[r.tipo+'|'+r.chave+'|'+r.grupo]=r);
+  const cardMon=(tipo,chave,g,b,proj)=>{
+    if(!b) return `<div style="border:1px solid var(--hair);border-radius:12px;padding:10px;text-align:center"><b>${MONG[g]}</b><p class="gr">sem histórico</p></div>`;
+    const ov=MET[tipo+'|'+chave+'|'+g];
+    const metaMc=(ov&&ov.mc_meta!=null)?+ov.mc_meta:Math.round(b.mc);
+    const metaAds=(ov&&ov.ads_meta!=null)?+ov.ads_meta:Math.round(b.ads);
+    const pMc=(proj&&proj.projMc!=null&&metaMc>0)?proj.projMc/metaMc*100:null;
+    const pAds=(proj&&proj.projAds!=null&&metaAds>0)?proj.projAds/metaAds*100:null;
+    const corMc=pMc==null?'var(--muted)':pMc>=100?'var(--good)':pMc>=80?'var(--lar)':'var(--crit)';
+    return `<div style="border:1px solid var(--hair);border-radius:12px;padding:10px 8px;text-align:center;min-width:0">
+      <b style="font-size:13px" title="analista: ${esc(ANALISTA[g]||MONG[g])}">${MONG[g]}</b>
+      ${gaugeMon(pMc,pAds,corMc)}
+      <div style="font-size:12.5px;margin-top:2px"><b style="color:${corMc}">MC ${pMc!=null?Math.round(pMc)+'%':'—'}</b> · <span style="color:var(--accent)">Ads ${pAds!=null?Math.round(pAds)+'%':'—'}</span></div>
+      <div class="gr" style="font-size:10.5px">${proj&&proj.dias?`proj. ${tipo==='semana'?'da semana':'do mês'} (${proj.dias}d): MC ${nf.format(Math.round(proj.projMc||0))} · Ads ${nf.format(Math.round(proj.projAds||0))}`:'aguardando o 1º dia fechado'}</div>
+      <div style="display:flex;gap:4px;justify-content:center;align-items:center;margin-top:6px;font-size:10.5px;flex-wrap:wrap">
+        MC<input id="monMc-${tipo}-${g}" type="number" value="${metaMc}" style="width:76px;padding:2px 4px;font-size:11px;text-align:right">
+        Ads<input id="monAds-${tipo}-${g}" type="number" value="${metaAds}" style="width:64px;padding:2px 4px;font-size:11px;text-align:right">
+        <button class="btn monSalva" data-tipo="${tipo}" data-chave="${chave}" data-g="${g}" title="salvar o esperado — vale só para ${tipo==='semana'?'esta semana':'este mês'}" style="padding:2px 8px;font-size:11px">💾</button>
+      </div>
+      <div class="gr" style="font-size:10px;margin-top:3px">média 12m: ${nf.format(Math.round(b.mc))} · ${nf.format(Math.round(b.ads))}${ov?' · <b style="color:var(--accent)">meta editada</b>':''}</div>
+    </div>`; };
+  const cardsMonSem=GRM.map(g=>{ const b=benchSem(g); return cardMon('semana',segNow,g,b,b?projSem(g,b):null); }).join('');
+  const cardsMonMes=GRM.map(g=>{ const b=benchMes(g); return cardMon('mes',mesKey,g,b,b?projMes(g,b):null); }).join('');
+  const fimSemMon=(()=>{ const d=new Date(segNow+'T12:00:00'); d.setDate(d.getDate()+6); return d.toLocaleDateString('sv-SE'); })();
+  const MESNM=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
   $('#conteudo').innerHTML=`
     <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Site/002 · alterne <b>Semanal × Diário (14 dias)</b> abaixo — mesmos indicadores (o diário omite o ROAS). O card <b>TUDO</b> soma a empresa inteira: margem/receita = toda a 002, acessos = GA4 inteiro, cliques = todas as campanhas da conta, e ganha a coluna <b>Ads adicional</b> = gasto total da conta − capturado por produto (Search, Display, Demand Gen, institucional). <b>Margem R$</b> = MC da semana em reais (lucro bruto transacional BASE BBDI 2020; o % pequeno é MC ÷ receita) · <b>ROAS MC</b> = MC ÷ verba de ads (régua: <b style="color:var(--good)">verde</b> ≥ +30% da mediana das semanas, <b style="color:var(--crit)">vermelho</b> ≤ −30%) · <b>Ticket médio</b> = receita ÷ unidades da semana · <b>Ticket BGT</b> = concorrente ponderado na cesta fixa 30d; (n) = produtos com preço · <b>Gap ×BGT</b> = preço puro na <b>cesta comum</b>: nosso realizado ÷ BGT, os dois só nos produtos vendidos no período que têm preço BGT e com o mesmo peso — sem efeito de mix (BGT: scrape diário desde 27/08/26, antes sábados) · <b>ROAS</b> = receita ÷ verba · <b>Cliques</b> = pagos Google Ads · <b>Acessos</b> = views GA4 (todas as origens). Semana com * está em curso (sem MC fechada).</p>
     <div class="kpis" style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px">${grupos.map(g=>`<button class="kpi" data-vg="${esc(g)}" title="${esc('analista: '+(ANALISTA[g]||'sem analista definido')+' · gestão atual desde 17/08/26')}" style="padding:7px 14px;${st.vgG===g?'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)':''}">${esc(g)} <span class="gr">${nf.format(Math.round((recG[g]||0)/1000))}k</span></button>`).join('')}</div>
@@ -3314,19 +3383,29 @@ async function renderGlobal(){
         <td style="${r.seg===segHoje?'':tcAcc(N(r.acessos))}">${r.acessos!=null?nf.format(N(r.acessos)):'—'}</td></tr>`;}).join('')}</tbody>
     </table></div></div>`}
     <p class="gr" style="margin:10px 2px 0">Cores nos valores = posição na distribuição das próprias semanas/dias do grupo: <span style="color:var(--good);font-weight:600">verde</span> = terço alto · <span style="color:var(--crit);font-weight:600">vermelho</span> = terço baixo (na BGT, preço alto do concorrente = verde). Semana/dia em curso (*) fica sem cor. Grupos = mesas de analista (mesma consolidação da curva ABC).</p>
-    ${st.vgVista==='dia'?'':`<div class="tablecard" style="margin-top:16px;padding:12px 16px">
-      <div class="eyebrow">🏁 Margem BBDI 2020 (R$/semana) — placar das mesas</div>
-      <p class="gr" style="margin:4px 0 10px">Um cartão por mesa, <b>ordenado do que mais cresce ao que mais cai</b>. ▲/▼ = média de MC das <b>últimas semanas vs as primeiras</b> (metades da janela de ~3 meses — robusto a uma semana atípica). A linha é a MC semanal real em R$; passe o mouse para os valores.</p>
-      ${cardsMargem}
+    <div class="tablecard" style="margin-top:16px;padding:12px 16px">
+      <div class="eyebrow">⏱ Monitor da semana — ${nAtual}ª semana do mês (${segNow.slice(8,10)}/${segNow.slice(5,7)} a ${fimSemMon.slice(8,10)}/${fimSemMon.slice(5,7)})</div>
+      <p class="gr" style="margin:4px 0 10px"><b>12h = 100% do esperado</b> (escala: 9h = 0% · 3h = 200%). Ponteiro <b>comprido</b> = MC · <b>curto azul</b> = Ads. Esperado = média das ${nAtual}ªs semanas dos <b>últimos 12 meses</b> — ajuste nas caixas e salve (💾 vale só para esta semana; na virada, volta o histórico da semana nova). A projeção pega o realizado dos dias já fechados e divide pela fração que esses dias representam na semana histórica — com 1 dia você já vê a perspectiva.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px">${cardsMonSem}</div>
     </div>
     <div class="tablecard" style="margin-top:14px;padding:12px 16px">
-      <div class="eyebrow">🏁 ROAS MC — placar das mesas</div>
-      <p class="gr" style="margin:4px 0 10px">Mesma leitura, sobre MC ÷ verba de ads: quem está transformando cada real de ads em <b>mais margem</b> do que no início da janela.</p>
-      ${cardsRmc}
-    </div>`}`;
+      <div class="eyebrow">⏱ Monitor do mês — ${MESNM[+mesKey.slice(5,7)-1]}/${mesKey.slice(2,4)}</div>
+      <p class="gr" style="margin:4px 0 10px">Mesma leitura, agregando os dias do mês que vão passando e <b>projetando o fechamento</b> contra a média dos últimos 12 meses (metas editáveis por mês).</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px">${cardsMonMes}</div>
+    </div>`;
   document.querySelectorAll('.kpi[data-vg]').forEach(b=>b.onclick=()=>{st.vgG=b.dataset.vg;renderGlobal();});
   $('#vgVSem').onclick=()=>{st.vgVista='sem';renderGlobal();};
   $('#vgVDia').onclick=()=>{st.vgVista='dia';renderGlobal();};
+  document.querySelectorAll('.monSalva').forEach(b=>b.onclick=async()=>{
+    const tipo=b.dataset.tipo, g=b.dataset.g, chave=b.dataset.chave;
+    const mc=parseFloat(document.getElementById('monMc-'+tipo+'-'+g).value)||null;
+    const ads=parseFloat(document.getElementById('monAds-'+tipo+'-'+g).value)||null;
+    let email='?'; try{ email=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e){}
+    b.disabled=true; b.textContent='…';
+    const {error}=await sb.from('monitor_metas').upsert({tipo,chave,grupo:g,mc_meta:mc,ads_meta:ads,autor:email,atualizado_em:new Date().toISOString()},{onConflict:'tipo,chave,grupo'});
+    if(error){ alert('Erro ao salvar: '+error.message); b.disabled=false; b.textContent='💾'; return; }
+    renderGlobal();
+  });
 }
 
 /* ---------- em construção / config ---------- */
