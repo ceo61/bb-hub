@@ -1492,7 +1492,7 @@ async function abreExtrato(cod, m, acao){
       const {data:{user}}=await sb.auth.getUser();
       const {error}=await sb.rpc('ab_encerra',{p_id:tAB.id, p_autor:user?.email||'?'});
       if(error){ alert('Erro ao encerrar: '+error.message); return; }
-      document.getElementById('mcModal')?.remove(); abreExtrato(cod, m, acao);
+      document.getElementById('mcModal')?.remove(); if(st.pg==='sugestoes') renderSugestoes(); abreExtrato(cod, m, acao);
     };
   }
   if(!acao&&!tAB){
@@ -1508,7 +1508,7 @@ async function abreExtrato(cod, m, acao){
       if(error){ msg.textContent='Erro: '+error.message; return; }
       const bracoHj=modo==='diario'?(new Date().getDate()%2===0?'A':'B'):'A';
       msg.textContent=`✅ teste #${id} criado (${modo}) — braço ${bracoHj} (${rf2.format(bracoHj==='A'?a:b)}) já na fila do ERP; ${modo==='diario'?'troca à meia-noite (pares=A, ímpares=B)':'troca domingo 23h'}`;
-      setTimeout(()=>{ document.getElementById('mcModal')?.remove(); abreExtrato(cod, m, acao); }, 1400);
+      setTimeout(()=>{ document.getElementById('mcModal')?.remove(); if(st.pg==='sugestoes') renderSugestoes(); abreExtrato(cod, m, acao); }, 1400);
     };
   }
   if(!acao&&!tAB){
@@ -2281,7 +2281,8 @@ async function abreMCsemanal(cod, m){
 }
 async function renderSugestoes(){
   $('#conteudo').innerHTML='<div class="carregando">'+(st.sgAbrirExtrato?'Abrindo o extrato de <b>'+esc(st.sgAbrirExtrato)+'</b>… (primeira carga demora uns segundos)':'Montando sugestões…')+'</div>';
-  st.abCods=new Set(((await sb.from('testes_ab').select('cod').eq('status','ativo')).data||[]).map(x=>x.cod));
+  st.abInfo={}; ((await sb.from('testes_ab').select('cod,modo,criado_em').eq('status','ativo')).data||[]).forEach(t=>st.abInfo[t.cod]=t);
+  st.abCods=new Set(Object.keys(st.abInfo));
   await carregaMarkup();
   const {data:pend}=await sb.from('acoes_preco').select('*').in('status',['aprovado','executar','erro']).order('criado_em',{ascending:false});
   const {data:feitas}=await sb.from('acoes_preco').select('*').eq('status','executado').gte('executado_em',new Date(Date.now()-86400e3).toISOString()).order('executado_em',{ascending:false});
@@ -2362,7 +2363,7 @@ async function renderSugestoes(){
       <span class="count" id="sgCount"></span>
     </div>
     <div class="tablecard"><div class="tscroll"><table class="fix2">
-      <thead><tr><th></th><th class="ord" data-c="cod">Produto<span class="seta"></span></th><th class="ord" data-c="_meses">Geração<span class="seta"></span></th><th class="ord" data-c="_saldo" title="estoque útil">EST<span class="seta"></span></th><th class="ord" data-c="_giro">Giro<span class="seta"></span><br><span class="gr">/mês</span></th><th title="FOLGA em meses: estoque útil ÷ giro mês (1ª linha); 2ª linha soma o encomendado (POs abertos em trânsito)">Folga</th><th class="ord" data-c="_views">Views<span class="seta"></span><br><span class="gr">28d</span></th><th class="ord" data-c="_conv">Conv.<span class="seta"></span></th><th class="ord" data-c="custo">Custo<span class="seta"></span></th><th title="ritmo de MC do Atacado (001): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 001<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_atacado">Atacado hoje<span class="seta"></span></th><th title="ritmo de MC do Site (002): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 002<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_site_de">DE hoje<span class="seta"></span></th><th class="ord" data-c="p_site">POR/PIX hoje<span class="seta"></span></th><th title="ritmo de MC do ML (005): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 005<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_marketplace">ML hoje<span class="seta"></span></th></tr></thead>
+      <thead><tr><th></th><th class="ord" data-c="cod">Produto<span class="seta"></span></th>${st.sgAB?'<th title="tipo do teste A/B">Teste</th><th title="data de início do teste">Início</th>':''}<th class="ord" data-c="_meses">Geração<span class="seta"></span></th><th class="ord" data-c="_saldo" title="estoque útil">EST<span class="seta"></span></th><th class="ord" data-c="_giro">Giro<span class="seta"></span><br><span class="gr">/mês</span></th><th title="FOLGA em meses: estoque útil ÷ giro mês (1ª linha); 2ª linha soma o encomendado (POs abertos em trânsito)">Folga</th><th class="ord" data-c="_views">Views<span class="seta"></span><br><span class="gr">28d</span></th><th class="ord" data-c="_conv">Conv.<span class="seta"></span></th><th class="ord" data-c="custo">Custo<span class="seta"></span></th><th title="ritmo de MC do Atacado (001): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 001<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_atacado">Atacado hoje<span class="seta"></span></th><th title="ritmo de MC do Site (002): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 002<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_site_de">DE hoje<span class="seta"></span></th><th class="ord" data-c="p_site">POR/PIX hoje<span class="seta"></span></th><th title="ritmo de MC do ML (005): sem 1 (última semana fechada seg–dom) e 365/30 — 100% = no ritmo do próprio ano">MC 005<br><span class="gr">s1 · 30d</span></th><th class="ord" data-c="p_marketplace">ML hoje<span class="seta"></span></th></tr></thead>
       <tbody id="sgRows"></tbody></table></div><button class="more hide" id="sgMore"></button></div>`;
   document.querySelectorAll('.kpi[data-abc]').forEach(b=>b.onclick=()=>{st.sgClasse=st.sgClasse===b.dataset.abc?null:b.dataset.abc;renderSugestoes();});
   document.querySelectorAll('.kpi[data-out]').forEach(b=>b.onclick=()=>{st.sgOut=st.sgOut===b.dataset.out?null:b.dataset.out;renderSugestoes();});
@@ -2373,6 +2374,7 @@ async function renderSugestoes(){
   const desenha=()=>{
     const rows=lista.filter(m=>{
       if(st.sgAB&&!st.abCods.has(m.cod)) return false;
+      if(!st.sgAB&&st.abCods.has(m.cod)&&VER!=='tudo') return false;  // em teste A/B = preço travado, sai da mesa de trabalho
       if(st.sgClasse&&m._classe!==st.sgClasse) return false;
       if(st.sgOut==='site'&&m._outS!==2) return false;
       if(st.sgOut==='atac'&&m._outA!==2) return false;
@@ -2413,6 +2415,7 @@ async function renderSugestoes(){
         <td style="text-align:left;white-space:nowrap"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span>${m._classe?`<span class="abcchip abc-${m._classe}" title="curva ${m._classe} da venda 12m">${m._classe}</span>`:''} <span data-ext="${esc(m.cod)}" title="extrato semanal completo — 26 semanas (saldo, folga, preços, BGT, vendas, conversão, ads, lucro) + preço novo" style="cursor:pointer;opacity:.7">📊</span> <span data-nota="${esc(m.cod)}" title="anotar na ata do dia" style="cursor:pointer;opacity:.65">📝</span> ${VER==='aguardando'
           ?(revMap[m.cod]?`<span data-undorev="${revMap[m.cod].id}" title="revisado por ${esc(revMap[m.cod].aprovado_por||'')} em ${new Date(revMap[m.cod].criado_em).toLocaleDateString('pt-BR')} — clique para DESFAZER (volta pra fila)" style="cursor:pointer;color:var(--warn);font-weight:700">↩</span>`:'')
           :`<span data-rev="${esc(m.cod)}" title="conferi e está OK — volta à fila após 7 dias e +200 views" style="cursor:pointer;color:var(--good);font-weight:700;opacity:.75">✓</span>`}<br><span class="gr">${esc(m.grupo||'')}</span>${(VER==='aguardando'&&execMap[m.cod])?(e=>`<br><span class="gr" style="color:var(--accent)"${e.justificativa?` title="${esc(e.justificativa)} — ${esc(e.aprovado_por||'')}"`:''}>⚡ ${e.preco_sugerido!=null?rf2.format(e.preco_atual)+'→'+rf2.format(e.preco_sugerido):''}${e.atac_sugerido!=null?' · atac→'+rf2.format(e.atac_sugerido):''}${e.ml_sugerido!=null?' · ml→'+rf2.format(e.ml_sugerido):''} · ${new Date(e.executado_em).toLocaleDateString('pt-BR').slice(0,5)}</span>${e.justificativa?`<br><span class="gr" style="font-style:italic">“${esc(e.justificativa.slice(0,70))}${e.justificativa.length>70?'…':''}”</span>`:''}`)(execMap[m.cod]):''}${(VER==='aguardando'&&ocultosMov[m.cod])?(r=>{const dias=Math.floor((Date.now()-new Date(r.mov_em).getTime())/864e5);return `<br><span class="gr" style="color:var(--warn)" title="volta à fila quando completar 7 dias E 200 views desde a movimentação">⏳ ${nf.format(r.views_desde)}/200 views · ${nf.format(dias)}/7 dias</span>`;})(ocultosMov[m.cod]):''}</td>
+        ${st.sgAB?(t=>t?`<td style="white-space:nowrap"><span style="background:var(--accent-soft);color:var(--accent);padding:1px 8px;border-radius:9px;font-size:11px;font-weight:700">${t.modo==='diario'?'🌗 diário':'🔁 semanal'}</span></td><td style="white-space:nowrap;font-size:12px">${new Date(t.criado_em).toLocaleDateString('pt-BR')}<br><span class="gr" style="font-size:10.5px">${Math.max(1,Math.round((Date.now()-new Date(t.criado_em))/864e5))}d</span></td>`:'<td>—</td><td>—</td>')(st.abInfo?.[m.cod]):''}
         <td><span class="gr">${GERLB[m.geracao]||m.geracao}</span></td>
         <td>${nf.format(m._saldo||0)}${m._transito?`<br><span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}</td>
         <td>${nf1.format(m._giro)}</td>
