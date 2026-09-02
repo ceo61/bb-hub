@@ -2306,7 +2306,8 @@ async function renderSugestoes(){
     st.sgClasseAuto=true;
   }
   const VER=st.sgVer||'avaliar';  // estágio do funil: avaliar | aguardando | revisados | mexidos | tudo
-  const lista=VER==='aguardando' ? out.filter(m=>ocultosMov[m.cod])
+  const lista=st.sgAB ? out  // visão 🔁: testes A/B ignoram os estágios do funil (o produto está estacionado)
+            : VER==='aguardando' ? out.filter(m=>ocultosMov[m.cod])
             : VER==='tudo' ? out.filter(m=>!pendSet.has(m.cod))
             : out.filter(m=>!pendSet.has(m.cod)&&!ocultosMov[m.cod]);
   const nAguardando=out.filter(m=>ocultosMov[m.cod]).length;
