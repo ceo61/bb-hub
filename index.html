@@ -2936,6 +2936,86 @@ async function renderPainel(){
 }
 
 /* ---------- SKUs — conversão por anúncio VTEX ---------- */
+async function montaExcelEstudo(E){
+  const XL=await import('https://esm.sh/exceljs@4.4.0');
+  const ExcelJS=XL.default??XL;
+  const wb=new ExcelJS.Workbook();
+  const VERDE={type:'pattern',pattern:'solid',fgColor:{argb:'FFE2EFDA'}};
+  const VERM={type:'pattern',pattern:'solid',fgColor:{argb:'FFFCE4E4'}};
+  const AZUL={type:'pattern',pattern:'solid',fgColor:{argb:'FFDDEBF7'}};
+  const fica=E.linhas.filter(l=>l.decisao==='FICA'), corta=E.linhas.filter(l=>l.decisao==='CORTA');
+  const vt=E.linhas.reduce((s,x)=>s+x.v,0)||1, ct=E.linhas.reduce((s,x)=>s+x.c,0)||1;
+  const vk=fica.reduce((s,x)=>s+x.v,0), ck=fica.reduce((s,x)=>s+x.c,0);
+  const nS=corta.filter(x=>x.at==='S').length;
+  const vivasN=E.linhas.filter(x=>x.v>0||x.c>0).length;
+  const fam={}; E.linhas.forEach(l=>{ (fam[l.familia||'OUTROS']=fam[l.familia||'OUTROS']||[]).push(l); });
+  const ordem=Object.entries(fam).sort((a,b)=>b[1].reduce((s,x)=>s+x.v,0)-a[1].reduce((s,x)=>s+x.v,0));
+  const quebra=(t,n)=>{ const out=[]; let l=''; for(const w of String(t).split(/\s+/)){ if((l+' '+w).length>n){ out.push(l); l=w; } else l=l?l+' '+w:w; } if(l) out.push(l); return out; };
+  const s1=wb.addWorksheet('DE ONDE → PARA ONDE');
+  s1.getColumn(1).width=100;
+  s1.addRow([`${E.cod} — REESTRUTURAÇÃO DAS COMPATIBILIDADES (BB HUB · ${E.data})`]).font={bold:true,size:13};
+  s1.addRow([`Fonte da análise: ${E.fonte}`]);
+  s1.addRow(['']);
+  if(E.parecer){ s1.addRow(['PARECER DA IA:']).font={bold:true}; quebra(E.parecer,100).forEach(l=>s1.addRow(['  '+l])); s1.addRow(['']); }
+  if((E.avisos||[]).length){ s1.addRow(['⚠ AVISOS DE FRONTEIRA (conflitos com produtos vizinhos):']).font={bold:true};
+    E.avisos.forEach(a=>quebra('• '+a,100).forEach(l=>s1.addRow(['  '+l]))); s1.addRow(['']); }
+  [[`NÚMEROS: ${E.linhas.length} compatibilidades no estudo · ${vivasN} vivas · ${E.linhas.length-vivasN} mortas (7m GA4)${E.jaPausadas?` · ${E.jaPausadas} JÁ PAUSADAS (flag N) ficaram fora — já deletadas por si só`:''}`],
+   [`PROPOSTA: ${fica.length} ficam · ${corta.length} saem (${nS} publicadas hoje = ação real)`],
+   [`RETENÇÃO: ${(vk/vt*100).toFixed(1)}% dos acessos e ${(ck/ct*100).toFixed(1)}% das compras`],[''],
+   ['PAPÉIS: ÂNCORA = nome canônico da família (SEO) · VARIANTE = prova valor ou desambigua fronteira · CORTE = despublicar (reversível)'],
+   ['Nada é renomeado nesta fase; famílias divididas com produtos vizinhos NÃO são consolidadas.']
+  ].forEach(r=>s1.addRow(r));
+  const s2=wb.addWorksheet('ESTRUTURA PROPOSTA');
+  s2.addRow(['família','papel','compatibilidade (nome no site)','views 7m','compras 7m','tx conv']);
+  s2.getRow(1).eachCell(c=>{c.font={bold:true};c.fill=AZUL;});
+  [[1,22],[2,16],[3,52],[4,10],[5,11],[6,9]].forEach(([i,w])=>s2.getColumn(i).width=w);
+  for(const [f,items] of ordem) for(const l of items){
+    if(l.decisao!=='FICA') continue;
+    const r=s2.addRow([f,l.papel,l.e,l.v,l.c,l.v?(l.c/l.v*100).toFixed(1)+'%':'']);
+    if((l.papel||'').includes('ÂNCORA')||(l.papel||'').includes('ANCORA')){ r.eachCell(c=>c.fill=VERDE); r.getCell(3).font={bold:true}; }
+  }
+  const s3=wb.addWorksheet('TODAS — linha a linha');
+  s3.addRow(['compatibilidade','família','ativo hoje','views 7m','compras','DECISÃO','papel','motivo']);
+  s3.getRow(1).eachCell(c=>{c.font={bold:true};c.fill=AZUL;});
+  [[1,46],[2,22],[3,10],[4,9],[5,9],[6,9],[7,16],[8,70]].forEach(([i,w])=>s3.getColumn(i).width=w);
+  for(const [f,items] of ordem) for(const l of items){
+    const r=s3.addRow([l.e,f,l.at,l.v,l.c,l.decisao,l.papel,l.motivo]);
+    r.eachCell(c=>c.fill=(l.decisao==='FICA'?VERDE:VERM));
+  }
+  s3.autoFilter={from:'A1',to:{row:s3.rowCount,column:8}};
+  const buf=await wb.xlsx.writeBuffer();
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  a.download=`${E.cod}_ESTRUTURA_${E.data}.xlsx`;
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+
+async function carregaEstudosPrev(cod){
+  const el=document.getElementById('skEstPrev'); if(!el) return;
+  try{
+    const {data}=await sb.from('estudos_compat').select('id,gerado_em,autor,fonte,meta').eq('cod',cod).order('gerado_em',{ascending:false}).limit(6);
+    if(!data||!data.length){ el.innerHTML=''; return; }
+    el.innerHTML=`<div class="tablecard" style="padding:10px 14px"><div class="eyebrow" style="margin-bottom:6px">📚 Estudos guardados deste produto</div>
+      ${data.map(r=>`<div style="display:flex;gap:10px;align-items:baseline;font-size:12.5px;flex-wrap:wrap">
+        <span>📗 ${new Date(r.gerado_em).toLocaleDateString('pt-BR')} ${new Date(r.gerado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span>
+        <span class="gr">${esc(r.fonte||'')}</span><span class="gr">${esc((r.autor||'?').split('@')[0])}</span>
+        <span class="gr">${r.meta?`${r.meta.fica??'?'} ficam · ${r.meta.corta??'?'} saem`:''}</span>
+        <a href="javascript:void 0" class="ecBaixa" data-id="${r.id}" style="font-weight:600">⬇ baixar de novo</a>
+        <span class="gr" style="font-size:11px">(não gasta IA)</span></div>`).join('')}</div>`;
+    el.querySelectorAll('.ecBaixa').forEach(a=>a.onclick=async()=>{
+      const lb=a.textContent; a.textContent='⏳…';
+      try{
+        const {data:row,error}=await sb.from('estudos_compat').select('*').eq('id',a.dataset.id).single();
+        if(error) throw error;
+        await montaExcelEstudo({cod:row.cod, data:new Date(row.gerado_em).toLocaleDateString('sv-SE'),
+          fonte:(row.fonte||'')+' — estudo guardado de '+new Date(row.gerado_em).toLocaleDateString('pt-BR'),
+          parecer:row.parecer||'', avisos:row.avisos||[], jaPausadas:row.meta?.jaPausadas||0, linhas:row.linhas||[]});
+      }catch(e){ alert('Erro: '+(e.message||e)); }
+      a.textContent=lb;
+    });
+  }catch(e){ el.innerHTML=''; }
+}
+
 async function geraEstudoCompat(cod){
   const btn=document.getElementById('skEstudoBtn');
   if(btn){ btn.disabled=true; btn.textContent='⏳ a IA está analisando o produto e os vizinhos da marca…'; }
@@ -3024,54 +3104,19 @@ async function geraEstudoCompat(cod){
     // agrupamento p/ as abas pela família decidida
     const fam={}; its.forEach(it=>{ const f=dec.get(it)[2]||'OUTROS'; (fam[f]=fam[f]||[]).push(it); });
     const ordem=Object.entries(fam).sort((a,b)=>b[1].reduce((s,x)=>s+x.v,0)-a[1].reduce((s,x)=>s+x.v,0));
-    // ---- Excel ----
-    const XL=await import('https://esm.sh/exceljs@4.4.0');
-    const ExcelJS=XL.default??XL;
-    const wb=new ExcelJS.Workbook();
-    const VERDE={type:'pattern',pattern:'solid',fgColor:{argb:'FFE2EFDA'}};
-    const VERM={type:'pattern',pattern:'solid',fgColor:{argb:'FFFCE4E4'}};
-    const AZUL={type:'pattern',pattern:'solid',fgColor:{argb:'FFDDEBF7'}};
-    const hoje=new Date().toLocaleDateString('sv-SE');
-    const vivasN=its.filter(x=>x.v>0||x.c>0).length;
-    const quebra=(t,n)=>{ const out=[]; let l=''; for(const w of String(t).split(/\s+/)){ if((l+' '+w).length>n){ out.push(l); l=w; } else l=l?l+' '+w:w; } if(l) out.push(l); return out; };
-    const s1=wb.addWorksheet('DE ONDE → PARA ONDE');
-    s1.getColumn(1).width=100;
-    s1.addRow([`${cod} — REESTRUTURAÇÃO DAS COMPATIBILIDADES (BB HUB · ${hoje})`]).font={bold:true,size:13};
-    s1.addRow([`Fonte da análise: ${fonte}`]);
-    s1.addRow(['']);
-    if(parecer){ s1.addRow(['PARECER DA IA:']).font={bold:true}; quebra(parecer,100).forEach(l=>s1.addRow(['  '+l])); s1.addRow(['']); }
-    if(avisos.length){ s1.addRow(['⚠ AVISOS DE FRONTEIRA (conflitos com produtos vizinhos):']).font={bold:true};
-      avisos.forEach(a=>quebra('• '+a,100).forEach(l=>s1.addRow(['  '+l]))); s1.addRow(['']); }
-    [[`NÚMEROS: ${its.length} compatibilidades no estudo · ${vivasN} vivas · ${its.length-vivasN} mortas (7m GA4)${jaPausadas?` · ${jaPausadas} JÁ PAUSADAS (flag N) ficaram fora — já deletadas por si só`:''}`],
-     [`PROPOSTA: ${fica.length} ficam · ${corta.length} saem (${nS} publicadas hoje = ação real)`],
-     [`RETENÇÃO: ${(vk/vt*100).toFixed(1)}% dos acessos e ${(ck/ct*100).toFixed(1)}% das compras`],[''],
-     ['PAPÉIS: ÂNCORA = nome canônico da família (SEO) · VARIANTE = prova valor ou desambigua fronteira · CORTE = despublicar (reversível)'],
-     ['Nada é renomeado nesta fase; famílias divididas com produtos vizinhos NÃO são consolidadas.']
-    ].forEach(r=>s1.addRow(r));
-    const s2=wb.addWorksheet('ESTRUTURA PROPOSTA');
-    s2.addRow(['família','papel','compatibilidade (nome no site)','views 7m','compras 7m','tx conv']);
-    s2.getRow(1).eachCell(c=>{c.font={bold:true};c.fill=AZUL;});
-    [[1,22],[2,16],[3,52],[4,10],[5,11],[6,9]].forEach(([i,w])=>s2.getColumn(i).width=w);
-    for(const [f,items] of ordem) for(const it of items.slice().sort((a,b)=>b.v-a.v)){
-      const d=dec.get(it); if(d[0]!=='FICA') continue;
-      const r=s2.addRow([f,d[1],it.e,Math.round(it.v),Math.round(it.c),it.v?(it.c/it.v*100).toFixed(1)+'%':'']);
-      if(d[1].includes('ÂNCORA')){ r.eachCell(c=>c.fill=VERDE); r.getCell(3).font={bold:true}; }
-    }
-    const s3=wb.addWorksheet('TODAS — linha a linha');
-    s3.addRow(['compatibilidade','família','ativo hoje','views 7m','compras','DECISÃO','papel','motivo']);
-    s3.getRow(1).eachCell(c=>{c.font={bold:true};c.fill=AZUL;});
-    [[1,46],[2,22],[3,10],[4,9],[5,9],[6,9],[7,16],[8,70]].forEach(([i,w])=>s3.getColumn(i).width=w);
+    const linhas=[];
     for(const [f,items] of ordem) for(const it of items.slice().sort((a,b)=>b.v-a.v)){
       const d=dec.get(it);
-      const r=s3.addRow([it.e,f,it.at,Math.round(it.v),Math.round(it.c),d[0],d[1],d[3]]);
-      r.eachCell(c=>c.fill=(d[0]==='FICA'?VERDE:VERM));
+      linhas.push({e:it.e, at:it.at, v:Math.round(it.v), c:Math.round(it.c), familia:f, decisao:d[0], papel:d[1], motivo:d[3]});
     }
-    s3.autoFilter={from:'A1',to:{row:s3.rowCount,column:8}};
-    const buf=await wb.xlsx.writeBuffer();
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
-    a.download=`${cod}_ESTRUTURA_${hoje}.xlsx`;
-    a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    const E={cod, data:new Date().toLocaleDateString('sv-SE'), fonte, parecer, avisos, jaPausadas, linhas};
+    await montaExcelEstudo(E);
+    try{
+      let email='?'; try{ email=(await sb.auth.getUser()).data.user?.email||'?'; }catch(_e){}
+      await sb.from('estudos_compat').insert({cod, autor:email, fonte:ia?'IA':'regra local', parecer, avisos,
+        meta:{jaPausadas, total:its.length, fica:fica.length, corta:corta.length}, linhas});
+      carregaEstudosPrev(cod);
+    }catch(e){ console.warn('não salvou o estudo:', e?.message||e); }
     console.log('estudo compat', cod, ia?'IA':'local', 'fica', fica.length, 'corta', corta.length);
   }catch(e){ alert('Erro ao gerar o estudo: '+(e.message||e)); }
   finally{ if(btn){ btn.disabled=false; btn.textContent='📗 Estudo Excel'; } }
@@ -3238,7 +3283,7 @@ async function renderSkus(){
           return `<tr${off?' title="compatibilidade pausada/cancelada na loja (ativo = N)"':''}><td style="text-align:left"><b style="${off?'color:var(--muted);opacity:.5;text-decoration:line-through;font-weight:500':''}">${esc(x.espec||x.modelo||'—')}</b>${(x.modelo&&x.espec&&!x.espec.toUpperCase().includes(x.modelo.toUpperCase()))?` <span class="gr">(${esc(x.modelo)})</span>`:''}</td><td style="text-align:left"><span class="gr" title="itemId GA4/VTEX · ref ${esc(x.codref||'—')}">${esc(x.idvtex||'—')}</span></td><td style="${w.v?'font-weight:600':'color:var(--muted)'}">${w.v?nf.format(Math.round(w.v)):'0'}</td><td style="${w.p?'font-weight:700;color:var(--good)':'color:var(--muted)'}">${w.p?nf.format(Math.round(w.p)):'0'}</td><td style="${tx?'font-weight:600':'color:var(--muted)'}">${tx!=null?nf1.format(tx)+'%':'—'}</td></tr>`;}).join('')}</tbody>
       </table></div></div>
       <p class="gr" style="margin:10px 2px 0">${nf.format(ls.length)}${nq?' de '+nf.format(ordC.length):''} compatibilidades — <b>${nf.format(comAcesso)} com acesso</b> no site nos últimos 7 meses (GA4 por IDSKU, ordenado por acessos) · fonte: SZ0060 espelhada diariamente · cadastro completo (SB1), independe de venda · <span style="color:var(--muted);text-decoration:line-through">riscado cinza</span> = pausada/cancelada na loja (produto ou SKU ativo = N).</p>
-      ${(st.skNovas?.[cod]||[]).length?`<p style="margin:6px 2px 0;font-size:12px;color:var(--warn)"><b>+${nf.format(st.skNovas[cod].length)} compatibilidades NOVAS em simulação</b> — nada foi gravado no cadastro.</p>`:''}`;
+      ${(st.skNovas?.[cod]||[]).length?`<p style="margin:6px 2px 0;font-size:12px;color:var(--warn)"><b>+${nf.format(st.skNovas[cod].length)} compatibilidades NOVAS em simulação</b> — nada foi gravado no cadastro.</p>`:''}<div id="skEstPrev" style="margin-top:10px"></div>`;
       document.querySelectorAll('#skTabC th[data-cc]').forEach(th=>th.onclick=()=>{
         const c=th.dataset.cc;
         if(st.skColC===c) st.skDirC=-(st.skDirC||1);
@@ -3253,6 +3298,7 @@ async function renderSkus(){
     if(nb) nb.onclick=()=>abreNovasCompat(cod);
     const eb=document.getElementById('skEstudoBtn');
     if(eb) eb.onclick=()=>geraEstudoCompat(cod);
+    carregaEstudosPrev(cod);
     return;
   }
   $('#skCorpo').innerHTML='<div class="carregando">Carregando SKUs…</div>';
