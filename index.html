@@ -3189,11 +3189,16 @@ function sparkVg(pts, cor, fmt, mark){
 }
 
 function gaugeMon(pMc,pAds,corMc,trilha){
-  const W=200,H=166,cx=100,cy=92,R=70;
-  const ang=p=>Math.max(-135,Math.min(135,(p-100)*0.9));
+  const W=200,H=180,cx=100,cy=92,R=70;
+  // escala espichada: 0% às 7h · 100% às 12h · 200% às 5h (1,5° por ponto percentual)
+  const ang=p=>Math.max(-160,Math.min(160,(p-100)*1.5));
   const pt=(a,r)=>{ const rad=a*Math.PI/180; return [(cx+r*Math.sin(rad)).toFixed(1),(cy-r*Math.cos(rad)).toFixed(1)]; };
   let g='';
-  for(const [a,lb] of [[-90,'0'],[-45,'50'],[0,'100'],[45,'150'],[90,'200']]){
+  for(const a of [-112.5,-37.5,37.5,112.5]){
+    const [x1,y1]=pt(a,R-3),[x2,y2]=pt(a,R+1);
+    g+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--hair)" stroke-width="1.2"/>`;
+  }
+  for(const [a,lb] of [[-150,'0'],[-75,'50'],[0,'100'],[75,'150'],[150,'200']]){
     const [x1,y1]=pt(a,R-6),[x2,y2]=pt(a,R+1);
     g+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--muted)" stroke-width="${a===0?2.8:1.3}"/>`;
     const [tx,ty]=pt(a,R+13);
@@ -3427,7 +3432,7 @@ async function renderGlobal(){
     <p class="gr" style="margin:10px 2px 0">Cores nos valores = posição na distribuição das próprias semanas/dias do grupo: <span style="color:var(--good);font-weight:600">verde</span> = terço alto · <span style="color:var(--crit);font-weight:600">vermelho</span> = terço baixo (na BGT, preço alto do concorrente = verde). Semana/dia em curso (*) fica sem cor. Grupos = mesas de analista (mesma consolidação da curva ABC).</p>
     <div class="tablecard" style="margin-top:16px;padding:12px 16px">
       <div class="eyebrow">⏱ Monitor da semana — ${nAtual}ª semana do mês (${segNow.slice(8,10)}/${segNow.slice(5,7)} a ${fimSemMon.slice(8,10)}/${fimSemMon.slice(5,7)})</div>
-      <p class="gr" style="margin:4px 0 10px"><b>12h = 100% do esperado</b> (escala: 9h = 0% · 3h = 200%). Ponteiro <b>comprido</b> = MC · <b>curto azul</b> = Ads. <b>Ads = investimento da categoria pelo NOME das campanhas</b> (Shopping, P.Max, Search, Display… — ativas ou pausadas; institucionais/gerais ficam fora). Esperado = média das ${nAtual}ªs semanas dos <b>últimos 12 meses</b> — ajuste nas caixas e salve (💾 vale só para esta semana; na virada, volta o histórico da semana nova). A projeção pega o realizado dos dias já fechados e divide pela fração que esses dias representam na semana histórica — com 1 dia você já vê a perspectiva. <b>Sábado e domingo já pesam pouco sozinhos</b>: o padrão é por dia da semana (dom quase não fatura; ads de fds ≈ meio dia útil cada). <b>Rastro em degradê</b> = onde o ponteiro estava ontem e anteontem — dá pra ver se a semana está melhorando ou piorando.</p>
+      <p class="gr" style="margin:4px 0 10px"><b>12h = 100% do esperado</b> (escala: 7h = 0% · 5h = 200%). Ponteiro <b>comprido</b> = MC · <b>curto azul</b> = Ads. <b>Ads = investimento da categoria pelo NOME das campanhas</b> (Shopping, P.Max, Search, Display… — ativas ou pausadas; institucionais/gerais ficam fora). Esperado = média das ${nAtual}ªs semanas dos <b>últimos 12 meses</b> — ajuste nas caixas e salve (💾 vale só para esta semana; na virada, volta o histórico da semana nova). A projeção pega o realizado dos dias já fechados e divide pela fração que esses dias representam na semana histórica — com 1 dia você já vê a perspectiva. <b>Sábado e domingo já pesam pouco sozinhos</b>: o padrão é por dia da semana (dom quase não fatura; ads de fds ≈ meio dia útil cada). <b>Rastro em degradê</b> = onde o ponteiro estava ontem e anteontem — dá pra ver se a semana está melhorando ou piorando.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px">${cardsMonSem}</div>
     </div>
     <div class="tablecard" style="margin-top:14px;padding:12px 16px">
