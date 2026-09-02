@@ -2945,8 +2945,9 @@ async function geraEstudoCompat(cod){
       tudo('fato_conversao_sku',{select:'idvtex,views,compras',eq:[['cod',cod]]}),
     ]);
     const G={}; ga.forEach(r=>{ const g=G[r.idvtex]=G[r.idvtex]||{v:0,c:0}; g.v+=+r.views||0; g.c+=+r.compras||0; });
-    const its=rows.map(r=>({e:r.espec, at:(r.bbb_sku_ativo||'?')||'?', id:String(r.idvtex), v:G[r.idvtex]?.v||0, c:G[r.idvtex]?.c||0}));
-    if(!its.length){ alert('Este produto não tem compatibilidades com nome no cadastro.'); return; }
+    const jaPausadas=rows.filter(r=>r.bbb_sku_ativo==='N').length;
+    const its=rows.filter(r=>r.bbb_sku_ativo!=='N').map(r=>({e:r.espec, at:(r.bbb_sku_ativo||'?')||'?', id:String(r.idvtex), v:G[r.idvtex]?.v||0, c:G[r.idvtex]?.c||0}));
+    if(!its.length){ alert('Este produto não tem compatibilidades ativas no cadastro (todas já pausadas).'); return; }
     const desc=(st.dim?.[cod]?.descricao||'').toUpperCase();
     // ---- fallback local (mesma heurística de antes) — usado só se a IA falhar ----
     const LINHAS=['INSPIRON','LATITUDE','VOSTRO','PAVILION','PROBOOK','ELITEBOOK','PRESARIO','THINKPAD','IDEAPAD','ASPIRE','TRAVELMATE','SATELLITE','XPS','VAIO'];
@@ -3041,7 +3042,7 @@ async function geraEstudoCompat(cod){
     if(parecer){ s1.addRow(['PARECER DA IA:']).font={bold:true}; quebra(parecer,100).forEach(l=>s1.addRow(['  '+l])); s1.addRow(['']); }
     if(avisos.length){ s1.addRow(['⚠ AVISOS DE FRONTEIRA (conflitos com produtos vizinhos):']).font={bold:true};
       avisos.forEach(a=>quebra('• '+a,100).forEach(l=>s1.addRow(['  '+l]))); s1.addRow(['']); }
-    [[`NÚMEROS: ${its.length} compatibilidades · ${vivasN} vivas · ${its.length-vivasN} mortas (7 meses GA4)`],
+    [[`NÚMEROS: ${its.length} compatibilidades no estudo · ${vivasN} vivas · ${its.length-vivasN} mortas (7m GA4)${jaPausadas?` · ${jaPausadas} JÁ PAUSADAS (flag N) ficaram fora — já deletadas por si só`:''}`],
      [`PROPOSTA: ${fica.length} ficam · ${corta.length} saem (${nS} publicadas hoje = ação real)`],
      [`RETENÇÃO: ${(vk/vt*100).toFixed(1)}% dos acessos e ${(ck/ct*100).toFixed(1)}% das compras`],[''],
      ['PAPÉIS: ÂNCORA = nome canônico da família (SEO) · VARIANTE = prova valor ou desambigua fronteira · CORTE = despublicar (reversível)'],
