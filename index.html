@@ -2376,7 +2376,7 @@ async function renderSugestoes(){
     const rows=lista.filter(m=>{
       if(st.sgAB&&!st.abCods.has(m.cod)) return false;
       if(!st.sgAB&&st.abCods.has(m.cod)&&VER!=='tudo') return false;  // em teste A/B = preço travado, sai da mesa de trabalho
-      if(st.sgClasse&&m._classe!==st.sgClasse) return false;
+      if(!st.sgAB&&st.sgClasse&&m._classe!==st.sgClasse) return false;  // classe do dia não esconde testes A/B
       if(st.sgOut==='site'&&m._outS!==2) return false;
       if(st.sgOut==='atac'&&m._outA!==2) return false;
       if(st.sgOut==='ml'&&m._outM!==2) return false;
