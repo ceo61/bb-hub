@@ -2936,6 +2936,115 @@ async function renderPainel(){
 }
 
 /* ---------- SKUs — conversão por anúncio VTEX ---------- */
+async function geraEstudoCompat(cod){
+  const btn=document.getElementById('skEstudoBtn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ gerando…'; }
+  try{
+    const [rows,ga]=await Promise.all([
+      tudo('dim_compatibilidade',{select:'espec,idvtex,bbb_sku_ativo',eq:[['cod',cod]],mod:q=>q.neq('espec','')}),
+      tudo('fato_conversao_sku',{select:'idvtex,views,compras',eq:[['cod',cod]]}),
+    ]);
+    const G={}; ga.forEach(r=>{ const g=G[r.idvtex]=G[r.idvtex]||{v:0,c:0}; g.v+=+r.views||0; g.c+=+r.compras||0; });
+    const its=rows.map(r=>({e:r.espec, at:(r.bbb_sku_ativo||'?')||'?', id:r.idvtex, v:G[r.idvtex]?.v||0, c:G[r.idvtex]?.c||0}));
+    if(!its.length){ alert('Este produto não tem compatibilidades com nome no cadastro.'); return; }
+    const desc=(st.dim?.[cod]?.descricao||'').toUpperCase();
+    // ---- família (mesma inteligência do estudo DE099, generalizada p/ qualquer marca) ----
+    const LINHAS=['INSPIRON','LATITUDE','VOSTRO','PAVILION','PROBOOK','ELITEBOOK','PRESARIO','THINKPAD','IDEAPAD','ASPIRE','TRAVELMATE','SATELLITE','VOSTRO','XPS','VAIO'];
+    const FILL=new Set(['DELL','HP','ACER','ASUS','LENOVO','SAMSUNG','SONY','TOSHIBA','POSITIVO','LG','APPLE','MSI','COMPAQ','ITAUTEC','VAIO','NOTEBOOK','NOTE','ULTRABOOK','LAPTOP','TYPE','PART','NUMBER','STANDARD','ORIGINAL','NOVA','NOVO','BATERIA','TECLADO','TELA','FONTE','SERIES','SERIE','PARA','P/','COM',...LINHAS]);
+    const famDe=e=>{
+      const u=e.toUpperCase();
+      const mods=[...new Set((u.match(/\b[NE]?\d{4}\b/g)||[]).map(m=>m.replace(/^[NE]/,'')).filter(m=>!['3000','1000','1500','2000'].includes(m)))];
+      const linha=LINHAS.find(l=>u.includes(l))||'';
+      if(mods.length===1) return (linha||'MOD')+' '+mods[0];
+      if(mods.length>1) return 'COMBO '+mods.sort().slice(0,3).join('+');
+      const toks=u.split(/[\s,()\/]+/).filter(t=>t&&!FILL.has(t)&&!/^\d+[.,]?\d*V$/.test(t)&&!/^\d+WH$/.test(t)&&!/^\d+(\.\d+)?(''|")?$/.test(t));
+      const pn=toks.find(t=>/\d/.test(t)&&/[A-Z]/.test(t)&&t.length>=4);
+      if(pn) return 'PN '+pn;
+      const num=toks.find(t=>/\d/.test(t));
+      if(num) return (linha||'MOD')+' '+num;
+      return toks.length?(linha?linha+' ':'FAM ')+toks.slice(0,2).join(' '):'OUTROS';
+    };
+    const fam={}; its.forEach(it=>{ (fam[famDe(it.e)]=fam[famDe(it.e)]||[]).push(it); });
+    // ---- decisões: âncora por família viva; variante fica com ≥1 compra ou ≥20 views;
+    //      família morta cai inteira, EXCETO part number citado na descrição do produto (identidade) ----
+    const dec=new Map();
+    for(const [f,items] of Object.entries(fam)){
+      items.sort((a,b)=>(b.v-a.v)||(b.c-a.c));
+      const fv=items.reduce((s,x)=>s+x.v,0), fc=items.reduce((s,x)=>s+x.c,0);
+      if(fv===0&&fc===0){
+        const tokPN=f.startsWith('PN ')?f.slice(3):null;
+        if(tokPN&&desc.includes(tokPN)){
+          const anc=items.slice().sort((a,b)=>a.e.length-b.e.length)[0];
+          items.forEach(it=>dec.set(it,it===anc
+            ?['FICA','ÂNCORA (exceção)',f,'part number do próprio produto — mantida por identidade/SEO mesmo sem tráfego']
+            :['CORTA','—',f,'0 acessos e 0 compras em 7 meses']));
+        } else items.forEach(it=>dec.set(it,['CORTA','—',f,'família inteira sem acesso nem compra em 7 meses']));
+        continue;
+      }
+      items.forEach((it,i)=>{
+        if(i===0) dec.set(it,['FICA','ÂNCORA',f,`maior tráfego da família (${Math.round(it.v)} views · ${Math.round(it.c)} compras)`]);
+        else if(it.c>=1||it.v>=20) dec.set(it,['FICA','variante',f,`prova valor: ${Math.round(it.c)} compra(s) · ${Math.round(it.v)} views`]);
+        else if(it.v>0) dec.set(it,['CORTA','—',f,`duplicata fraca da âncora "${items[0].e.slice(0,34)}" (${Math.round(it.v)} views, sem compra)`]);
+        else dec.set(it,['CORTA','—',f,'0 acessos e 0 compras em 7 meses']);
+      });
+    }
+    const fica=its.filter(it=>dec.get(it)[0]==='FICA'), corta=its.filter(it=>dec.get(it)[0]==='CORTA');
+    const vt=its.reduce((s,x)=>s+x.v,0)||1, ct=its.reduce((s,x)=>s+x.c,0)||1;
+    const vk=fica.reduce((s,x)=>s+x.v,0), ck=fica.reduce((s,x)=>s+x.c,0);
+    const nS=corta.filter(x=>x.at==='S').length;
+    // ---- Excel (3 abas, mesmas cores do estudo) ----
+    const XL=await import('https://esm.sh/exceljs@4.4.0');
+    const ExcelJS=XL.default??XL;
+    const wb=new ExcelJS.Workbook();
+    const VERDE={type:'pattern',pattern:'solid',fgColor:{argb:'FFE2EFDA'}};
+    const VERM={type:'pattern',pattern:'solid',fgColor:{argb:'FFFCE4E4'}};
+    const AZUL={type:'pattern',pattern:'solid',fgColor:{argb:'FFDDEBF7'}};
+    const hoje=new Date().toLocaleDateString('sv-SE');
+    const vivas=its.filter(x=>x.v>0||x.c>0).length;
+    const s1=wb.addWorksheet('DE ONDE → PARA ONDE');
+    s1.getColumn(1).width=95;
+    [[`${cod} — REESTRUTURAÇÃO DAS COMPATIBILIDADES (estudo gerado no BB HUB em ${hoje})`],[''],
+     ['DE ONDE SAÍMOS:'],[`  ${its.length} compatibilidades no cadastro · ${vivas} com algum tráfego · ${its.length-vivas} mortas (7 meses GA4)`],[''],
+     ['PARA ONDE VAMOS:'],[`  ${fica.length} compatibilidades em 3 papéis:`],
+     ['  • ÂNCORA — 1 nome canônico por família de aparelho/part number (concentra o SEO)'],
+     ['  • VARIANTE — fica quem prova valor: ≥1 compra OU ≥20 views em 7 meses'],
+     ['  • CORTE — mortas e duplicatas fracas (despublicar, reversível)'],[''],
+     [`RETENÇÃO: ${(vk/vt*100).toFixed(1)}% dos acessos e ${(ck/ct*100).toFixed(1)}% das compras com ${Math.round(fica.length/its.length*100)}% das entradas`],
+     [`CORTE: ${corta.length} entradas (${nS} publicadas hoje = ação real; o resto já está pausado)`],[''],
+     ['REGRAS: âncora sempre fica · variante fica com ≥1 compra ou ≥20 views · família morta cai inteira,'],
+     ['exceto part number citado na descrição do produto (mantido por identidade) · nada é renomeado nesta fase']
+    ].forEach(r=>s1.addRow(r));
+    s1.getRow(1).font={bold:true,size:13};
+    const ordem=Object.entries(fam).sort((a,b)=>b[1].reduce((s,x)=>s+x.v,0)-a[1].reduce((s,x)=>s+x.v,0));
+    const s2=wb.addWorksheet('ESTRUTURA PROPOSTA');
+    s2.addRow(['família','papel','compatibilidade (nome no site)','views 7m','compras 7m','tx conv']);
+    s2.getRow(1).eachCell(c=>{c.font={bold:true};c.fill=AZUL;});
+    [[1,20],[2,16],[3,52],[4,10],[5,11],[6,9]].forEach(([i,w])=>s2.getColumn(i).width=w);
+    for(const [f,items] of ordem) for(const it of items){
+      const d=dec.get(it); if(d[0]!=='FICA') continue;
+      const r=s2.addRow([f,d[1],it.e,Math.round(it.v),Math.round(it.c),it.v?(it.c/it.v*100).toFixed(1)+'%':'']);
+      if(d[1].includes('ÂNCORA')){ r.eachCell(c=>c.fill=VERDE); r.getCell(3).font={bold:true}; }
+    }
+    const s3=wb.addWorksheet('TODAS — linha a linha');
+    s3.addRow(['compatibilidade','família','ativo hoje','views 7m','compras','DECISÃO','papel','motivo']);
+    s3.getRow(1).eachCell(c=>{c.font={bold:true};c.fill=AZUL;});
+    [[1,46],[2,20],[3,10],[4,9],[5,9],[6,9],[7,16],[8,62]].forEach(([i,w])=>s3.getColumn(i).width=w);
+    for(const [f,items] of ordem) for(const it of items){
+      const d=dec.get(it);
+      const r=s3.addRow([it.e,f,it.at,Math.round(it.v),Math.round(it.c),d[0],d[1],d[3]]);
+      r.eachCell(c=>c.fill=(d[0]==='FICA'?VERDE:VERM));
+    }
+    s3.autoFilter={from:'A1',to:{row:s3.rowCount,column:8}};
+    const buf=await wb.xlsx.writeBuffer();
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+    a.download=`${cod}_ESTRUTURA_${hoje}.xlsx`;
+    a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    console.log('estudo compat', cod, 'fica', fica.length, 'corta', corta.length);
+  }catch(e){ alert('Erro ao gerar o estudo: '+(e.message||e)); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='📗 Estudo Excel'; } }
+}
+
 function abreNovasCompat(cod){
   let ov=document.getElementById('mcModal');
   if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
@@ -3067,6 +3176,7 @@ async function renderSkus(){
         <span class="kpi" style="padding:7px 16px"><b>${esc(cod)}</b>&nbsp;<span class="gr">${esc(st.dim[cod]?.descricao||'')}</span></span>
         ${btnC}
         <button class="kpi" id="skNovasBtn" style="padding:7px 16px;color:var(--warn);${(st.skNovas?.[cod]||[]).length?'border-color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn);font-weight:700':''}">📋 Colar novas${(st.skNovas?.[cod]||[]).length?' ('+nf.format(st.skNovas[cod].length)+')':''}</button>
+        <button class="kpi" id="skEstudoBtn" title="gera o Excel de reestruturação: famílias, âncoras, variantes e corte — mesma inteligência do estudo do DE099" style="padding:7px 16px;color:var(--accent)">📗 Estudo Excel</button>
         <input type="search" id="skQC" placeholder="Filtrar modelo, part number ou IDSKU…" value="" style="margin-left:auto;min-width:240px"></div>
       <div id="skTabC"></div>`;
     const desenhaC=()=>{
@@ -3109,6 +3219,8 @@ async function renderSkus(){
     ligaCompat();
     const nb=document.getElementById('skNovasBtn');
     if(nb) nb.onclick=()=>abreNovasCompat(cod);
+    const eb=document.getElementById('skEstudoBtn');
+    if(eb) eb.onclick=()=>geraEstudoCompat(cod);
     return;
   }
   $('#skCorpo').innerHTML='<div class="carregando">Carregando SKUs…</div>';
