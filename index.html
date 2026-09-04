@@ -252,6 +252,7 @@ th.ord .seta{font-size:9px;margin-left:3px}
     <a href="#pressao" data-pg="pressao">🚀 Pressão Ads</a>
     <a href="#produtos" data-pg="produtos">📦 Produtos</a>
     <a href="#compras" data-pg="compras">🚢 Compras &amp; Trânsito</a>
+    <a href="#pedido" data-pg="pedido">🧮 Pedido de Compra</a>
     <a href="#importacoes" data-pg="importacoes">🛬 Importações <span class="soon">breve</span></a>
     <a href="#anuncios" data-pg="anuncios">📈 Anúncios &amp; Conversão <span class="soon">breve</span></a>
     <a href="#decisoes" data-pg="decisoes">💬 Decisões — Chat IA <span class="soon">breve</span></a>
@@ -532,7 +533,7 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', diario:'Acompanhamento Diário — 20+ un/semana', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', diario:'Acompanhamento Diário — 20+ un/semana', pedido:'Pedido de Compra — importação', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -556,6 +557,7 @@ function navega(pg){
   else if(pg==='skus') renderSkus();
   else if(pg==='global') renderGlobal();
   else if(pg==='diario') renderDiario();
+  else if(pg==='pedido') renderPedido();
   else if(pg==='pressao') renderPressao();
   else if(pg==='config') renderConfig();
   else renderEmBreve(pg);
@@ -1846,6 +1848,214 @@ async function abreDiario(cod, desc){
     const i=L.findIndex(x=>x.cod===cod);
     const nx=L[(i+1)%L.length];
     abreDiario(nx.cod, nx.desc);
+  };
+}
+
+/* ---------- Pedido de Compra (importação) — método homologado 04/09/26 ---------- */
+const PED_DEF={ciclo:2, lead:160, moq:10, moqCaro:5, caroDe:250, ssEst:1, ssCre:1.5, ssDec:0.5, ssPic:2};
+function pedParams(){ try{ return {...PED_DEF, ...(JSON.parse(localStorage.getItem('bbhub-pedido')||'{}'))}; }catch(e){ return {...PED_DEF}; } }
+
+async function renderPedido(){
+  if(!st.pedGrupos){
+    $('#conteudo').innerHTML='<div class="carregando">Carregando grupos…</div>';
+    try{
+      const gs=await tudo('dim_produto',{select:'grupo',eq:[]});
+      const cnt={}; gs.forEach(r=>{ if(r.grupo) cnt[r.grupo]=(cnt[r.grupo]||0)+1; });
+      st.pedGrupos=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,14).map(x=>x[0]);
+    }catch(e){ $('#conteudo').innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; return; }
+  }
+  const P=pedParams();
+  st.pedG=st.pedG||'BNOT';
+  const num=(id,lb,v,step,w,tit)=>`<label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="${tit||''}">${lb}<input id="${id}" type="number" step="${step}" value="${v}" style="width:${w}px;padding:3px 6px;font-size:12.5px;text-align:right"></label>`;
+  $('#conteudo').innerHTML=`
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Método por <b>perfil de venda</b> (12 meses fechados, venda total site+atacado+ML <b>sem lotões</b> — dias de atacado ≥50 un ficam de fora): <b>ESTÁVEL</b> usa média 12m · <b>CRESCENDO/RAMPANDO</b> usa média 3m×tendência (teto 1,5×) · <b>DECLÍNIO</b> usa média 3m×0,8 · <b>PICOS</b> usa o espelho dos mesmos meses do ano anterior. Pedido = demanda×(lead+ciclo) + segurança − saldo − trânsito que chega no horizonte, arredondado ao MOQ. Ajuste os parâmetros e <b>RODAR</b>.</p>
+    <div style="display:flex;gap:8px;margin:0 0 8px;flex-wrap:wrap;align-items:center">
+      ${st.pedGrupos.map(g=>`<button class="btn pedG" data-g="${esc(g)}" style="padding:4px 14px;${g===st.pedG?'background:var(--accent);color:#fff;border-radius:8px':''}">${esc(g)}</button>`).join('')}
+      <input id="pedFiltro" placeholder="filtrar por marca/código… (ex.: ACER)" value="${esc(st.pedF||'')}" style="margin-left:auto;padding:6px 12px;min-width:220px">
+    </div>
+    <div class="tablecard" style="padding:10px 14px;margin-bottom:10px">
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+        ${num('pedCiclo','ciclo entre pedidos (meses)',P.ciclo,0.5,60,'de quanto em quanto tempo fecha pedido desta família')}
+        ${num('pedLead','lead time (dias)',P.lead,5,60,'emissão do PO até entrar no estoque — mediana medida dos POs: 160d')}
+        ${num('pedMoq','MOQ padrão',P.moq,1,52)}
+        ${num('pedMoqCaro','MOQ produto caro',P.moqCaro,1,52)}
+        ${num('pedCaroDe','caro a partir de (R$ custo)',P.caroDe,10,70)}
+        <span style="border-left:1px solid var(--hair);height:34px"></span>
+        ${num('pedSsEst','seg. ESTÁVEL (m)',P.ssEst,0.25,52)}
+        ${num('pedSsCre','seg. CRESC/RAMPA (m)',P.ssCre,0.25,52)}
+        ${num('pedSsDec','seg. DECLÍNIO (m)',P.ssDec,0.25,52)}
+        ${num('pedSsPic','seg. PICOS (m)',P.ssPic,0.25,52)}
+        <button class="btn" id="pedRodar" style="padding:8px 26px;font-weight:700;font-size:13.5px">▶ RODAR</button>
+      </div>
+    </div>
+    <div id="pedSaida">${st.pedHtml||'<p class="gr">Escolha o grupo, ajuste os parâmetros e clique RODAR.</p>'}</div>`;
+  document.querySelectorAll('.pedG').forEach(b=>b.onclick=()=>{ st.pedG=b.dataset.g; renderPedido(); });
+  $('#pedRodar').onclick=()=>rodaPedido();
+  if(st.pedRows) ligaPedidoSaida();
+}
+
+async function rodaPedido(){
+  const P={ciclo:+$('#pedCiclo').value||2, lead:+$('#pedLead').value||160,
+    moq:+$('#pedMoq').value||10, moqCaro:+$('#pedMoqCaro').value||5, caroDe:+$('#pedCaroDe').value||250,
+    ssEst:+$('#pedSsEst').value||1, ssCre:+$('#pedSsCre').value||1.5, ssDec:+$('#pedSsDec').value||0.5, ssPic:+$('#pedSsPic').value||2};
+  try{ localStorage.setItem('bbhub-pedido', JSON.stringify(P)); }catch(e){}
+  st.pedF=($('#pedFiltro').value||'').trim().toUpperCase();
+  const out=$('#pedSaida'); out.innerHTML='<div class="carregando">Buscando produtos e 13 meses de venda…</div>';
+  try{
+    const prods=(await tudo('dim_produto',{select:'cod,descricao,bloqueado',eq:[['grupo',st.pedG]]}))
+      .filter(p=>!+p.bloqueado)
+      .filter(p=>!st.pedF||(p.cod+' '+(p.descricao||'')).toUpperCase().includes(st.pedF));
+    if(!prods.length){ out.innerHTML='<p class="gr">Nenhum produto no filtro.</p>'; return; }
+    const cods=prods.map(p=>p.cod);
+    const iniD=(()=>{ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-12); return d.toLocaleDateString('sv-SE'); })();
+    const vendas=[];
+    for(let i=0;i<cods.length;i+=60){
+      const lote=cods.slice(i,i+60);
+      out.innerHTML=`<div class="carregando">Carregando vendas… ${Math.min(i+60,cods.length)}/${cods.length} produtos</div>`;
+      vendas.push(...await tudo('fato_vendas_diaria',{select:'data,cod,qtd_b2c,qtd_ml,qtd_atac',mod:q=>q.gte('data',iniD).in('cod',lote)}));
+    }
+    const [snapE,snapT,snapC]=await Promise.all([
+      sb.from('fato_estoque').select('snapshot').order('snapshot',{ascending:false}).limit(1),
+      sb.from('fato_transito').select('snapshot').order('snapshot',{ascending:false}).limit(1),
+      sb.from('fato_custo').select('snapshot').order('snapshot',{ascending:false}).limit(1)]);
+    const est={},tra={},cus={};
+    for(let i=0;i<cods.length;i+=60){
+      const lote=cods.slice(i,i+60);
+      const [e,t,c]=await Promise.all([
+        tudo('fato_estoque',{select:'cod,estoque_util',eq:[['snapshot',snapE.data[0].snapshot]],mod:q=>q.in('cod',lote)}),
+        tudo('fato_transito',{select:'cod,qtd_pendente,chegada_prevista',eq:[['snapshot',snapT.data[0].snapshot]],mod:q=>q.in('cod',lote)}),
+        tudo('fato_custo',{select:'cod,custo',eq:[['snapshot',snapC.data[0].snapshot]],mod:q=>q.in('cod',lote)})]);
+      e.forEach(r=>est[r.cod]=+r.estoque_util||0);
+      t.forEach(r=>{ (tra[r.cod]=tra[r.cod]||[]).push({q:+r.qtd_pendente||0, d:r.chegada_prevista}); });
+      c.forEach(r=>cus[r.cod]=+r.custo||null);
+    }
+    // série mensal ÚTIL (sem lotões: dia de atacado ≥50 fica fora)
+    const M={};
+    vendas.forEach(r=>{
+      const mes=r.data.slice(0,7);
+      const at=+r.qtd_atac||0;
+      const q=(+r.qtd_b2c||0)+(+r.qtd_ml||0)+(at<50?at:0);
+      (M[r.cod]=M[r.cod]||{})[mes]=(M[r.cod]?.[mes]||0)+q;
+    });
+    const mesesF=[]; { const d=new Date(); d.setDate(1);
+      for(let k=12;k>=1;k--){ const x=new Date(d); x.setMonth(d.getMonth()-k); mesesF.push(x.toLocaleDateString('sv-SE').slice(0,7)); } }
+    const horiz=P.lead/30.44+P.ciclo;
+    const hojeMs=Date.now(), fimHoriz=hojeMs+horiz*30.44*864e5;
+    const rows=[];
+    for(const p of prods){
+      const serie=mesesF.map(m=>M[p.cod]?.[m]||0);
+      const tot12=serie.reduce((s,x)=>s+x,0);
+      if(tot12===0 && !(est[p.cod]>0)) continue;
+      const m3=serie.slice(-3).reduce((s,x)=>s+x,0)/3, m12=tot12/12;
+      const media=m12||1e-9, cv=Math.sqrt(serie.reduce((s,x)=>s+(x-m12)*(x-m12),0)/12)/media;
+      const tend=m12>0?m3/m12:null;
+      let perfil, base, ss;
+      const vend1a6=serie.slice(0,6).filter(x=>x>0).length;
+      if(tot12===0){ perfil='SEM VENDA'; base=0; ss=0; }
+      else if(vend1a6<=1&&m3>0){ perfil='RAMPANDO'; base=m3*Math.min(1.5,tend||1.5); ss=P.ssCre; }
+      else if(tend!=null&&tend>=1.4){ perfil='CRESCENDO'; base=m3*Math.min(1.5,tend); ss=P.ssCre; }
+      else if(tend!=null&&tend<=0.6){ perfil='DECLÍNIO'; base=m3*0.8; ss=P.ssDec; }
+      else if(cv>=0.75){ perfil='PICOS';
+        const alvoMeses=[]; { const d=new Date(); for(let k=0;k<Math.ceil(horiz);k++){ const x=new Date(d); x.setMonth(d.getMonth()+k-12); alvoMeses.push(x.toLocaleDateString('sv-SE').slice(0,7)); } }
+        const esp=alvoMeses.map(m=>M[p.cod]?.[m]).filter(v=>v!=null);
+        base=esp.length?esp.reduce((s,x)=>s+x,0)/esp.length:m12; ss=P.ssPic; }
+      else { perfil='ESTÁVEL'; base=m12; ss=P.ssEst; }
+      const saldo=est[p.cod]||0;
+      const trs=(tra[p.cod]||[]);
+      const traHoriz=trs.filter(t=>{ const dd=t.d?new Date(t.d+'T12:00:00').getTime():null; return dd==null||dd<=fimHoriz; }).reduce((s,t)=>s+t.q,0);
+      const traTot=trs.reduce((s,t)=>s+t.q,0);
+      const prox=trs.filter(t=>t.d).map(t=>t.d).sort()[0]||null;
+      const custo=cus[p.cod];
+      const moqEf=(custo!=null&&custo>=P.caroDe)?P.moqCaro:P.moq;
+      const alvo=base*horiz+base*ss;
+      const bruto=alvo-saldo-traHoriz;
+      let sug=0;
+      if(base>0&&bruto>0) sug=Math.ceil(bruto/moqEf)*moqEf;
+      const folgaHoje=base>0?saldo/base:(saldo>0?Infinity:0);
+      const folgaCheg=base>0?(saldo+traHoriz+sug-base*horiz)/base:null;
+      const flags=[];
+      if(base>0&&(saldo+trs.filter(t=>{const dd=t.d?new Date(t.d+'T12:00:00').getTime():null;return dd!=null&&dd<=hojeMs+P.lead*864e5;}).reduce((s,t)=>s+t.q,0))<base*(P.lead/30.44)) flags.push('🔴 rompe antes do lead');
+      if(perfil==='RAMPANDO') flags.push('🟡 novo — validar manual');
+      if(base>0&&folgaHoje>8&&sug===0) flags.push('⚪ excesso');
+      rows.push({cod:p.cod, desc:p.descricao||'', perfil, serie6:serie.slice(-6), m3, m12, tend, base, saldo,
+        traHoriz, traTot, prox, folgaHoje, alvo, sug, folgaCheg, custo, valor:custo!=null?sug*custo:null, flags:flags.join(' ')});
+    }
+    st.pedRows=rows; st.pedMeses=mesesF.slice(-6); st.pedP=P; st.pedSort=st.pedSort||'sug'; st.pedDir=true;
+    desenhaPedido();
+  }catch(e){ out.innerHTML='<p class="gr">Erro ao rodar: '+esc(e.message||e)+'</p>'; }
+}
+
+function desenhaPedido(){
+  const out=$('#pedSaida'); const rows=st.pedRows||[]; const P=st.pedP;
+  const k=st.pedSort;
+  const ordenado=rows.slice().sort((a,b)=>{ const x=a[k],y=b[k]; if(x==null)return 1; if(y==null)return -1; return st.pedDir?(y>x?1:-1):(x>y?1:-1); });
+  const totS=rows.reduce((s,r)=>s+r.sug,0), totV=rows.reduce((s,r)=>s+(r.valor||0),0);
+  const nCompra=rows.filter(r=>r.sug>0).length;
+  const corP={'ESTÁVEL':'var(--good)','CRESCENDO':'var(--accent)','RAMPANDO':'var(--warn)','DECLÍNIO':'var(--lar)','PICOS':'var(--ch4)','SEM VENDA':'var(--muted)'};
+  const mlb=m=>m.slice(5,7)+'/'+m.slice(2,4);
+  const th=(kk,lb,tit)=>`<th data-pk="${kk}" title="${tit||''}" style="cursor:pointer;text-decoration:underline">${lb}${st.pedSort===kk?(st.pedDir?' ▼':' ▲'):''}</th>`;
+  out.innerHTML=`
+    <div style="display:flex;gap:14px;align-items:baseline;margin:0 0 8px;flex-wrap:wrap">
+      <b style="font-size:14px">${nCompra} produtos a comprar · ${nf.format(totS)} unidades · ${rf.format(totV)} a custo</b>
+      <span class="gr">horizonte ${nf1.format(P.lead/30.44+P.ciclo)} meses (lead ${P.lead}d + ciclo ${P.ciclo}m) · ${rows.length} produtos analisados</span>
+      <button class="btn" id="pedXls" style="padding:4px 14px;font-size:12px;margin-left:auto">⬇ Excel</button>
+    </div>
+    <div class="tablecard"><div class="tscroll"><table style="font-size:12px"><thead><tr id="pedHead">
+      <th style="text-align:left">Produto</th>${th('perfil','Perfil','classificação automática pela série de 12 meses')}
+      ${(st.pedMeses||[]).map(m=>`<th title="venda global (site+atacado+ML, sem lotões) no mês">${mlb(m)}</th>`).join('')}
+      ${th('m3','m3','média dos últimos 3 meses')}${th('m12','m12','média dos últimos 12 meses')}
+      ${th('tend','tend.','m3 ÷ m12')}${th('base','base/mês','demanda mensal ADOTADA pelo perfil — é a que o pedido usa')}
+      ${th('saldo','saldo','estoque útil hoje')}${th('traHoriz','trânsito','qtd de POs abertos que chega dentro do horizonte (tooltip: total e 1ª chegada)')}
+      ${th('folgaHoje','folga (m)','saldo ÷ base')}${th('alvo','alvo','base × horizonte + segurança do perfil')}
+      ${th('sug','SUGESTÃO','alvo − saldo − trânsito, arredondado ao MOQ')}${th('folgaCheg','folga pós','meses de folga projetada no fim do horizonte, já com o pedido')}
+      ${th('custo','custo','custo unitário')}${th('valor','valor R$','sugestão × custo')}<th>flags</th>
+    </tr></thead><tbody>
+    ${ordenado.map(r=>`<tr${r.sug>0?'':' style="opacity:.6"'}>
+      <td style="text-align:left;white-space:nowrap"><b>${esc(r.cod)}</b><br><span class="gr" style="font-size:10.5px">${esc(r.desc.slice(0,34))}</span></td>
+      <td><span style="color:${corP[r.perfil]||'var(--ink)'};font-weight:700;font-size:11px">${r.perfil}</span></td>
+      ${r.serie6.map(v=>`<td>${v?nf.format(Math.round(v)):'—'}</td>`).join('')}
+      <td>${nf1.format(r.m3)}</td><td>${nf1.format(r.m12)}</td>
+      <td>${r.tend!=null?nf1.format(r.tend)+'×':'—'}</td>
+      <td><b>${nf1.format(r.base)}</b></td>
+      <td>${nf.format(Math.round(r.saldo))}</td>
+      <td title="total em POs: ${nf.format(Math.round(r.traTot))}${r.prox?' · 1ª chegada '+r.prox.slice(8,10)+'/'+r.prox.slice(5,7):''}">${r.traHoriz?nf.format(Math.round(r.traHoriz)):'—'}</td>
+      <td style="${r.folgaHoje!==Infinity&&r.folgaHoje<P.lead/30.44?'color:var(--crit);font-weight:700':''}">${r.folgaHoje===Infinity?'∞':nf1.format(r.folgaHoje)}</td>
+      <td>${nf.format(Math.round(r.alvo))}</td>
+      <td style="font-weight:800;${r.sug>0?'color:var(--accent);font-size:13px':''}">${r.sug?nf.format(r.sug):'0'}</td>
+      <td>${r.folgaCheg!=null?nf1.format(r.folgaCheg):'—'}</td>
+      <td>${r.custo!=null?rf2.format(r.custo):'—'}</td>
+      <td>${r.valor!=null&&r.sug?rf.format(r.valor):'—'}</td>
+      <td style="text-align:left;font-size:11px;white-space:nowrap">${r.flags}</td>
+    </tr>`).join('')}</tbody></table></div></div>
+    <p class="gr" style="margin:8px 2px 0">Linhas apagadas = sugestão zero (cobertos ou sem venda). <b>base/mês</b> é a coluna-chave: a demanda que o método adotou para aquele perfil — confira contra m3/m12 e a série de 6 meses.</p>`;
+  ligaPedidoSaida();
+}
+
+function ligaPedidoSaida(){
+  const h=$('#pedHead');
+  if(h) h.onclick=e=>{ const t=e.target.closest('th'); if(!t||!t.dataset.pk) return;
+    if(st.pedSort===t.dataset.pk) st.pedDir=!st.pedDir; else { st.pedSort=t.dataset.pk; st.pedDir=true; }
+    desenhaPedido(); };
+  const x=$('#pedXls');
+  if(x) x.onclick=async()=>{
+    x.disabled=true;
+    try{
+      const XL=await import('https://esm.sh/exceljs@4.4.0'); const ExcelJS=XL.default??XL;
+      const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('PEDIDO '+st.pedG);
+      const P=st.pedP;
+      ws.addRow([`PEDIDO DE COMPRA — ${st.pedG}${st.pedF?' · filtro '+st.pedF:''} · ${new Date().toLocaleDateString('pt-BR')}`]).font={bold:true,size:13};
+      ws.addRow([`parâmetros: lead ${P.lead}d · ciclo ${P.ciclo}m · MOQ ${P.moq}/${P.moqCaro} (caro ≥ R$${P.caroDe}) · seg ${P.ssEst}/${P.ssCre}/${P.ssDec}/${P.ssPic}m`]);
+      ws.addRow([]);
+      ws.addRow(['cod','descrição','perfil',...(st.pedMeses||[]),'m3','m12','tend','base/mês','saldo','trânsito(horiz)','trânsito(total)','1ª chegada','folga hoje (m)','alvo','SUGESTÃO','folga pós (m)','custo','valor R$','flags']).font={bold:true};
+      for(const r of st.pedRows.slice().sort((a,b)=>b.sug-a.sug))
+        ws.addRow([r.cod,r.desc,r.perfil,...r.serie6.map(v=>Math.round(v)),+r.m3.toFixed(1),+r.m12.toFixed(1),r.tend!=null?+r.tend.toFixed(2):null,+r.base.toFixed(1),Math.round(r.saldo),Math.round(r.traHoriz),Math.round(r.traTot),r.prox||'',r.folgaHoje===Infinity?null:+r.folgaHoje.toFixed(1),Math.round(r.alvo),r.sug,r.folgaCheg!=null?+r.folgaCheg.toFixed(1):null,r.custo,r.valor?Math.round(r.valor):null,r.flags]);
+      const buf=await wb.xlsx.writeBuffer();
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+      a.download=`PEDIDO_${st.pedG}${st.pedF?'_'+st.pedF:''}_${new Date().toLocaleDateString('sv-SE')}.xlsx`;
+      a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    }catch(e){ alert('Erro no Excel: '+(e.message||e)); }
+    x.disabled=false;
   };
 }
 
