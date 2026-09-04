@@ -1868,7 +1868,7 @@ async function renderPedido(){
   st.pedG=st.pedG||'BNOT';
   const num=(id,lb,v,step,w,tit)=>`<label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="${tit||''}">${lb}<input id="${id}" type="number" step="${step}" value="${v}" style="width:${w}px;padding:3px 6px;font-size:12.5px;text-align:right"></label>`;
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Método por <b>perfil de venda</b> (12 meses fechados, venda total site+atacado+ML <b>sem lotões</b> — linhas de nota do atacado com ≥50 un ficam de fora, igual à média oficial; há um toggle para incluí-los): <b>ESTÁVEL</b> usa média 12m · <b>CRESCENDO/RAMPANDO</b> usa média 3m×tendência (teto 1,5×) · <b>DECLÍNIO</b> usa média 3m×0,8 · <b>PICOS</b> usa o espelho dos mesmos meses do ano anterior. Pedido = demanda×(lead+ciclo) + segurança − saldo − trânsito que chega no horizonte, arredondado ao MOQ. Ajuste os parâmetros e <b>RODAR</b>.</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Método por <b>perfil de venda</b> (12 meses fechados, <b>venda global total</b>: site + atacado + ML, sem nenhum desconto). Meses com lote grande relevante ganham <span style="color:var(--lar)">●</span> — passe o mouse para ver quanto foi lote: <b>ESTÁVEL</b> usa média 12m · <b>CRESCENDO/RAMPANDO</b> usa média 3m×tendência (teto 1,5×) · <b>DECLÍNIO</b> usa média 3m×0,8 · <b>PICOS</b> usa o espelho dos mesmos meses do ano anterior. Pedido = demanda×(lead+ciclo) + segurança − saldo − trânsito que chega no horizonte, arredondado ao MOQ. Ajuste os parâmetros e <b>RODAR</b>.</p>
     <div style="display:flex;gap:8px;margin:0 0 8px;flex-wrap:wrap;align-items:center">
       ${st.pedGrupos.map(g=>`<button class="pedG" data-g="${esc(g)}" style="padding:5px 16px;border-radius:9px;cursor:pointer;${g===st.pedG?'background:var(--accent);color:#fff;border:2px solid var(--accent);font-weight:800;box-shadow:0 1px 6px rgba(42,120,214,.45)':'background:none;color:var(--accent);border:1px solid var(--accent);font-weight:600'}">${g===st.pedG?'✓ ':''}${esc(g)}</button>`).join('')}
       <input id="pedFiltro" placeholder="filtrar por marca/código… (ex.: ACER)" value="${esc(st.pedF||'')}" style="margin-left:auto;padding:6px 12px;min-width:220px">
@@ -1885,7 +1885,6 @@ async function renderPedido(){
         ${num('pedSsCre','seg. CRESC/RAMPA (m)',P.ssCre,0.25,52)}
         ${num('pedSsDec','seg. DECLÍNIO (m)',P.ssDec,0.25,52)}
         ${num('pedSsPic','seg. PICOS (m)',P.ssPic,0.25,52)}
-        <label style="display:inline-flex;gap:5px;align-items:center;font-size:11.5px;color:var(--muted);cursor:pointer" title="doutrina: dias de atacado ≥50 un (lotões) ficam FORA da média. Marque para incluí-los na demanda — produtos com lotão recorrente (ex.: AC082) mudam muito"><input id="pedLotoes" type="checkbox" ${P.lotoes?'checked':''}> incluir lotões</label>
         <button class="btn" id="pedRodar" style="padding:8px 26px;font-weight:700;font-size:13.5px">▶ RODAR</button>
       </div>
     </div>
@@ -1898,8 +1897,7 @@ async function renderPedido(){
 async function rodaPedido(){
   const P={ciclo:+$('#pedCiclo').value||2, lead:+$('#pedLead').value||160,
     moq:+$('#pedMoq').value||10, moqCaro:+$('#pedMoqCaro').value||5, caroDe:+$('#pedCaroDe').value||250,
-    ssEst:+$('#pedSsEst').value||1, ssCre:+$('#pedSsCre').value||1.5, ssDec:+$('#pedSsDec').value||0.5, ssPic:+$('#pedSsPic').value||2,
-    lotoes:$('#pedLotoes').checked};
+    ssEst:+$('#pedSsEst').value||1, ssCre:+$('#pedSsCre').value||1.5, ssDec:+$('#pedSsDec').value||0.5, ssPic:+$('#pedSsPic').value||2};
   try{ localStorage.setItem('bbhub-pedido', JSON.stringify(P)); }catch(e){}
   st.pedF=($('#pedFiltro').value||'').trim().toUpperCase();
   const out=$('#pedSaida'); out.innerHTML='<div class="carregando">Buscando produtos e 13 meses de venda…</div>';
@@ -1932,12 +1930,13 @@ async function rodaPedido(){
       c.forEach(r=>cus[r.cod]=+r.custo||null);
     }
     // série mensal ÚTIL (sem lotões: dia de atacado ≥50 fica fora)
-    const M={};
+    const M={}, ML={};
     vendas.forEach(r=>{
       const mes=r.data.slice(0,7);
-      const at=+r.qtd_atac||0, lot=+r.qtd_atac_lotao||0;
-      const q=(+r.qtd_b2c||0)+(+r.qtd_ml||0)+(P.lotoes?at:Math.max(0,at-lot));
+      const q=(+r.qtd_b2c||0)+(+r.qtd_ml||0)+(+r.qtd_atac||0);  // venda GLOBAL total — sem descontos
       (M[r.cod]=M[r.cod]||{})[mes]=(M[r.cod]?.[mes]||0)+q;
+      const lot=+r.qtd_atac_lotao||0;
+      if(lot) (ML[r.cod]=ML[r.cod]||{})[mes]=(ML[r.cod]?.[mes]||0)+lot;
     });
     const mesesF=[]; { const d=new Date(); d.setDate(1);
       for(let k=12;k>=1;k--){ const x=new Date(d); x.setMonth(d.getMonth()-k); mesesF.push(x.toLocaleDateString('sv-SE').slice(0,7)); } }
@@ -1982,7 +1981,8 @@ async function rodaPedido(){
       if(base>0&&(saldo+trs.filter(t=>{const dd=dMs(t.d);return dd!=null&&dd<=hojeMs+P.lead*864e5;}).reduce((s,t)=>s+t.q,0))<base*(P.lead/30.44)) flags.push('🔴 rompe antes do lead');
       if(perfil==='RAMPANDO') flags.push('🟡 novo — validar manual');
       if(base>0&&folgaHoje>8&&sug===0) flags.push('⚪ excesso');
-      rows.push({cod:p.cod, desc:p.descricao||'', perfil, serie6:serie.slice(-6), m3, m12, tend, base, saldo,
+      const serie6L=mesesF.slice(-6).map(m=>ML[p.cod]?.[m]||0);
+      rows.push({cod:p.cod, desc:p.descricao||'', perfil, serie6:serie.slice(-6), serie6L, m3, m12, tend, base, saldo,
         traHoriz, traTot, prox, folgaHoje, alvo, sug, folgaCheg, custo, valor:custo!=null?sug*custo:null, flags:flags.join(' ')});
     }
     st.pedRows=rows; st.pedMeses=mesesF.slice(-6); st.pedP=P; st.pedSort=st.pedSort||'sug'; st.pedDir=true;
@@ -2022,7 +2022,8 @@ function desenhaPedido(){
     ${ordenado.map(r=>`<tr${r.sug>0?'':' style="opacity:.6"'}>
       <td style="text-align:left;white-space:nowrap"><b>${esc(r.cod)}</b><br><span class="gr" style="font-size:10.5px">${esc(r.desc.slice(0,34))}</span></td>
       <td><span style="color:${corP[r.perfil]||'var(--ink)'};font-weight:700;font-size:11px">${r.perfil}</span></td>
-      ${r.serie6.map(v=>`<td>${v?nf.format(Math.round(v)):'—'}</td>`).join('')}
+      ${r.serie6.map((v,i2)=>{ const l=r.serie6L?.[i2]||0;
+        return `<td title="${l?nf.format(Math.round(l))+' un deste mês foram lotes grandes (linhas de nota ≥50 un)':''}">${v?nf.format(Math.round(v)):'—'}${l&&v&&l/v>=0.3?'<span style="color:var(--lar)" title="mês com lote grande relevante">●</span>':''}</td>`; }).join('')}
       <td>${nf1.format(r.m3)}</td><td>${nf1.format(r.m12)}</td>
       <td>${r.tend!=null?nf1.format(r.tend)+'×':'—'}</td>
       <td><b>${nf1.format(r.base)}</b></td>
