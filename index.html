@@ -2010,7 +2010,7 @@ function desenhaPedido(){
       <button class="btn" id="pedXls" style="padding:4px 14px;font-size:12px">⬇ Excel${st.pedSoZero?' (filtro)':''}</button>
     </div>
     <div class="tablecard"><div class="tscroll"><table style="font-size:12px"><thead><tr id="pedHead">
-      <th style="text-align:left">Produto</th>${th('perfil','Perfil','classificação automática pela série de 12 meses')}
+      <th data-pk="cod" title="ordenar por código (A→Z / Z→A)" style="cursor:pointer;text-decoration:underline;text-align:left">Produto${st.pedSort==='cod'?(st.pedDir?' ▼':' ▲'):''}</th>${th('perfil','Perfil','classificação automática pela série de 12 meses')}
       ${(st.pedMeses||[]).map(m=>`<th title="venda global (site+atacado+ML, sem lotões) no mês">${mlb(m)}</th>`).join('')}
       ${th('m3','m3','média dos últimos 3 meses')}${th('m12','m12','média dos últimos 12 meses')}
       ${th('tend','tend.','m3 ÷ m12')}${th('base','base/mês','demanda mensal ADOTADA pelo perfil — é a que o pedido usa')}
@@ -2045,7 +2045,8 @@ function ligaPedidoSaida(){
   if(z) z.onchange=e=>{ st.pedSoZero=e.target.checked; desenhaPedido(); };
   const h=$('#pedHead');
   if(h) h.onclick=e=>{ const t=e.target.closest('th'); if(!t||!t.dataset.pk) return;
-    if(st.pedSort===t.dataset.pk) st.pedDir=!st.pedDir; else { st.pedSort=t.dataset.pk; st.pedDir=true; }
+    if(st.pedSort===t.dataset.pk) st.pedDir=!st.pedDir;
+    else { st.pedSort=t.dataset.pk; st.pedDir=!(t.dataset.pk==='cod'||t.dataset.pk==='perfil'); }
     desenhaPedido(); };
   const x=$('#pedXls');
   if(x) x.onclick=async()=>{
