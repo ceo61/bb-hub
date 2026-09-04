@@ -1941,6 +1941,8 @@ async function rodaPedido(){
       for(let k=12;k>=1;k--){ const x=new Date(d); x.setMonth(d.getMonth()-k); mesesF.push(x.toLocaleDateString('sv-SE').slice(0,7)); } }
     const horiz=P.lead/30.44+P.ciclo;
     const hojeMs=Date.now(), fimHoriz=hojeMs+horiz*30.44*864e5;
+    const dMs=s=>{ if(!s) return null; s=String(s).trim().replace(/-/g,''); if(!/^\d{8}$/.test(s)) return null;
+      const t=new Date(+s.slice(0,4), +s.slice(4,6)-1, +s.slice(6,8), 12).getTime(); return isFinite(t)?t:null; };
     const rows=[];
     for(const p of prods){
       const serie=mesesF.map(m=>M[p.cod]?.[m]||0);
@@ -1962,9 +1964,10 @@ async function rodaPedido(){
       else { perfil='ESTÁVEL'; base=m12; ss=P.ssEst; }
       const saldo=est[p.cod]||0;
       const trs=(tra[p.cod]||[]);
-      const traHoriz=trs.filter(t=>{ const dd=t.d?new Date(t.d+'T12:00:00').getTime():null; return dd==null||dd<=fimHoriz; }).reduce((s,t)=>s+t.q,0);
+      const traHoriz=trs.filter(t=>{ const dd=dMs(t.d); return dd==null||dd<=fimHoriz; }).reduce((s,t)=>s+t.q,0);
       const traTot=trs.reduce((s,t)=>s+t.q,0);
-      const prox=trs.filter(t=>t.d).map(t=>t.d).sort()[0]||null;
+      const prox=(()=>{ const ds=trs.map(t=>String(t.d||'').replace(/-/g,'')).filter(x=>/^\d{8}$/.test(x)).sort();
+        return ds.length?ds[0].slice(0,4)+'-'+ds[0].slice(4,6)+'-'+ds[0].slice(6,8):null; })();
       const custo=cus[p.cod];
       const moqEf=(custo!=null&&custo>=P.caroDe)?P.moqCaro:P.moq;
       const alvo=base*horiz+base*ss;
@@ -1974,7 +1977,7 @@ async function rodaPedido(){
       const folgaHoje=base>0?saldo/base:(saldo>0?Infinity:0);
       const folgaCheg=base>0?(saldo+traHoriz+sug-base*horiz)/base:null;
       const flags=[];
-      if(base>0&&(saldo+trs.filter(t=>{const dd=t.d?new Date(t.d+'T12:00:00').getTime():null;return dd!=null&&dd<=hojeMs+P.lead*864e5;}).reduce((s,t)=>s+t.q,0))<base*(P.lead/30.44)) flags.push('🔴 rompe antes do lead');
+      if(base>0&&(saldo+trs.filter(t=>{const dd=dMs(t.d);return dd!=null&&dd<=hojeMs+P.lead*864e5;}).reduce((s,t)=>s+t.q,0))<base*(P.lead/30.44)) flags.push('🔴 rompe antes do lead');
       if(perfil==='RAMPANDO') flags.push('🟡 novo — validar manual');
       if(base>0&&folgaHoje>8&&sug===0) flags.push('⚪ excesso');
       rows.push({cod:p.cod, desc:p.descricao||'', perfil, serie6:serie.slice(-6), m3, m12, tend, base, saldo,
