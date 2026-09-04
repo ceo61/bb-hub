@@ -1870,7 +1870,7 @@ async function renderPedido(){
   $('#conteudo').innerHTML=`
     <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Método por <b>perfil de venda</b> (12 meses fechados, venda total site+atacado+ML <b>sem lotões</b> — dias de atacado ≥50 un ficam de fora; há um toggle para incluí-los): <b>ESTÁVEL</b> usa média 12m · <b>CRESCENDO/RAMPANDO</b> usa média 3m×tendência (teto 1,5×) · <b>DECLÍNIO</b> usa média 3m×0,8 · <b>PICOS</b> usa o espelho dos mesmos meses do ano anterior. Pedido = demanda×(lead+ciclo) + segurança − saldo − trânsito que chega no horizonte, arredondado ao MOQ. Ajuste os parâmetros e <b>RODAR</b>.</p>
     <div style="display:flex;gap:8px;margin:0 0 8px;flex-wrap:wrap;align-items:center">
-      ${st.pedGrupos.map(g=>`<button class="btn pedG" data-g="${esc(g)}" style="padding:4px 14px;${g===st.pedG?'background:var(--accent);color:#fff;border-radius:8px':''}">${esc(g)}</button>`).join('')}
+      ${st.pedGrupos.map(g=>`<button class="pedG" data-g="${esc(g)}" style="padding:5px 16px;border-radius:9px;cursor:pointer;${g===st.pedG?'background:var(--accent);color:#fff;border:2px solid var(--accent);font-weight:800;box-shadow:0 1px 6px rgba(42,120,214,.45)':'background:none;color:var(--accent);border:1px solid var(--accent);font-weight:600'}">${g===st.pedG?'✓ ':''}${esc(g)}</button>`).join('')}
       <input id="pedFiltro" placeholder="filtrar por marca/código… (ex.: ACER)" value="${esc(st.pedF||'')}" style="margin-left:auto;padding:6px 12px;min-width:220px">
     </div>
     <div class="tablecard" style="padding:10px 14px;margin-bottom:10px">
@@ -1991,19 +1991,23 @@ async function rodaPedido(){
 }
 
 function desenhaPedido(){
-  const out=$('#pedSaida'); const rows=st.pedRows||[]; const P=st.pedP;
+  const out=$('#pedSaida'); const P=st.pedP;
+  let rows=st.pedRows||[];
+  if(st.pedSoZero) rows=rows.filter(r=>r.sug===0&&r.serie6.some(v=>v>0));
   const k=st.pedSort;
   const ordenado=rows.slice().sort((a,b)=>{ const x=a[k],y=b[k]; if(x==null)return 1; if(y==null)return -1; return st.pedDir?(y>x?1:-1):(x>y?1:-1); });
   const totS=rows.reduce((s,r)=>s+r.sug,0), totV=rows.reduce((s,r)=>s+(r.valor||0),0);
   const nCompra=rows.filter(r=>r.sug>0).length;
+  st.pedVis=rows;
   const corP={'ESTÁVEL':'var(--good)','CRESCENDO':'var(--accent)','RAMPANDO':'var(--warn)','DECLÍNIO':'var(--lar)','PICOS':'var(--ch4)','SEM VENDA':'var(--muted)'};
   const mlb=m=>m.slice(5,7)+'/'+m.slice(2,4);
   const th=(kk,lb,tit)=>`<th data-pk="${kk}" title="${tit||''}" style="cursor:pointer;text-decoration:underline">${lb}${st.pedSort===kk?(st.pedDir?' ▼':' ▲'):''}</th>`;
   out.innerHTML=`
     <div style="display:flex;gap:14px;align-items:baseline;margin:0 0 8px;flex-wrap:wrap">
       <b style="font-size:14px">${nCompra} produtos a comprar · ${nf.format(totS)} unidades · ${rf.format(totV)} a custo</b>
-      <span class="gr">horizonte ${nf1.format(P.lead/30.44+P.ciclo)} meses (lead ${P.lead}d + ciclo ${P.ciclo}m) · ${rows.length} produtos analisados</span>
-      <button class="btn" id="pedXls" style="padding:4px 14px;font-size:12px;margin-left:auto">⬇ Excel</button>
+      <span class="gr">horizonte ${nf1.format(P.lead/30.44+P.ciclo)} meses (lead ${P.lead}d + ciclo ${P.ciclo}m) · ${(st.pedRows||[]).length} produtos analisados${st.pedSoZero?` · <b style="color:var(--lar)">mostrando só quem VENDE e ficou SEM compra (${rows.length})</b>`:''}</span>
+      <label style="margin-left:auto;display:inline-flex;gap:5px;align-items:center;font-size:12px;color:var(--lar);cursor:pointer;font-weight:600" title="auditoria: produtos com venda nos últimos 6 meses cuja sugestão deu ZERO — confira se a cobertura/trânsito justifica"><input id="pedSoZero" type="checkbox" ${st.pedSoZero?'checked':''}> só vendeu-e-não-compra</label>
+      <button class="btn" id="pedXls" style="padding:4px 14px;font-size:12px">⬇ Excel${st.pedSoZero?' (filtro)':''}</button>
     </div>
     <div class="tablecard"><div class="tscroll"><table style="font-size:12px"><thead><tr id="pedHead">
       <th style="text-align:left">Produto</th>${th('perfil','Perfil','classificação automática pela série de 12 meses')}
@@ -2037,6 +2041,8 @@ function desenhaPedido(){
 }
 
 function ligaPedidoSaida(){
+  const z=$('#pedSoZero');
+  if(z) z.onchange=e=>{ st.pedSoZero=e.target.checked; desenhaPedido(); };
   const h=$('#pedHead');
   if(h) h.onclick=e=>{ const t=e.target.closest('th'); if(!t||!t.dataset.pk) return;
     if(st.pedSort===t.dataset.pk) st.pedDir=!st.pedDir; else { st.pedSort=t.dataset.pk; st.pedDir=true; }
@@ -2048,11 +2054,11 @@ function ligaPedidoSaida(){
       const XL=await import('https://esm.sh/exceljs@4.4.0'); const ExcelJS=XL.default??XL;
       const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('PEDIDO '+st.pedG);
       const P=st.pedP;
-      ws.addRow([`PEDIDO DE COMPRA — ${st.pedG}${st.pedF?' · filtro '+st.pedF:''} · ${new Date().toLocaleDateString('pt-BR')}`]).font={bold:true,size:13};
+      ws.addRow([`PEDIDO DE COMPRA — ${st.pedG}${st.pedF?' · filtro '+st.pedF:''}${st.pedSoZero?' · AUDITORIA: vendeu 6m e ficou sem compra':''} · ${new Date().toLocaleDateString('pt-BR')}`]).font={bold:true,size:13};
       ws.addRow([`parâmetros: lead ${P.lead}d · ciclo ${P.ciclo}m · MOQ ${P.moq}/${P.moqCaro} (caro ≥ R$${P.caroDe}) · seg ${P.ssEst}/${P.ssCre}/${P.ssDec}/${P.ssPic}m`]);
       ws.addRow([]);
       ws.addRow(['cod','descrição','perfil',...(st.pedMeses||[]),'m3','m12','tend','base/mês','saldo','trânsito(horiz)','trânsito(total)','1ª chegada','folga hoje (m)','alvo','SUGESTÃO','folga pós (m)','custo','valor R$','flags']).font={bold:true};
-      for(const r of st.pedRows.slice().sort((a,b)=>b.sug-a.sug))
+      for(const r of (st.pedVis||st.pedRows).slice().sort((a,b)=>b.sug-a.sug))
         ws.addRow([r.cod,r.desc,r.perfil,...r.serie6.map(v=>Math.round(v)),+r.m3.toFixed(1),+r.m12.toFixed(1),r.tend!=null?+r.tend.toFixed(2):null,+r.base.toFixed(1),Math.round(r.saldo),Math.round(r.traHoriz),Math.round(r.traTot),r.prox||'',r.folgaHoje===Infinity?null:+r.folgaHoje.toFixed(1),Math.round(r.alvo),r.sug,r.folgaCheg!=null?+r.folgaCheg.toFixed(1):null,r.custo,r.valor?Math.round(r.valor):null,r.flags]);
       const buf=await wb.xlsx.writeBuffer();
       const a=document.createElement('a');
