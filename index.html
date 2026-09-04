@@ -1868,7 +1868,7 @@ async function renderPedido(){
   st.pedG=st.pedG||'BNOT';
   const num=(id,lb,v,step,w,tit)=>`<label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="${tit||''}">${lb}<input id="${id}" type="number" step="${step}" value="${v}" style="width:${w}px;padding:3px 6px;font-size:12.5px;text-align:right"></label>`;
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Método por <b>perfil de venda</b> (12 meses fechados, <b>venda global total</b>: site + atacado + ML, sem nenhum desconto). Meses com lote grande relevante ganham <span style="color:var(--lar)">●</span> — passe o mouse para ver quanto foi lote: <b>ESTÁVEL</b> usa média 12m · <b>CRESCENDO/RAMPANDO</b> usa média 3m×tendência (teto 1,5×) · <b>DECLÍNIO</b> usa média 3m×0,8 · <b>PICOS</b> usa o espelho dos mesmos meses do ano anterior. Pedido = demanda×(lead+ciclo) + segurança − saldo − trânsito que chega no horizonte, arredondado ao MOQ. Ajuste os parâmetros e <b>RODAR</b>.</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Venda separada em dois números por mês</b>: convencional em cima (site + ML + atacado do dia-a-dia) e <span style="color:var(--lar)">+lotes</span> embaixo (dia com atacado ≥50 un). A <b>tendência só se aplica ao convencional</b>; lotes entram pela <b>média simples de 12 meses</b>, sem tendência (lote não cresce em tendência). base/mês = convencional + lotes: <b>ESTÁVEL</b> usa média 12m · <b>CRESCENDO/RAMPANDO</b> usa média 3m×tendência (teto 1,5×) · <b>DECLÍNIO</b> usa média 3m×0,8 · <b>PICOS</b> usa o espelho dos mesmos meses do ano anterior. Pedido = demanda×(lead+ciclo) + segurança − saldo − trânsito que chega no horizonte, arredondado ao MOQ. Ajuste os parâmetros e <b>RODAR</b>.</p>
     <div style="display:flex;gap:8px;margin:0 0 8px;flex-wrap:wrap;align-items:center">
       ${st.pedGrupos.map(g=>`<button class="pedG" data-g="${esc(g)}" style="padding:5px 16px;border-radius:9px;cursor:pointer;${g===st.pedG?'background:var(--accent);color:#fff;border:2px solid var(--accent);font-weight:800;box-shadow:0 1px 6px rgba(42,120,214,.45)':'background:none;color:var(--accent);border:1px solid var(--accent);font-weight:600'}">${g===st.pedG?'✓ ':''}${esc(g)}</button>`).join('')}
       <input id="pedFiltro" placeholder="filtrar por marca/código… (ex.: ACER)" value="${esc(st.pedF||'')}" style="margin-left:auto;padding:6px 12px;min-width:220px">
@@ -1918,7 +1918,7 @@ async function rodaPedido(){
       sb.from('fato_estoque').select('snapshot').order('snapshot',{ascending:false}).limit(1),
       sb.from('fato_transito').select('snapshot').order('snapshot',{ascending:false}).limit(1),
       sb.from('fato_custo').select('snapshot').order('snapshot',{ascending:false}).limit(1)]);
-    const est={},tra={},cus={};
+    const est={},tra={},cus={},idade={};
     for(let i=0;i<cods.length;i+=60){
       const lote=cods.slice(i,i+60);
       const [e,t,c]=await Promise.all([
@@ -1926,17 +1926,20 @@ async function rodaPedido(){
         tudo('fato_transito',{select:'cod,qtd_pendente,chegada_prevista',eq:[['snapshot',snapT.data[0].snapshot]],mod:q=>q.in('cod',lote)}),
         tudo('fato_custo',{select:'cod,custo',eq:[['snapshot',snapC.data[0].snapshot]],mod:q=>q.in('cod',lote)})]);
       e.forEach(r=>est[r.cod]=+r.estoque_util||0);
+      (await tudo('dim_idade',{select:'cod,primeira_imp',mod:q=>q.in('cod',lote)})).forEach(r=>{
+        const s=String(r.primeira_imp||'').replace(/-/g,'');
+        if(/^\d{8}$/.test(s)) idade[r.cod]=Math.floor((Date.now()-new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8)).getTime())/(365.25*864e5)*10)/10;
+      });
       t.forEach(r=>{ (tra[r.cod]=tra[r.cod]||[]).push({q:+r.qtd_pendente||0, d:r.chegada_prevista}); });
       c.forEach(r=>cus[r.cod]=+r.custo||null);
     }
     // série mensal ÚTIL (sem lotões: dia de atacado ≥50 fica fora)
-    const M={}, ML={};
+    const M={}, ML={};  // M = venda CONVENCIONAL (dia de atacado <50) · ML = lotes (dia de atacado ≥50, o dia inteiro)
     vendas.forEach(r=>{
-      const mes=r.data.slice(0,7);
-      const q=(+r.qtd_b2c||0)+(+r.qtd_ml||0)+(+r.qtd_atac||0);  // venda GLOBAL total — sem descontos
-      (M[r.cod]=M[r.cod]||{})[mes]=(M[r.cod]?.[mes]||0)+q;
-      const lot=+r.qtd_atac_lotao||0;
-      if(lot) (ML[r.cod]=ML[r.cod]||{})[mes]=(ML[r.cod]?.[mes]||0)+lot;
+      const mes=r.data.slice(0,7); const at=+r.qtd_atac||0;
+      const conv=(+r.qtd_b2c||0)+(+r.qtd_ml||0)+(at<50?at:0);
+      (M[r.cod]=M[r.cod]||{})[mes]=(M[r.cod]?.[mes]||0)+conv;
+      if(at>=50) (ML[r.cod]=ML[r.cod]||{})[mes]=(ML[r.cod]?.[mes]||0)+at;
     });
     const mesesF=[]; { const d=new Date(); d.setDate(1);
       for(let k=12;k>=1;k--){ const x=new Date(d); x.setMonth(d.getMonth()-k); mesesF.push(x.toLocaleDateString('sv-SE').slice(0,7)); } }
@@ -1963,6 +1966,9 @@ async function rodaPedido(){
         const esp=alvoMeses.map(m=>M[p.cod]?.[m]).filter(v=>v!=null);
         base=esp.length?esp.reduce((s,x)=>s+x,0)/esp.length:m12; ss=P.ssPic; }
       else { perfil='ESTÁVEL'; base=m12; ss=P.ssEst; }
+      const serieL=mesesF.map(m=>ML[p.cod]?.[m]||0);
+      const baseLot=serieL.reduce((s,x)=>s+x,0)/12;   // lotes: média simples 12m — SEM tendência
+      const baseConv=base; base=baseConv+baseLot;
       const saldo=est[p.cod]||0;
       const trs=(tra[p.cod]||[]);
       const traHoriz=trs.filter(t=>{ const dd=dMs(t.d); return dd==null||dd<=fimHoriz; }).reduce((s,t)=>s+t.q,0);
@@ -1981,8 +1987,8 @@ async function rodaPedido(){
       if(base>0&&(saldo+trs.filter(t=>{const dd=dMs(t.d);return dd!=null&&dd<=hojeMs+P.lead*864e5;}).reduce((s,t)=>s+t.q,0))<base*(P.lead/30.44)) flags.push('🔴 rompe antes do lead');
       if(perfil==='RAMPANDO') flags.push('🟡 novo — validar manual');
       if(base>0&&folgaHoje>8&&sug===0) flags.push('⚪ excesso');
-      const serie6L=mesesF.slice(-6).map(m=>ML[p.cod]?.[m]||0);
-      rows.push({cod:p.cod, desc:p.descricao||'', perfil, serie6:serie.slice(-6), serie6L, m3, m12, tend, base, saldo,
+      const serie6L=serieL.slice(-6);
+      rows.push({cod:p.cod, desc:p.descricao||'', perfil, serie6:serie.slice(-6), serie6L, m3, m12, tend, base, baseConv, baseLot, idade:idade[p.cod]??null, saldo,
         traHoriz, traTot, prox, folgaHoje, alvo, sug, folgaCheg, custo, valor:custo!=null?sug*custo:null, flags:flags.join(' ')});
     }
     st.pedRows=rows; st.pedMeses=mesesF.slice(-6); st.pedP=P; st.pedSort=st.pedSort||'sug'; st.pedDir=true;
@@ -2010,10 +2016,10 @@ function desenhaPedido(){
       <button class="btn" id="pedXls" style="padding:4px 14px;font-size:12px">⬇ Excel${st.pedSoZero?' (filtro)':''}</button>
     </div>
     <div class="tablecard"><div class="tscroll"><table style="font-size:12px"><thead><tr id="pedHead">
-      <th data-pk="cod" title="ordenar por código (A→Z / Z→A)" style="cursor:pointer;text-decoration:underline;text-align:left">Produto${st.pedSort==='cod'?(st.pedDir?' ▼':' ▲'):''}</th>${th('perfil','Perfil','classificação automática pela série de 12 meses')}
+      <th data-pk="cod" title="ordenar por código (A→Z / Z→A)" style="cursor:pointer;text-decoration:underline;text-align:left">Produto${st.pedSort==='cod'?(st.pedDir?' ▼':' ▲'):''}</th>${th('perfil','Perfil','classificação automática pela série CONVENCIONAL de 12 meses (lotes não entram no perfil)')}${th('idade','Idade','anos desde a primeira importação — produto novo (<1a) pede atenção manual')}
       ${(st.pedMeses||[]).map(m=>`<th title="venda global (site+atacado+ML, sem lotões) no mês">${mlb(m)}</th>`).join('')}
-      ${th('m3','m3','média dos últimos 3 meses')}${th('m12','m12','média dos últimos 12 meses')}
-      ${th('tend','tend.','m3 ÷ m12')}${th('base','base/mês','demanda mensal ADOTADA pelo perfil — é a que o pedido usa')}
+      ${th('m3','m3','média 3m da venda CONVENCIONAL (sem lotes)')}${th('m12','m12','média 12m da venda CONVENCIONAL')}
+      ${th('tend','tend.','m3 ÷ m12')}${th('base','base/mês','demanda ADOTADA = convencional (perfil/tendência) + lotes (média simples 12m, SEM tendência)')}
       ${th('saldo','saldo','estoque útil hoje')}${th('traHoriz','trânsito','qtd de POs abertos que chega dentro do horizonte (tooltip: total e 1ª chegada)')}
       ${th('folgaHoje','folga (m)','saldo ÷ base')}${th('alvo','alvo','base × horizonte + segurança do perfil')}
       ${th('sug','SUGESTÃO','alvo − saldo − trânsito, arredondado ao MOQ')}${th('folgaCheg','folga pós','meses de folga projetada no fim do horizonte, já com o pedido')}
@@ -2022,11 +2028,12 @@ function desenhaPedido(){
     ${ordenado.map(r=>`<tr${r.sug>0?'':' style="opacity:.6"'}>
       <td style="text-align:left;white-space:nowrap"><b>${esc(r.cod)}</b><br><span class="gr" style="font-size:10.5px">${esc(r.desc.slice(0,34))}</span></td>
       <td><span style="color:${corP[r.perfil]||'var(--ink)'};font-weight:700;font-size:11px">${r.perfil}</span></td>
+      <td style="${r.idade!=null&&r.idade<1?'color:var(--warn);font-weight:700':''}">${r.idade!=null?(r.idade<1?'NOVO '+Math.round(r.idade*12)+'m':nf1.format(r.idade)+'a'):'—'}</td>
       ${r.serie6.map((v,i2)=>{ const l=r.serie6L?.[i2]||0;
-        return `<td title="${l?nf.format(Math.round(l))+' un deste mês foram lotes grandes (linhas de nota ≥50 un)':''}">${v?nf.format(Math.round(v)):'—'}${l&&v&&l/v>=0.3?'<span style="color:var(--lar)" title="mês com lote grande relevante">●</span>':''}</td>`; }).join('')}
+        return `<td style="white-space:nowrap" title="convencional ${nf.format(Math.round(v))}${l?' · lotes '+nf.format(Math.round(l)):''}">${v?nf.format(Math.round(v)):'—'}${l?`<br><span style="color:var(--lar);font-size:10.5px">+${nf.format(Math.round(l))}</span>`:''}</td>`; }).join('')}
       <td>${nf1.format(r.m3)}</td><td>${nf1.format(r.m12)}</td>
       <td>${r.tend!=null?nf1.format(r.tend)+'×':'—'}</td>
-      <td><b>${nf1.format(r.base)}</b></td>
+      <td style="white-space:nowrap" title="convencional ${nf1.format(r.baseConv)} (perfil ${r.perfil}) + lotes ${nf1.format(r.baseLot)} (média 12m)"><b>${nf1.format(r.base)}</b>${r.baseLot>=0.5?`<br><span class="gr" style="font-size:10.5px">${nf1.format(r.baseConv)}+<span style="color:var(--lar)">${nf1.format(r.baseLot)}</span></span>`:''}</td>
       <td>${nf.format(Math.round(r.saldo))}</td>
       <td title="total em POs: ${nf.format(Math.round(r.traTot))}${r.prox?' · 1ª chegada '+r.prox.slice(8,10)+'/'+r.prox.slice(5,7):''}">${r.traHoriz?nf.format(Math.round(r.traHoriz)):'—'}</td>
       <td style="${r.folgaHoje!==Infinity&&r.folgaHoje<P.lead/30.44?'color:var(--crit);font-weight:700':''}">${r.folgaHoje===Infinity?'∞':nf1.format(r.folgaHoje)}</td>
@@ -2059,9 +2066,9 @@ function ligaPedidoSaida(){
       ws.addRow([`PEDIDO DE COMPRA — ${st.pedG}${st.pedF?' · filtro '+st.pedF:''}${st.pedSoZero?' · AUDITORIA: vendeu 6m e ficou sem compra':''} · ${new Date().toLocaleDateString('pt-BR')}`]).font={bold:true,size:13};
       ws.addRow([`parâmetros: lead ${P.lead}d · ciclo ${P.ciclo}m · MOQ ${P.moq}/${P.moqCaro} (caro ≥ R$${P.caroDe}) · seg ${P.ssEst}/${P.ssCre}/${P.ssDec}/${P.ssPic}m`]);
       ws.addRow([]);
-      ws.addRow(['cod','descrição','perfil',...(st.pedMeses||[]),'m3','m12','tend','base/mês','saldo','trânsito(horiz)','trânsito(total)','1ª chegada','folga hoje (m)','alvo','SUGESTÃO','folga pós (m)','custo','valor R$','flags']).font={bold:true};
+      ws.addRow(['cod','descrição','perfil','idade (anos)',...(st.pedMeses||[]).flatMap(m=>[m+' conv',m+' lotes']),'m3 conv','m12 conv','tend','base conv','base lotes','base/mês','saldo','trânsito(horiz)','trânsito(total)','1ª chegada','folga hoje (m)','alvo','SUGESTÃO','folga pós (m)','custo','valor R$','flags']).font={bold:true};
       for(const r of (st.pedVis||st.pedRows).slice().sort((a,b)=>b.sug-a.sug))
-        ws.addRow([r.cod,r.desc,r.perfil,...r.serie6.map(v=>Math.round(v)),+r.m3.toFixed(1),+r.m12.toFixed(1),r.tend!=null?+r.tend.toFixed(2):null,+r.base.toFixed(1),Math.round(r.saldo),Math.round(r.traHoriz),Math.round(r.traTot),r.prox||'',r.folgaHoje===Infinity?null:+r.folgaHoje.toFixed(1),Math.round(r.alvo),r.sug,r.folgaCheg!=null?+r.folgaCheg.toFixed(1):null,r.custo,r.valor?Math.round(r.valor):null,r.flags]);
+        ws.addRow([r.cod,r.desc,r.perfil,r.idade,...r.serie6.flatMap((v,i2)=>[Math.round(v),Math.round(r.serie6L?.[i2]||0)]),+r.m3.toFixed(1),+r.m12.toFixed(1),r.tend!=null?+r.tend.toFixed(2):null,+r.baseConv.toFixed(1),+r.baseLot.toFixed(1),+r.base.toFixed(1),Math.round(r.saldo),Math.round(r.traHoriz),Math.round(r.traTot),r.prox||'',r.folgaHoje===Infinity?null:+r.folgaHoje.toFixed(1),Math.round(r.alvo),r.sug,r.folgaCheg!=null?+r.folgaCheg.toFixed(1):null,r.custo,r.valor?Math.round(r.valor):null,r.flags]);
       const buf=await wb.xlsx.writeBuffer();
       const a=document.createElement('a');
       a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
