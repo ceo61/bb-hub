@@ -2025,6 +2025,17 @@ function desenhaPedido(){
       ${th('sug','SUGESTÃO','alvo − saldo − trânsito, arredondado ao MOQ')}${th('folgaCheg','folga pós','meses de folga projetada no fim do horizonte, já com o pedido')}
       ${th('custo','custo','custo unitário')}${th('valor','valor R$','sugestão × custo')}<th>flags</th>
     </tr></thead><tbody>
+    ${(()=>{ const S=f=>rows.reduce((s,r)=>s+(f(r)||0),0);
+      const sm=(st.pedMeses||[]).map((_,i2)=>[S(r=>r.serie6?.[i2]), S(r=>r.serie6L?.[i2])]);
+      return `<tr style="font-weight:800;background:var(--accent-soft)">
+      <td style="text-align:left">Σ ${rows.length} produtos</td><td></td><td></td>
+      ${sm.map(([c,l])=>`<td style="white-space:nowrap">${nf.format(Math.round(c))}${l?`<br><span style="color:var(--lar);font-size:10.5px">+${nf.format(Math.round(l))}</span>`:''}</td>`).join('')}
+      <td>${nf.format(Math.round(S(r=>r.m3)))}</td><td>${nf.format(Math.round(S(r=>r.m12)))}</td><td></td>
+      <td style="white-space:nowrap">${nf.format(Math.round(S(r=>r.base)))}<br><span class="gr" style="font-size:10.5px">${nf.format(Math.round(S(r=>r.baseConv)))}+<span style="color:var(--lar)">${nf.format(Math.round(S(r=>r.baseLot)))}</span></span></td>
+      <td>${nf.format(Math.round(S(r=>r.saldo)))}</td><td>${nf.format(Math.round(S(r=>r.traTot)))}</td><td></td>
+      <td>${nf.format(Math.round(S(r=>r.alvo)))}</td>
+      <td style="color:var(--accent);font-size:13px">${nf.format(S(r=>r.sug))}</td><td></td><td></td>
+      <td>${rf.format(S(r=>r.valor))}</td><td></td></tr>`; })()}
     ${ordenado.map(r=>`<tr${r.sug>0?'':' style="opacity:.6"'}>
       <td style="text-align:left;white-space:nowrap"><b>${esc(r.cod)}</b><br><span class="gr" style="font-size:10.5px">${esc(r.desc.slice(0,34))}</span></td>
       <td><span style="color:${corP[r.perfil]||'var(--ink)'};font-weight:700;font-size:11px">${r.perfil}</span></td>
