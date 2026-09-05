@@ -1971,18 +1971,18 @@ async function rodaPedido(){
       const baseConv=base; base=baseConv+baseLot;
       const saldo=est[p.cod]||0;
       const trs=(tra[p.cod]||[]);
-      const traHoriz=trs.filter(t=>{ const dd=dMs(t.d); return dd==null||dd<=fimHoriz; }).reduce((s,t)=>s+t.q,0);
+      const traHoriz=trs.filter(t=>{ const dd=dMs(t.d); return dd==null||dd<=hojeMs+P.lead*864e5; }).reduce((s,t)=>s+t.q,0);
       const traTot=trs.reduce((s,t)=>s+t.q,0);
       const prox=(()=>{ const ds=trs.map(t=>String(t.d||'').replace(/-/g,'')).filter(x=>/^\d{8}$/.test(x)).sort();
         return ds.length?ds[0].slice(0,4)+'-'+ds[0].slice(4,6)+'-'+ds[0].slice(6,8):null; })();
       const custo=cus[p.cod];
       const moqEf=(custo!=null&&custo>=P.caroDe)?P.moqCaro:P.moq;
       const alvo=base*horiz+base*ss;
-      const bruto=alvo-saldo-traHoriz;
+      const bruto=alvo-saldo-traTot;   // posição clássica: saldo + TODO o PO aberto (chega antes/junto do pedido novo)
       let sug=0;
       if(base>0&&bruto>0) sug=Math.ceil(bruto/moqEf)*moqEf;
       const folgaHoje=base>0?saldo/base:(saldo>0?Infinity:0);
-      const folgaCheg=base>0?(saldo+traHoriz+sug-base*horiz)/base:null;
+      const folgaCheg=base>0?(saldo+traTot+sug-base*horiz)/base:null;
       const flags=[];
       if(base>0&&(saldo+trs.filter(t=>{const dd=dMs(t.d);return dd!=null&&dd<=hojeMs+P.lead*864e5;}).reduce((s,t)=>s+t.q,0))<base*(P.lead/30.44)) flags.push('🔴 rompe antes do lead');
       if(perfil==='RAMPANDO') flags.push('🟡 novo — validar manual');
@@ -2020,7 +2020,7 @@ function desenhaPedido(){
       ${(st.pedMeses||[]).map(m=>`<th title="venda global (site+atacado+ML, sem lotões) no mês">${mlb(m)}</th>`).join('')}
       ${th('m3','m3','média 3m da venda CONVENCIONAL (sem lotes)')}${th('m12','m12','média 12m da venda CONVENCIONAL')}
       ${th('tend','tend.','m3 ÷ m12')}${th('base','base/mês','demanda ADOTADA = convencional (perfil/tendência) + lotes (média simples 12m, SEM tendência)')}
-      ${th('saldo','saldo','estoque útil hoje')}${th('traHoriz','trânsito','qtd de POs abertos que chega dentro do horizonte (tooltip: total e 1ª chegada)')}
+      ${th('saldo','saldo','estoque útil hoje')}${th('traTot','trânsito','TODO o PO aberto conta na posição (chega antes/junto do pedido novo); tooltip: quanto chega dentro do lead e a 1ª data')}
       ${th('folgaHoje','folga (m)','saldo ÷ base')}${th('alvo','alvo','base × horizonte + segurança do perfil')}
       ${th('sug','SUGESTÃO','alvo − saldo − trânsito, arredondado ao MOQ')}${th('folgaCheg','folga pós','meses de folga projetada no fim do horizonte, já com o pedido')}
       ${th('custo','custo','custo unitário')}${th('valor','valor R$','sugestão × custo')}<th>flags</th>
@@ -2035,7 +2035,7 @@ function desenhaPedido(){
       <td>${r.tend!=null?nf1.format(r.tend)+'×':'—'}</td>
       <td style="white-space:nowrap" title="convencional ${nf1.format(r.baseConv)} (perfil ${r.perfil}) + lotes ${nf1.format(r.baseLot)} (média 12m)"><b>${nf1.format(r.base)}</b>${r.baseLot>=0.5?`<br><span class="gr" style="font-size:10.5px">${nf1.format(r.baseConv)}+<span style="color:var(--lar)">${nf1.format(r.baseLot)}</span></span>`:''}</td>
       <td>${nf.format(Math.round(r.saldo))}</td>
-      <td title="total em POs: ${nf.format(Math.round(r.traTot))}${r.prox?' · 1ª chegada '+r.prox.slice(8,10)+'/'+r.prox.slice(5,7):''}">${r.traHoriz?nf.format(Math.round(r.traHoriz)):'—'}</td>
+      <td title="chega dentro do lead: ${nf.format(Math.round(r.traHoriz))}${r.prox?' · 1ª chegada '+r.prox.slice(8,10)+'/'+r.prox.slice(5,7):''}">${r.traTot?nf.format(Math.round(r.traTot)):'—'}</td>
       <td style="${r.folgaHoje!==Infinity&&r.folgaHoje<P.lead/30.44?'color:var(--crit);font-weight:700':''}">${r.folgaHoje===Infinity?'∞':nf1.format(r.folgaHoje)}</td>
       <td>${nf.format(Math.round(r.alvo))}</td>
       <td style="font-weight:800;${r.sug>0?'color:var(--accent);font-size:13px':''}">${r.sug?nf.format(r.sug):'0'}</td>
