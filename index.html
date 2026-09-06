@@ -1970,6 +1970,19 @@ async function rodaPedido(){
       const baseLot=serieL.reduce((s,x)=>s+x,0)/12;   // lotes: média simples 12m — SEM tendência
       const baseConv=base; base=baseConv+baseLot;
       const saldo=est[p.cod]||0;
+      // 🕳 RUPTURA CENSURA DEMANDA (caso AS515): zerou o estoque → venda e views vão a zero →
+      // a média colapsa e o sistema conclui "sem demanda". Detecção: saldo ~0 + últimos 2 meses ~0
+      // + havia venda relevante antes. Produto de até 3 anos: base vira o PICO mensal recente.
+      let censura=null;
+      { const mTotal=serie.map((v,i2)=>v+serieL[i2]);
+        const ult2=mTotal.slice(-2).reduce((s,x)=>s+x,0);
+        const picoPrev=Math.max(...mTotal.slice(0,10),0);
+        const idadeAnos=idade[p.cod];
+        if(saldo<=10&&ult2<=2&&picoPrev>=10){
+          if(idadeAnos!=null&&idadeAnos<=3){ base=Math.max(base,picoPrev); perfil='RUPTURA'; ss=Math.max(ss,P.ssCre);
+            censura=`🕳 ruptura censurou a venda — base=pico recente (${Math.round(picoPrev)})`; }
+          else censura='🕳 ruptura censurou a venda — produto velho: revisar manual';
+        } }
       const trs=(tra[p.cod]||[]);
       const traHoriz=trs.filter(t=>{ const dd=dMs(t.d); return dd==null||dd<=hojeMs+P.lead*864e5; }).reduce((s,t)=>s+t.q,0);
       const traTot=trs.reduce((s,t)=>s+t.q,0);
@@ -1983,7 +1996,7 @@ async function rodaPedido(){
       if(base>0&&bruto>0) sug=Math.ceil(bruto/moqEf)*moqEf;
       const folgaHoje=base>0?saldo/base:(saldo>0?Infinity:0);
       const folgaCheg=base>0?(saldo+traTot+sug-base*horiz)/base:null;
-      const flags=[];
+      const flags=[]; if(censura) flags.push(censura);
       if(base>0&&(saldo+trs.filter(t=>{const dd=dMs(t.d);return dd!=null&&dd<=hojeMs+P.lead*864e5;}).reduce((s,t)=>s+t.q,0))<base*(P.lead/30.44)) flags.push('🔴 rompe antes do lead');
       if(perfil==='RAMPANDO') flags.push('🟡 novo — validar manual');
       if(base>0&&folgaHoje>8&&sug===0) flags.push('⚪ excesso');
@@ -2005,7 +2018,7 @@ function desenhaPedido(){
   const totS=rows.reduce((s,r)=>s+r.sug,0), totV=rows.reduce((s,r)=>s+(r.valor||0),0);
   const nCompra=rows.filter(r=>r.sug>0).length;
   st.pedVis=rows;
-  const corP={'ESTÁVEL':'var(--good)','CRESCENDO':'var(--accent)','RAMPANDO':'var(--warn)','DECLÍNIO':'var(--lar)','PICOS':'var(--ch4)','SEM VENDA':'var(--muted)'};
+  const corP={'ESTÁVEL':'var(--good)','CRESCENDO':'var(--accent)','RAMPANDO':'var(--warn)','DECLÍNIO':'var(--lar)','PICOS':'var(--ch4)','RUPTURA':'var(--crit)','SEM VENDA':'var(--muted)'};
   const mlb=m=>m.slice(5,7)+'/'+m.slice(2,4);
   const th=(kk,lb,tit)=>`<th data-pk="${kk}" title="${tit||''}" style="cursor:pointer;text-decoration:underline">${lb}${st.pedSort===kk?(st.pedDir?' ▼':' ▲'):''}</th>`;
   out.innerHTML=`
