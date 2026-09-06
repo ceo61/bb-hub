@@ -1852,7 +1852,7 @@ async function abreDiario(cod, desc){
 }
 
 /* ---------- Pedido de Compra (importação) — método homologado 04/09/26 ---------- */
-const PED_DEF={ciclo:2, lead:160, moq:10, moqCaro:5, caroDe:250, ssEst:1, ssCre:1.5, ssDec:0.5, ssPic:2};
+const PED_DEF={ciclo:2, lead:160, moq:10, moqCaro:5, caroDe:250, ssEst:1, ssCre:1.5, ssDec:0.5, ssPic:2, rupMult:1.5};
 function pedParams(){ try{ return {...PED_DEF, ...(JSON.parse(localStorage.getItem('bbhub-pedido')||'{}'))}; }catch(e){ return {...PED_DEF}; } }
 
 async function renderPedido(){
@@ -1885,6 +1885,7 @@ async function renderPedido(){
         ${num('pedSsCre','seg. CRESC/RAMPA (m)',P.ssCre,0.25,52)}
         ${num('pedSsDec','seg. DECLÍNIO (m)',P.ssDec,0.25,52)}
         ${num('pedSsPic','seg. PICOS (m)',P.ssPic,0.25,52)}
+        ${num('pedRupMult','ruptura <2a: pico ×',P.rupMult??1.5,0.1,52,'produto NOVO (<2 anos) que zerou por ruptura: a base vira o pico recente × este fator — o pico em si já foi censurado pelo racionamento (AS515: faturou 17 no mês de 34 compras GA4)')}
         <button class="btn" id="pedRodar" style="padding:8px 26px;font-weight:700;font-size:13.5px">▶ RODAR</button>
       </div>
     </div>
@@ -1897,7 +1898,8 @@ async function renderPedido(){
 async function rodaPedido(){
   const P={ciclo:+$('#pedCiclo').value||2, lead:+$('#pedLead').value||160,
     moq:+$('#pedMoq').value||10, moqCaro:+$('#pedMoqCaro').value||5, caroDe:+$('#pedCaroDe').value||250,
-    ssEst:+$('#pedSsEst').value||1, ssCre:+$('#pedSsCre').value||1.5, ssDec:+$('#pedSsDec').value||0.5, ssPic:+$('#pedSsPic').value||2};
+    ssEst:+$('#pedSsEst').value||1, ssCre:+$('#pedSsCre').value||1.5, ssDec:+$('#pedSsDec').value||0.5, ssPic:+$('#pedSsPic').value||2,
+    rupMult:+$('#pedRupMult').value||1.5};
   try{ localStorage.setItem('bbhub-pedido', JSON.stringify(P)); }catch(e){}
   st.pedF=($('#pedFiltro').value||'').trim().toUpperCase();
   const out=$('#pedSaida'); out.innerHTML='<div class="carregando">Buscando produtos e 13 meses de venda…</div>';
@@ -1979,7 +1981,9 @@ async function rodaPedido(){
         const picoPrev=Math.max(...mTotal.slice(0,10),0);
         const idadeAnos=idade[p.cod];
         if(saldo<=10&&ult2<=2&&picoPrev>=10){
-          if(idadeAnos!=null&&idadeAnos<=3){ base=Math.max(base,picoPrev); perfil='RUPTURA'; ss=Math.max(ss,P.ssCre);
+          if(idadeAnos!=null&&idadeAnos<2){ base=Math.max(base,picoPrev*P.rupMult); perfil='RUPTURA'; ss=Math.max(ss,P.ssCre);
+            censura=`🕳 ruptura em produto NOVO (<2a) — base=pico×${nf1.format(P.rupMult)} (${Math.round(picoPrev*P.rupMult)})`; }
+          else if(idadeAnos!=null&&idadeAnos<=3){ base=Math.max(base,picoPrev); perfil='RUPTURA'; ss=Math.max(ss,P.ssCre);
             censura=`🕳 ruptura censurou a venda — base=pico recente (${Math.round(picoPrev)})`; }
           else censura='🕳 ruptura censurou a venda — produto velho: revisar manual';
         } }
