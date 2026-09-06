@@ -1978,13 +1978,15 @@ async function rodaPedido(){
       let censura=null;
       { const mTotal=serie.map((v,i2)=>v+serieL[i2]);
         const ult2=mTotal.slice(-2).reduce((s,x)=>s+x,0);
-        const picoPrev=Math.max(...mTotal.slice(0,10),0);
+        // pico só da venda CONVENCIONAL: censura de vitrine é fenômeno de varejo —
+        // pico de lotão (ex.: SS030, 150 un num lote B2B) não pode virar base×1,5
+        const picoPrev=Math.max(...serie.slice(0,10),0);
         const idadeAnos=idade[p.cod];
         if(saldo<=10&&ult2<=2&&picoPrev>=10){
-          if(idadeAnos!=null&&idadeAnos<2){ base=Math.max(base,picoPrev*P.rupMult); perfil='RUPTURA'; ss=Math.max(ss,P.ssCre);
-            censura=`🕳 ruptura em produto NOVO (<2a) — base=pico×${nf1.format(P.rupMult)} (${Math.round(picoPrev*P.rupMult)})`; }
-          else if(idadeAnos!=null&&idadeAnos<=3){ base=Math.max(base,picoPrev); perfil='RUPTURA'; ss=Math.max(ss,P.ssCre);
-            censura=`🕳 ruptura censurou a venda — base=pico recente (${Math.round(picoPrev)})`; }
+          if(idadeAnos!=null&&idadeAnos<2){ base=Math.max(base,picoPrev*P.rupMult+baseLot); perfil='RUPTURA'; ss=Math.max(ss,P.ssCre);
+            censura=`🕳 ruptura em produto NOVO (<2a) — base=pico conv×${nf1.format(P.rupMult)}+lotes (${Math.round(picoPrev*P.rupMult+baseLot)})`; }
+          else if(idadeAnos!=null&&idadeAnos<=3){ base=Math.max(base,picoPrev+baseLot); perfil='RUPTURA'; ss=Math.max(ss,P.ssCre);
+            censura=`🕳 ruptura censurou a venda — base=pico conv+lotes (${Math.round(picoPrev+baseLot)})`; }
           else censura='🕳 ruptura censurou a venda — produto velho: revisar manual';
         } }
       const trs=(tra[p.cod]||[]);
