@@ -2053,8 +2053,11 @@ async function rodaPedido(){
           if(novo>sug){ lotTxt=`⬆ compra elevada p/ 2 médias — era ${nf1.format(mesesCompra)} mês (venda em ${mesesVenda}/12 meses)`; sug=novo; }
         } else if(mesesCompra<0.5){
           lotTxt=`✂ compra cortada: ${nf1.format(mesesCompra)} mês só dá trabalho (venda em ${mesesVenda}/12 meses)`; sug=0;
-        } else if(mesesCompra>5){
-          lotTxt=`⚠ compra grande: ${nf1.format(mesesCompra)} meses de venda — conferir`;
+        } else if(mesesCompra>P.ciclo+1&&sug>moqEf){
+          lotTxt=`⚠ compra grande: ${nf1.format(mesesCompra)} meses de venda (ciclo ${P.ciclo}) — conferir`;
+        } else if(mesesCompra>6&&sug<=moqEf){
+          // 1 MOQ em produto lento: não é anomalia de cálculo, é o piso do lote — decisão de negócio
+          lotTxt=`🐢 1 MOQ rende ${nf1.format(mesesCompra)} meses — vale repor?`;
         }
         mesesCompra=(base>0&&sug>0)?sug/base:null;
       }
