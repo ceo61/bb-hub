@@ -2041,16 +2041,33 @@ async function rodaPedido(){
       const bruto=alvo-saldo-traTot;   // posição clássica: saldo + TODO o PO aberto (chega antes/junto do pedido novo)
       let sug=0;
       if(base>0&&bruto>0) sug=Math.ceil(bruto/moqEf)*moqEf;
+      // 📏 MESES DE COMPRA (doutrina 07/09/26): compra útil = pelo menos 2 médias de venda.
+      // <1 mês em produto confiável (venda em ≥8/12 meses) → eleva p/ 2 médias;
+      // <0,5 mês em produto esparso → corta (só dá trabalho, não ajuda o estoque);
+      // >5 meses → alerta p/ conferir (muito acima do ciclo).
+      let mesesCompra=(base>0&&sug>0)?sug/base:null, lotTxt=null;
+      if(mesesCompra!=null){
+        const mesesVenda=serie.filter(v=>v>0).length, confiavel=mesesVenda>=8;
+        if(mesesCompra<1&&confiavel){
+          const novo=Math.ceil(2*base/moqEf)*moqEf;
+          if(novo>sug){ lotTxt=`⬆ compra elevada p/ 2 médias — era ${nf1.format(mesesCompra)} mês (venda em ${mesesVenda}/12 meses)`; sug=novo; }
+        } else if(mesesCompra<0.5){
+          lotTxt=`✂ compra cortada: ${nf1.format(mesesCompra)} mês só dá trabalho (venda em ${mesesVenda}/12 meses)`; sug=0;
+        } else if(mesesCompra>5){
+          lotTxt=`⚠ compra grande: ${nf1.format(mesesCompra)} meses de venda — conferir`;
+        }
+        mesesCompra=(base>0&&sug>0)?sug/base:null;
+      }
       const folgaHoje=base>0?saldo/base:(saldo>0?Infinity:0);
       const folgaCheg=base>0?(saldo+traTot+sug-base*horiz)/base:null;
-      const flags=[]; if(censura) flags.push(censura); if(reclasTxt) flags.push(reclasTxt); if(ajusteTxt) flags.push(ajusteTxt);
+      const flags=[]; if(censura) flags.push(censura); if(reclasTxt) flags.push(reclasTxt); if(ajusteTxt) flags.push(ajusteTxt); if(lotTxt) flags.push(lotTxt);
       if(base>0&&(saldo+trs.filter(t=>{const dd=dMs(t.d);return dd!=null&&dd<=hojeMs+P.lead*864e5;}).reduce((s,t)=>s+t.q,0))<base*(P.lead/30.44)) flags.push('🔴 rompe antes do lead');
       if(perfil==='RAMPANDO') flags.push('🟡 novo — validar manual');
       if(base>0&&folgaHoje>8&&sug===0) flags.push('⚪ excesso');
       const serie6L=serieL.slice(-6);
       const lg=legado[p.cod]||null;
       rows.push({cod:p.cod, desc:p.descricao||'', perfil, serie6:serie.slice(-6), serie6L, a1:an.a1, a2:an.a2, a3:an.a3, m3, m12, tend, base, baseConv, baseLot, idade:idade[p.cod]??null, mSusp, saldo, legado:lg?lg.ped:null, legadoTip:lg?`media legado ${nf1.format(lg.media||0)} · ${lg.classe}`:'',
-        traHoriz, traTot, prox, folgaHoje, alvo, sug, folgaCheg, custo, valor:custo!=null?sug*custo:null, flags:flags.join(' ')});
+        traHoriz, traTot, prox, folgaHoje, alvo, sug, mesesCompra, folgaCheg, custo, valor:custo!=null?sug*custo:null, flags:flags.join(' ')});
     }
     st.pedRows=rows; st.pedMeses=mesesF.slice(-6); st.pedP=P; st.pedSort=st.pedSort||'sug'; st.pedDir=true;
     desenhaPedido();
@@ -2087,7 +2104,7 @@ function desenhaPedido(){
       ${th('tend','tend.','m3 ÷ m12')}${th('base','base/mês','demanda ADOTADA = convencional (perfil/tendência) + lotes (média simples 12m, SEM tendência)')}
       ${th('saldo','saldo','estoque útil hoje')}${th('traTot','trânsito','TODO o PO aberto conta na posição (chega antes/junto do pedido novo); tooltip: quanto chega dentro do lead e a 1ª data')}
       ${th('folgaHoje','folga (m)','saldo ÷ base')}${th('alvo','alvo','base × horizonte + segurança do perfil')}
-      ${th('sug','SUGESTÃO','alvo − saldo − trânsito, arredondado ao MOQ')}${th('legado','LEGADO','(provisório p/ calibração) pedido gerado pelo sistema antigo — mouse mostra média e classe dele')}${th('folgaCheg','folga pós','meses de folga projetada no fim do horizonte, já com o pedido')}
+      ${th('sug','SUGESTÃO','alvo − saldo − trânsito, arredondado ao MOQ; abaixo, quantos MESES de venda a compra representa (útil ≥2 · alerta >5)')}${th('legado','LEGADO','(provisório p/ calibração) pedido gerado pelo sistema antigo — mouse mostra média e classe dele')}${th('folgaCheg','folga pós','meses de folga projetada no fim do horizonte, já com o pedido')}
       ${th('custo','custo','custo unitário')}${th('valor','valor R$','sugestão × custo')}<th>flags</th>
     </tr></thead><tbody>
     ${(()=>{ const S=f=>rows.reduce((s,r)=>s+(f(r)||0),0);
@@ -2117,7 +2134,7 @@ function desenhaPedido(){
       <td title="chega dentro do lead: ${nf.format(Math.round(r.traHoriz))}${r.prox?' · 1ª chegada '+r.prox.slice(8,10)+'/'+r.prox.slice(5,7):''}">${r.traTot?nf.format(Math.round(r.traTot)):'—'}</td>
       <td style="${r.folgaHoje!==Infinity&&r.folgaHoje<P.lead/30.44?'color:var(--crit);font-weight:700':''}">${r.folgaHoje===Infinity?'∞':nf1.format(r.folgaHoje)}</td>
       <td>${nf.format(Math.round(r.alvo))}</td>
-      <td style="font-weight:800;${r.sug>0?'color:var(--accent);font-size:13px':''}">${r.sug?nf.format(r.sug):'0'}</td>
+      <td style="font-weight:800;${r.sug>0?'color:var(--accent);font-size:13px':''}">${r.sug?nf.format(r.sug):'0'}${r.mesesCompra!=null?`<br><small style="font-weight:400;color:${r.mesesCompra>5?'var(--crit)':r.mesesCompra<1?'var(--lar)':'var(--muted)'}">${nf1.format(r.mesesCompra)} m</small>`:''}</td>
       <td title="${esc(r.legadoTip||'')}" style="${r.legado!=null&&Math.abs(r.sug-r.legado)>=0.4*Math.max(r.sug,r.legado,1)&&(r.sug>0||r.legado>0)?'color:var(--lar);font-weight:700':'color:var(--muted)'}">${r.legado!=null?nf.format(r.legado):'—'}</td>
       <td>${r.folgaCheg!=null?nf1.format(r.folgaCheg):'—'}</td>
       <td>${r.custo!=null?rf2.format(r.custo):'—'}</td>
@@ -2148,9 +2165,9 @@ function ligaPedidoSaida(){
       ws.addRow([`PEDIDO DE COMPRA — ${st.pedG}${st.pedF?' · filtro '+st.pedF:''}${st.pedSoZero?' · AUDITORIA: vendeu 6m e ficou sem compra':''} · ${new Date().toLocaleDateString('pt-BR')}`]).font={bold:true,size:13};
       ws.addRow([`parâmetros: lead ${P.lead}d · ciclo ${P.ciclo}m · MOQ ${P.moq}/${P.moqCaro} (caro ≥ R$${P.caroDe}) · seg ${P.ssEst}/${P.ssCre}/${P.ssDec}/${P.ssPic}m`]);
       ws.addRow([]);
-      ws.addRow(['cod','descrição','perfil','idade (anos)',...(st.pedMeses||[]).flatMap(m=>[m+' conv',m+' lotes']),'-3a','-2a','-1a','m3 conv','m12 conv','tend','base conv','base lotes','base/mês','saldo','trânsito(horiz)','trânsito(total)','1ª chegada','folga hoje (m)','alvo','SUGESTÃO','LEGADO','folga pós (m)','custo','valor R$','flags']).font={bold:true};
+      ws.addRow(['cod','descrição','perfil','idade (anos)',...(st.pedMeses||[]).flatMap(m=>[m+' conv',m+' lotes']),'-3a','-2a','-1a','m3 conv','m12 conv','tend','base conv','base lotes','base/mês','saldo','trânsito(horiz)','trânsito(total)','1ª chegada','folga hoje (m)','alvo','SUGESTÃO','meses compra','LEGADO','folga pós (m)','custo','valor R$','flags']).font={bold:true};
       for(const r of (st.pedVis||st.pedRows).slice().sort((a,b)=>b.sug-a.sug))
-        ws.addRow([r.cod,r.desc,r.perfil,r.idade,...r.serie6.flatMap((v,i2)=>[Math.round(v),Math.round(r.serie6L?.[i2]||0)]),r.a3,r.a2,r.a1,+r.m3.toFixed(1),+r.m12.toFixed(1),r.tend!=null?+r.tend.toFixed(2):null,+r.baseConv.toFixed(1),+r.baseLot.toFixed(1),+r.base.toFixed(1),Math.round(r.saldo),Math.round(r.traHoriz),Math.round(r.traTot),r.prox||'',r.folgaHoje===Infinity?null:+r.folgaHoje.toFixed(1),Math.round(r.alvo),r.sug,r.legado,r.folgaCheg!=null?+r.folgaCheg.toFixed(1):null,r.custo,r.valor?Math.round(r.valor):null,r.flags]);
+        ws.addRow([r.cod,r.desc,r.perfil,r.idade,...r.serie6.flatMap((v,i2)=>[Math.round(v),Math.round(r.serie6L?.[i2]||0)]),r.a3,r.a2,r.a1,+r.m3.toFixed(1),+r.m12.toFixed(1),r.tend!=null?+r.tend.toFixed(2):null,+r.baseConv.toFixed(1),+r.baseLot.toFixed(1),+r.base.toFixed(1),Math.round(r.saldo),Math.round(r.traHoriz),Math.round(r.traTot),r.prox||'',r.folgaHoje===Infinity?null:+r.folgaHoje.toFixed(1),Math.round(r.alvo),r.sug,r.mesesCompra!=null?+r.mesesCompra.toFixed(1):null,r.legado,r.folgaCheg!=null?+r.folgaCheg.toFixed(1):null,r.custo,r.valor?Math.round(r.valor):null,r.flags]);
       const buf=await wb.xlsx.writeBuffer();
       const a=document.createElement('a');
       a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
