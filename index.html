@@ -2012,8 +2012,20 @@ async function rodaPedido(){
       if(base>0&&folgaHoje>8&&sug===0) flags.push('⚪ excesso');
       const serie6L=serieL.slice(-6);
       const an=anos[p.cod]||{a1:0,a2:0,a3:0};
+      // ✔ CHECK DE MÉDIA (produtos <3 anos): a base resultante tem nexo? (caso AS435: m3=4 vindo
+      // de UM mês de 12 un entre zeros → "CRESCENDO" de mentira). Só sinaliza — não altera a base.
+      let mSusp=false;
+      if(idade[p.cod]!=null&&idade[p.cod]<3&&base>0&&perfil!=='RUPTURA'){
+        const s3=serie.slice(-3), soma3=s3.reduce((a,b)=>a+b,0), max3=Math.max(...s3,0);
+        const zeros6=serie.slice(-6).filter(v=>v===0).length;
+        const motivos=[];
+        if(soma3>=6&&max3/Math.max(1,soma3)>=0.7) motivos.push(`m3 vem de 1 mês só (${Math.round(max3)} de ${Math.round(soma3)})`);
+        if(zeros6>=3&&base>1.5*m12) motivos.push(`série esparsa: ${zeros6} zeros nos últimos 6m`);
+        if(an.a1>0&&base*12>1.8*(an.a1+6)) motivos.push(`base anualizada ${Math.round(base*12)} ≫ vendeu ${Math.round(an.a1)} no último ano`);
+        if(motivos.length){ mSusp=true; flags.push('⚠ média: '+motivos.join('; ')); }
+      }
       const lg=legado[p.cod]||null;
-      rows.push({cod:p.cod, desc:p.descricao||'', perfil, serie6:serie.slice(-6), serie6L, a1:an.a1, a2:an.a2, a3:an.a3, m3, m12, tend, base, baseConv, baseLot, idade:idade[p.cod]??null, saldo, legado:lg?lg.ped:null, legadoTip:lg?`media legado ${nf1.format(lg.media||0)} · ${lg.classe}`:'',
+      rows.push({cod:p.cod, desc:p.descricao||'', perfil, serie6:serie.slice(-6), serie6L, a1:an.a1, a2:an.a2, a3:an.a3, m3, m12, tend, base, baseConv, baseLot, idade:idade[p.cod]??null, mSusp, saldo, legado:lg?lg.ped:null, legadoTip:lg?`media legado ${nf1.format(lg.media||0)} · ${lg.classe}`:'',
         traHoriz, traTot, prox, folgaHoje, alvo, sug, folgaCheg, custo, valor:custo!=null?sug*custo:null, flags:flags.join(' ')});
     }
     st.pedRows=rows; st.pedMeses=mesesF.slice(-6); st.pedP=P; st.pedSort=st.pedSort||'sug'; st.pedDir=true;
@@ -2076,7 +2088,7 @@ function desenhaPedido(){
       <td class="gr">${r.a3?nf.format(r.a3):'—'}</td><td class="gr">${r.a2?nf.format(r.a2):'—'}</td><td style="${r.a1>r.a2&&r.a2>=(r.a3||0)?'color:var(--good);font-weight:600':r.a1<r.a2*0.6&&r.a2>0?'color:var(--crit)':''}">${r.a1?nf.format(r.a1):'—'}</td>
       <td>${nf1.format(r.m3)}</td><td>${nf1.format(r.m12)}</td>
       <td>${r.tend!=null?nf1.format(r.tend)+'×':'—'}</td>
-      <td style="white-space:nowrap" title="convencional ${nf1.format(r.baseConv)} (perfil ${r.perfil}) + lotes ${nf1.format(r.baseLot)} (média 12m)"><b>${nf1.format(r.base)}</b>${r.baseLot>=0.5?`<br><span class="gr" style="font-size:10.5px">${nf1.format(r.baseConv)}+<span style="color:var(--lar)">${nf1.format(r.baseLot)}</span></span>`:''}</td>
+      <td style="white-space:nowrap;${r.mSusp?'background:var(--warn-soft)':''}" title="${r.mSusp?'⚠ MÉDIA SUSPEITA (ver flags) · ':''}convencional ${nf1.format(r.baseConv)} (perfil ${r.perfil}) + lotes ${nf1.format(r.baseLot)} (média 12m)"><b>${nf1.format(r.base)}</b>${r.baseLot>=0.5?`<br><span class="gr" style="font-size:10.5px">${nf1.format(r.baseConv)}+<span style="color:var(--lar)">${nf1.format(r.baseLot)}</span></span>`:''}</td>
       <td>${nf.format(Math.round(r.saldo))}</td>
       <td title="chega dentro do lead: ${nf.format(Math.round(r.traHoriz))}${r.prox?' · 1ª chegada '+r.prox.slice(8,10)+'/'+r.prox.slice(5,7):''}">${r.traTot?nf.format(Math.round(r.traTot)):'—'}</td>
       <td style="${r.folgaHoje!==Infinity&&r.folgaHoje<P.lead/30.44?'color:var(--crit);font-weight:700':''}">${r.folgaHoje===Infinity?'∞':nf1.format(r.folgaHoje)}</td>
