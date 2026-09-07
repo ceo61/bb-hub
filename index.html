@@ -2022,6 +2022,7 @@ async function rodaPedido(){
 function desenhaPedido(){
   const out=$('#pedSaida'); const P=st.pedP;
   let rows=st.pedRows||[];
+  if(st.pedPerfilF) rows=rows.filter(r=>r.perfil===st.pedPerfilF);
   if(st.pedSoZero) rows=rows.filter(r=>r.sug===0&&r.serie6.some(v=>v>0));
   const k=st.pedSort;
   const ordenado=rows.slice().sort((a,b)=>{ const x=a[k],y=b[k]; if(x==null)return 1; if(y==null)return -1; return st.pedDir?(y>x?1:-1):(x>y?1:-1); });
@@ -2035,7 +2036,10 @@ function desenhaPedido(){
     <div style="display:flex;gap:14px;align-items:baseline;margin:0 0 8px;flex-wrap:wrap">
       <b style="font-size:14px">${nCompra} produtos a comprar · ${nf.format(totS)} unidades · ${rf.format(totV)} a custo</b>
       <span class="gr">horizonte ${nf1.format(P.lead/30.44+P.ciclo)} meses (lead ${P.lead}d + ciclo ${P.ciclo}m) · ${(st.pedRows||[]).length} produtos analisados${st.pedSoZero?` · <b style="color:var(--lar)">mostrando só quem VENDE e ficou SEM compra (${rows.length})</b>`:''}</span>
-      <label style="margin-left:auto;display:inline-flex;gap:5px;align-items:center;font-size:12px;color:var(--lar);cursor:pointer;font-weight:600" title="auditoria: produtos com venda nos últimos 6 meses cuja sugestão deu ZERO — confira se a cobertura/trânsito justifica"><input id="pedSoZero" type="checkbox" ${st.pedSoZero?'checked':''}> só vendeu-e-não-compra</label>
+      <select id="pedPerfilF" title="filtrar pela classificação de perfil" style="margin-left:auto;padding:4px 8px;font-size:12px">
+        ${['(todos os perfis)','ESTÁVEL','CRESCENDO','RAMPANDO','DECLÍNIO','PICOS','RUPTURA','SEM VENDA'].map(p=>`<option value="${p==='(todos os perfis)'?'':p}"${(st.pedPerfilF||'')===(p==='(todos os perfis)'?'':p)?' selected':''}>${p}</option>`).join('')}
+      </select>
+      <label style="display:inline-flex;gap:5px;align-items:center;font-size:12px;color:var(--lar);cursor:pointer;font-weight:600" title="auditoria: produtos com venda nos últimos 6 meses cuja sugestão deu ZERO — confira se a cobertura/trânsito justifica"><input id="pedSoZero" type="checkbox" ${st.pedSoZero?'checked':''}> só vendeu-e-não-compra</label>
       <button class="btn" id="pedXls" style="padding:4px 14px;font-size:12px">⬇ Excel${st.pedSoZero?' (filtro)':''}</button>
     </div>
     <div class="tablecard"><div class="tscroll"><table style="font-size:12px"><thead><tr id="pedHead">
@@ -2085,6 +2089,8 @@ function desenhaPedido(){
 }
 
 function ligaPedidoSaida(){
+  const pf=$('#pedPerfilF');
+  if(pf) pf.onchange=e=>{ st.pedPerfilF=e.target.value; desenhaPedido(); };
   const z=$('#pedSoZero');
   if(z) z.onchange=e=>{ st.pedSoZero=e.target.checked; desenhaPedido(); };
   const h=$('#pedHead');
