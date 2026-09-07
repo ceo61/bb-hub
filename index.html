@@ -2045,7 +2045,7 @@ function desenhaPedido(){
       <button class="btn" id="pedXls" style="padding:4px 14px;font-size:12px">⬇ Excel${st.pedSoZero?' (filtro)':''}</button>
     </div>
     <div class="tablecard"><div class="tscroll"><table style="font-size:12px"><thead><tr id="pedHead">
-      <th data-pk="cod" title="ordenar por código (A→Z / Z→A)" style="cursor:pointer;text-decoration:underline;text-align:left">Produto${st.pedSort==='cod'?(st.pedDir?' ▼':' ▲'):''}</th>${th('perfil','Perfil','classificação automática pela série CONVENCIONAL de 12 meses (lotes não entram no perfil)')}${th('idade','Idade','anos desde a primeira importação — produto novo (<1a) pede atenção manual')}
+      <th data-pk="cod" title="ordenar por código (A→Z / Z→A)" style="cursor:pointer;text-decoration:underline;text-align:left;position:sticky;left:0;background:var(--surface);z-index:3">Produto${st.pedSort==='cod'?(st.pedDir?' ▼':' ▲'):''}</th>${th('perfil','Perfil','classificação automática pela série CONVENCIONAL de 12 meses (lotes não entram no perfil)')}${th('idade','Idade','anos desde a primeira importação — produto novo (<1a) pede atenção manual')}
       ${(st.pedMeses||[]).map(m=>`<th title="venda global (site+atacado+ML, sem lotões) no mês">${mlb(m)}</th>`).join('')}
       ${th('a3','-3a','venda TOTAL na janela 731-1095 dias atrás (BASE BBDI) — perenidade')}${th('a2','-2a','venda TOTAL na janela 366-730 dias atrás')}${th('a1','-1a','venda TOTAL nos últimos 365 dias')}${th('m3','m3','média 3m da venda CONVENCIONAL (sem lotes)')}${th('m12','m12','média 12m da venda CONVENCIONAL')}
       ${th('tend','tend.','m3 ÷ m12')}${th('base','base/mês','demanda ADOTADA = convencional (perfil/tendência) + lotes (média simples 12m, SEM tendência)')}
@@ -2057,7 +2057,7 @@ function desenhaPedido(){
     ${(()=>{ const S=f=>rows.reduce((s,r)=>s+(f(r)||0),0);
       const sm=(st.pedMeses||[]).map((_,i2)=>[S(r=>r.serie6?.[i2]), S(r=>r.serie6L?.[i2])]);
       return `<tr style="font-weight:800;background:var(--accent-soft)">
-      <td style="text-align:left">Σ ${rows.length} produtos</td><td></td><td></td>
+      <td style="text-align:left;position:sticky;left:0;background:var(--accent-soft);z-index:2">Σ ${rows.length} produtos</td><td></td><td></td>
       ${sm.map(([c,l])=>`<td style="white-space:nowrap">${nf.format(Math.round(c))}${l?`<br><span style="color:var(--lar);font-size:10.5px">+${nf.format(Math.round(l))}</span>`:''}</td>`).join('')}
       <td>${nf.format(Math.round(S(r=>r.a3)))}</td><td>${nf.format(Math.round(S(r=>r.a2)))}</td><td>${nf.format(Math.round(S(r=>r.a1)))}</td>
       <td>${nf.format(Math.round(S(r=>r.m3)))}</td><td>${nf.format(Math.round(S(r=>r.m12)))}</td><td></td>
@@ -2068,7 +2068,7 @@ function desenhaPedido(){
       <td>${nf.format(S(r=>r.legado))}</td><td></td><td></td>
       <td>${rf.format(S(r=>r.valor))}</td><td></td></tr>`; })()}
     ${ordenado.map(r=>`<tr${r.sug>0?'':' style="opacity:.6"'}>
-      <td style="text-align:left;white-space:nowrap"><b>${esc(r.cod)}</b><br><span class="gr" style="font-size:10.5px">${esc(r.desc.slice(0,34))}</span></td>
+      <td style="text-align:left;white-space:nowrap;position:sticky;left:0;background:var(--surface);z-index:2"><b>${esc(r.cod)}</b><br><span class="gr" style="font-size:10.5px">${esc(r.desc.slice(0,34))}</span></td>
       <td><span style="color:${corP[r.perfil]||'var(--ink)'};font-weight:700;font-size:11px">${r.perfil}</span></td>
       <td style="${r.idade!=null&&r.idade<1?'color:var(--warn);font-weight:700':''}">${r.idade!=null?(r.idade<1?'NOVO '+Math.round(r.idade*12)+'m':nf1.format(r.idade)+'a'):'—'}</td>
       ${r.serie6.map((v,i2)=>{ const l=r.serie6L?.[i2]||0;
