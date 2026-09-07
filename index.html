@@ -1993,6 +1993,26 @@ async function rodaPedido(){
             censura=`🕳 ruptura censurou a venda — base=pico conv+lotes (${Math.round(picoPrev+baseLot)})`; }
           else censura='🕳 ruptura censurou a venda — produto velho: revisar manual';
         } }
+      // ✔ CHECK+AJUSTE DE MÉDIA (<3 anos): analisa os 6 meses e o ano-1; média sem nexo é AJUSTADA
+      // para a MEDIANA de {m3, m6, ano-1/12} — o valor do meio entre as três leituras (caso AS435).
+      const an=anos[p.cod]||{a1:0,a2:0,a3:0};
+      let mSusp=false, ajusteTxt=null;
+      if(idade[p.cod]!=null&&idade[p.cod]<3&&base>0&&perfil!=='RUPTURA'){
+        const s3=serie.slice(-3), soma3=s3.reduce((a,b)=>a+b,0), max3=Math.max(...s3,0);
+        const zeros6=serie.slice(-6).filter(v=>v===0).length;
+        const m6=serie.slice(-6).reduce((a,b)=>a+b,0)/6;
+        const suspeita=(soma3>=6&&max3/Math.max(1,soma3)>=0.7)||(zeros6>=3&&base>1.5*m12)||(an.a1>0&&base*12>1.8*(an.a1+6));
+        if(suspeita){
+          const cand=[m3+baseLot, m6+baseLot];
+          if(an.a1>0) cand.push(an.a1/12);
+          cand.sort((a,b)=>a-b);
+          const aj=cand[Math.floor(cand.length/2)];
+          if(aj>0&&Math.abs(aj-base)/base>0.05){
+            ajusteTxt=`🔁 média ajustada ${nf1.format(base)}→${nf1.format(aj)} (mediana m3 ${nf1.format(m3+baseLot)} · m6 ${nf1.format(m6+baseLot)} · ano-1 ${an.a1>0?nf1.format(an.a1/12):'—'})`;
+            base=aj; mSusp=true;
+          } else { mSusp=true; ajusteTxt='⚠ média conferida no limite (6m e ano-1 sustentam)'; }
+        }
+      }
       const trs=(tra[p.cod]||[]);
       const traHoriz=trs.filter(t=>{ const dd=dMs(t.d); return dd==null||dd<=hojeMs+P.lead*864e5; }).reduce((s,t)=>s+t.q,0);
       const traTot=trs.reduce((s,t)=>s+t.q,0);
@@ -2006,24 +2026,11 @@ async function rodaPedido(){
       if(base>0&&bruto>0) sug=Math.ceil(bruto/moqEf)*moqEf;
       const folgaHoje=base>0?saldo/base:(saldo>0?Infinity:0);
       const folgaCheg=base>0?(saldo+traTot+sug-base*horiz)/base:null;
-      const flags=[]; if(censura) flags.push(censura);
+      const flags=[]; if(censura) flags.push(censura); if(ajusteTxt) flags.push(ajusteTxt);
       if(base>0&&(saldo+trs.filter(t=>{const dd=dMs(t.d);return dd!=null&&dd<=hojeMs+P.lead*864e5;}).reduce((s,t)=>s+t.q,0))<base*(P.lead/30.44)) flags.push('🔴 rompe antes do lead');
       if(perfil==='RAMPANDO') flags.push('🟡 novo — validar manual');
       if(base>0&&folgaHoje>8&&sug===0) flags.push('⚪ excesso');
       const serie6L=serieL.slice(-6);
-      const an=anos[p.cod]||{a1:0,a2:0,a3:0};
-      // ✔ CHECK DE MÉDIA (produtos <3 anos): a base resultante tem nexo? (caso AS435: m3=4 vindo
-      // de UM mês de 12 un entre zeros → "CRESCENDO" de mentira). Só sinaliza — não altera a base.
-      let mSusp=false;
-      if(idade[p.cod]!=null&&idade[p.cod]<3&&base>0&&perfil!=='RUPTURA'){
-        const s3=serie.slice(-3), soma3=s3.reduce((a,b)=>a+b,0), max3=Math.max(...s3,0);
-        const zeros6=serie.slice(-6).filter(v=>v===0).length;
-        const motivos=[];
-        if(soma3>=6&&max3/Math.max(1,soma3)>=0.7) motivos.push(`m3 vem de 1 mês só (${Math.round(max3)} de ${Math.round(soma3)})`);
-        if(zeros6>=3&&base>1.5*m12) motivos.push(`série esparsa: ${zeros6} zeros nos últimos 6m`);
-        if(an.a1>0&&base*12>1.8*(an.a1+6)) motivos.push(`base anualizada ${Math.round(base*12)} ≫ vendeu ${Math.round(an.a1)} no último ano`);
-        if(motivos.length){ mSusp=true; flags.push('⚠ média: '+motivos.join('; ')); }
-      }
       const lg=legado[p.cod]||null;
       rows.push({cod:p.cod, desc:p.descricao||'', perfil, serie6:serie.slice(-6), serie6L, a1:an.a1, a2:an.a2, a3:an.a3, m3, m12, tend, base, baseConv, baseLot, idade:idade[p.cod]??null, mSusp, saldo, legado:lg?lg.ped:null, legadoTip:lg?`media legado ${nf1.format(lg.media||0)} · ${lg.classe}`:'',
         traHoriz, traTot, prox, folgaHoje, alvo, sug, folgaCheg, custo, valor:custo!=null?sug*custo:null, flags:flags.join(' ')});
