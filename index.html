@@ -1979,9 +1979,11 @@ async function rodaPedido(){
       // 📅 REPASSE DO PERFIL vs -3a/-2a/-1a (caso SS021): a janela de 12m ACHATA crescimento
       // plurianual (1.135→4.314→9.792 parecia "ESTÁVEL"). Anos mandam quando divergem forte.
       let reclasTxt=null;
-      if(base>0&&an.a2>=60){
+      // guardas: idade≥2 (senão o ano-2 é parcial e infla o crescimento — caso DE3511) e
+      // arco sustentado a2≥a3 no upgrade (curva em V tipo AP041 179→75→279 NÃO é crescimento).
+      if(base>0&&an.a2>=60&&idade[p.cod]!=null&&idade[p.cod]>=2){
         const g12=an.a1/Math.max(1,an.a2);
-        if((perfil==='ESTÁVEL'||perfil==='PICOS')&&g12>=1.5){
+        if((perfil==='ESTÁVEL'||perfil==='PICOS')&&g12>=1.5&&an.a2>=an.a3){
           reclasTxt=`📅 ${perfil}→CRESCENDO pelos anos (${nf.format(an.a3)}→${nf.format(an.a2)}→${nf.format(an.a1)})`;
           perfil='CRESCENDO'; base=m3+baseLot; ss=P.ssCre;
         } else if((perfil==='ESTÁVEL'||perfil==='CRESCENDO')&&an.a1<=0.6*an.a2){
