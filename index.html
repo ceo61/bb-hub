@@ -1914,7 +1914,7 @@ async function rodaPedido(){
     for(let i=0;i<cods.length;i+=60){
       const lote=cods.slice(i,i+60);
       out.innerHTML=`<div class="carregando">Carregando vendas… ${Math.min(i+60,cods.length)}/${cods.length} produtos</div>`;
-      vendas.push(...await tudo('fato_vendas_diaria',{select:'data,cod,qtd_b2c,qtd_ml,qtd_atac,qtd_atac_lotao',mod:q=>q.gte('data',iniD).in('cod',lote)}));
+      vendas.push(...await tudo('fato_vendas_diaria',{select:'data,cod,qtd_b2c,qtd_ml,qtd_atac,qtd_atac_lotao',mod:q=>q.gte('data',iniD).in('cod',lote).order('data',{ascending:true}).order('cod',{ascending:true})}));
     }
     const [snapE,snapT,snapC]=await Promise.all([
       sb.from('fato_estoque').select('snapshot').order('snapshot',{ascending:false}).limit(1),
@@ -1938,7 +1938,9 @@ async function rodaPedido(){
     }
     // série mensal ÚTIL (sem lotões: dia de atacado ≥50 fica fora)
     const M={}, ML={};  // M = venda CONVENCIONAL (dia de atacado <50) · ML = lotes (dia de atacado ≥50, o dia inteiro)
+    const _visto=new Set();  // dedupe (data|cod): paginação sem ordem estável já duplicou linhas
     vendas.forEach(r=>{
+      const _k=r.data+'|'+r.cod; if(_visto.has(_k)) return; _visto.add(_k);
       const mes=r.data.slice(0,7); const at=+r.qtd_atac||0;
       const conv=(+r.qtd_b2c||0)+(+r.qtd_ml||0)+(at<50?at:0);
       (M[r.cod]=M[r.cod]||{})[mes]=(M[r.cod]?.[mes]||0)+conv;
