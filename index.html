@@ -1868,7 +1868,7 @@ async function renderPedido(){
   st.pedG=st.pedG||'BNOT';
   const num=(id,lb,v,step,w,tit)=>`<label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="${tit||''}">${lb}<input id="${id}" type="number" step="${step}" value="${v}" style="width:${w}px;padding:3px 6px;font-size:12.5px;text-align:right"></label>`;
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Venda separada em dois números por mês</b>: convencional em cima (site + ML + atacado do dia-a-dia) e <span style="color:var(--lar)">+lotes</span> embaixo (dia com atacado ≥50 un). A <b>tendência só se aplica ao convencional</b>; lotes entram pela <b>média simples de 12 meses</b>, sem tendência (lote não cresce em tendência). base/mês = convencional + lotes: <b>ESTÁVEL</b> usa média 12m · <b>CRESCENDO/RAMPANDO</b> usa média 3m×tendência (teto 1,5×) · <b>DECLÍNIO</b> usa média 3m×0,8 · <b>PICOS</b> usa o espelho dos mesmos meses do ano anterior. Pedido = demanda×(lead+ciclo) + segurança − saldo − trânsito que chega no horizonte, arredondado ao MOQ. Ajuste os parâmetros e <b>RODAR</b>.</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Venda separada em dois números por mês</b>: convencional em cima (site + ML + atacado do dia-a-dia) e <span style="color:var(--lar)">+lotes</span> embaixo (dia com atacado ≥50 un). A <b>tendência só se aplica ao convencional</b>; lotes entram pela <b>média simples de 12 meses</b>, sem tendência (lote não cresce em tendência). base/mês = convencional + lotes: <b>ESTÁVEL</b> usa média 12m · <b>CRESCENDO/RAMPANDO</b> usa média 3m pura (o crescimento já está nela — sem extrapolar) · <b>DECLÍNIO</b> usa média 3m×0,8 · <b>PICOS</b> usa o espelho dos mesmos meses do ano anterior. Pedido = demanda×(lead+ciclo) + segurança − saldo − trânsito que chega no horizonte, arredondado ao MOQ. Ajuste os parâmetros e <b>RODAR</b>.</p>
     <div style="display:flex;gap:8px;margin:0 0 8px;flex-wrap:wrap;align-items:center">
       ${st.pedGrupos.map(g=>`<button class="pedG" data-g="${esc(g)}" style="padding:5px 16px;border-radius:9px;cursor:pointer;${g===st.pedG?'background:var(--accent);color:#fff;border:2px solid var(--accent);font-weight:800;box-shadow:0 1px 6px rgba(42,120,214,.45)':'background:none;color:var(--accent);border:1px solid var(--accent);font-weight:600'}">${g===st.pedG?'✓ ':''}${esc(g)}</button>`).join('')}
       <input id="pedFiltro" placeholder="filtrar por marca/código… (ex.: ACER)" value="${esc(st.pedF||'')}" style="margin-left:auto;padding:6px 12px;min-width:220px">
@@ -1963,8 +1963,8 @@ async function rodaPedido(){
       let perfil, base, ss;
       const vend1a6=serie.slice(0,6).filter(x=>x>0).length;
       if(tot12===0){ perfil='SEM VENDA'; base=0; ss=0; }
-      else if(vend1a6<=1&&m3>0){ perfil='RAMPANDO'; base=m3*Math.min(1.5,tend||1.5); ss=P.ssCre; }
-      else if(tend!=null&&tend>=1.4){ perfil='CRESCENDO'; base=m3*Math.min(1.5,tend); ss=P.ssCre; }
+      else if(vend1a6<=1&&m3>0){ perfil='RAMPANDO'; base=m3; ss=P.ssCre; }   // m3 já contém o crescimento — multiplicar de novo era dupla contagem (explosivo)
+      else if(tend!=null&&tend>=1.4){ perfil='CRESCENDO'; base=m3; ss=P.ssCre; }
       else if(tend!=null&&tend<=0.6){ perfil='DECLÍNIO'; base=m3*0.8; ss=P.ssDec; }
       else if(cv>=0.75){ perfil='PICOS';
         const alvoMeses=[]; { const d=new Date(); for(let k=0;k<Math.ceil(horiz);k++){ const x=new Date(d); x.setMonth(d.getMonth()+k-12); alvoMeses.push(x.toLocaleDateString('sv-SE').slice(0,7)); } }
