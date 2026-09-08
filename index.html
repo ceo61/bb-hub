@@ -2646,7 +2646,9 @@ async function renderSugestoes(){
     st.sgClasseAuto=true;
   }
   const VER=st.sgVer||'avaliar';  // estágio do funil: avaliar | aguardando | revisados | mexidos | tudo
-  const lista=st.sgAB ? out.filter(m=>!ocultosMov[m.cod])  // visão 🔁: ignora o funil, MAS respeita o ✓ "já avaliei" (volta em 7d + 200 views)
+  // visão 🔁: ignora o funil (o robô "mexe" nos testes toda madrugada — ocultosMov esconderia TUDO),
+  // mas respeita o ✓ HUMANO (revMap = revisado nos últimos 7 dias): avaliou, sai; volta em 7 dias.
+  const lista=st.sgAB ? out.filter(m=>!revMap[m.cod])
             : VER==='aguardando' ? out.filter(m=>ocultosMov[m.cod])
             : VER==='tudo' ? out.filter(m=>!pendSet.has(m.cod))
             : out.filter(m=>!pendSet.has(m.cod)&&!ocultosMov[m.cod]);
