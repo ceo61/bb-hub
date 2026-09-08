@@ -1868,7 +1868,7 @@ async function renderPedido(){
   st.pedG=st.pedG||'BNOT';
   const num=(id,lb,v,step,w,tit)=>`<label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="${tit||''}">${lb}<input id="${id}" type="number" step="${step}" value="${v}" style="width:${w}px;padding:3px 6px;font-size:12.5px;text-align:right"></label>`;
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Venda separada em dois números por mês</b>: convencional em cima (site + ML + atacado do dia-a-dia) e <span style="color:var(--lar)">+lotes</span> embaixo (dia com atacado ≥50 un). A <b>tendência só se aplica ao convencional</b>; lotes entram pela <b>média simples de 12 meses</b>, sem tendência (lote não cresce em tendência). base/mês = convencional + lotes: <b>ESTÁVEL</b> usa média 12m · <b>CRESCENDO</b> usa média 3m pura (lançamentos também caem aqui, com flag 🟡) (o crescimento já está nela — sem extrapolar) · <b>PICOS</b> usa o espelho dos mesmos meses do ano anterior. Pedido = demanda×(lead+ciclo) + segurança − saldo − trânsito que chega no horizonte, arredondado ao MOQ. Ajuste os parâmetros e <b>RODAR</b>.</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Venda separada em dois números por mês</b>: convencional em cima (site + ML + atacado do dia-a-dia) e <span style="color:var(--lar)">+lotes</span> embaixo (dia com atacado ≥50 un). A <b>tendência só se aplica ao convencional</b>; lotes entram pela <b>média simples de 12 meses</b>, sem tendência (lote não cresce em tendência). base/mês = convencional + lotes: <b>ESTÁVEL</b> usa média 12m · <b>CRESCENDO</b> usa média 3m pura (lançamentos também caem aqui, com flag 🟡) (o crescimento já está nela — sem extrapolar) · <b>VOLÁTIL</b> (variação alta) usa média 12m com colchão de segurança maior. Pedido = demanda×(lead+ciclo) + segurança − saldo − trânsito que chega no horizonte, arredondado ao MOQ. Ajuste os parâmetros e <b>RODAR</b>.</p>
     <div style="display:flex;gap:8px;margin:0 0 8px;flex-wrap:wrap;align-items:center">
       ${st.pedGrupos.map(g=>`<button class="pedG" data-g="${esc(g)}" style="padding:5px 16px;border-radius:9px;cursor:pointer;${g===st.pedG?'background:var(--accent);color:#fff;border:2px solid var(--accent);font-weight:800;box-shadow:0 1px 6px rgba(42,120,214,.45)':'background:none;color:var(--accent);border:1px solid var(--accent);font-weight:600'}">${g===st.pedG?'✓ ':''}${esc(g)}</button>`).join('')}
       <input id="pedFiltro" placeholder="filtrar por marca/código… (ex.: ACER)" value="${esc(st.pedF||'')}" style="margin-left:auto;padding:6px 12px;min-width:220px">
@@ -1883,7 +1883,7 @@ async function renderPedido(){
         <span style="border-left:1px solid var(--hair);height:34px"></span>
         ${num('pedSsEst','seg. ESTÁVEL (m)',P.ssEst,0.25,52)}
         ${num('pedSsCre','seg. CRESC/RAMPA (m)',P.ssCre,0.25,52)}
-        ${num('pedSsPic','seg. PICOS (m)',P.ssPic,0.25,52)}
+        ${num('pedSsPic','seg. VOLÁTIL (m)',P.ssPic,0.25,52)}
         ${num('pedRupMult','ruptura <2a: pico ×',P.rupMult??1.5,0.1,52,'produto NOVO (<2 anos) que zerou por ruptura: a base vira o pico recente × este fator — o pico em si já foi censurado pelo racionamento (AS515: faturou 17 no mês de 34 compras GA4)')}
         <button class="btn" id="pedRodar" style="padding:8px 26px;font-weight:700;font-size:13.5px">▶ RODAR</button>
       </div>
@@ -1966,10 +1966,9 @@ async function rodaPedido(){
       else if(vend1a6<=1&&m3>0){ perfil='CRESCENDO'; base=m3; ss=P.ssCre; novoRamp=true; }   // ex-RAMPANDO (fundido 08/09/26): lançamento — m12 diluída pelos meses vazios; m3 pura + flag 🟡
       else if(tend!=null&&tend>=1.4){ perfil='CRESCENDO'; base=m3; ss=P.ssCre; }
       // DECLÍNIO foi abolido (07/09/26): a fronteira com ESTÁVEL era instável — tudo é ESTÁVEL (m12)
-      else if(cv>=0.75){ perfil='PICOS';
-        const alvoMeses=[]; { const d=new Date(); for(let k=0;k<Math.ceil(horiz);k++){ const x=new Date(d); x.setMonth(d.getMonth()+k-12); alvoMeses.push(x.toLocaleDateString('sv-SE').slice(0,7)); } }
-        const esp=alvoMeses.map(m=>M[p.cod]?.[m]).filter(v=>v!=null);
-        base=esp.length?esp.reduce((s,x)=>s+x,0)/esp.length:m12; ss=P.ssPic; }
+      // VOLÁTIL (ex-PICOS, 08/09/26): errático sem sazonalidade real — o "espelho" desviava
+      // só ~18% da m12, sem direção. Base m12; o que protege é o colchão maior (seg 2m).
+      else if(cv>=0.75){ perfil='VOLÁTIL'; base=m12; ss=P.ssPic; }
       else { perfil='ESTÁVEL'; base=m12; ss=P.ssEst; }
       const serieL=mesesF.map(m=>ML[p.cod]?.[m]||0);
       const baseLot=serieL.reduce((s,x)=>s+x,0)/12;   // lotes: média simples 12m — SEM tendência
@@ -1982,7 +1981,7 @@ async function rodaPedido(){
       // arco sustentado a2≥a3 no upgrade (curva em V tipo AP041 179→75→279 NÃO é crescimento).
       if(base>0&&an.a2>=60&&idade[p.cod]!=null&&idade[p.cod]>=2){
         const g12=an.a1/Math.max(1,an.a2);
-        if((perfil==='ESTÁVEL'||perfil==='PICOS')&&g12>=1.5&&an.a2>=an.a3){
+        if((perfil==='ESTÁVEL'||perfil==='VOLÁTIL')&&g12>=1.5&&an.a2>=an.a3){
           reclasTxt=`📅 ${perfil}→CRESCENDO pelos anos (${nf.format(an.a3)}→${nf.format(an.a2)}→${nf.format(an.a1)})`;
           perfil='CRESCENDO'; base=m3+baseLot; ss=P.ssCre;
         }
@@ -2083,7 +2082,7 @@ function desenhaPedido(){
   const totS=rows.reduce((s,r)=>s+r.sug,0), totV=rows.reduce((s,r)=>s+(r.valor||0),0);
   const nCompra=rows.filter(r=>r.sug>0).length;
   st.pedVis=rows;
-  const corP={'ESTÁVEL':'var(--good)','CRESCENDO':'var(--accent)','PICOS':'var(--ch4)','RUPTURA':'var(--crit)','SEM VENDA':'var(--muted)'};
+  const corP={'ESTÁVEL':'var(--good)','CRESCENDO':'var(--accent)','VOLÁTIL':'var(--ch4)','RUPTURA':'var(--crit)','SEM VENDA':'var(--muted)'};
   const mlb=m=>m.slice(5,7)+'/'+m.slice(2,4);
   const th=(kk,lb,tit)=>`<th data-pk="${kk}" title="${tit||''}" style="cursor:pointer;text-decoration:underline">${lb}${st.pedSort===kk?(st.pedDir?' ▼':' ▲'):''}</th>`;
   out.innerHTML=`
@@ -2091,7 +2090,7 @@ function desenhaPedido(){
       <b style="font-size:14px">${nCompra} produtos a comprar · ${nf.format(totS)} unidades · ${rf.format(totV)} a custo</b>
       <span class="gr">horizonte ${nf1.format(P.lead/30.44+P.ciclo)} meses (lead ${P.lead}d + ciclo ${P.ciclo}m) · ${(st.pedRows||[]).length} produtos analisados${st.pedSoZero?` · <b style="color:var(--lar)">mostrando só quem VENDE e ficou SEM compra (${rows.length})</b>`:''}</span>
       <select id="pedPerfilF" title="filtrar pela classificação de perfil" style="margin-left:auto;padding:4px 8px;font-size:12px">
-        ${['(todos os perfis)','ESTÁVEL','CRESCENDO','PICOS','RUPTURA','SEM VENDA'].map(p=>`<option value="${p==='(todos os perfis)'?'':p}"${(st.pedPerfilF||'')===(p==='(todos os perfis)'?'':p)?' selected':''}>${p}</option>`).join('')}
+        ${['(todos os perfis)','ESTÁVEL','CRESCENDO','VOLÁTIL','RUPTURA','SEM VENDA'].map(p=>`<option value="${p==='(todos os perfis)'?'':p}"${(st.pedPerfilF||'')===(p==='(todos os perfis)'?'':p)?' selected':''}>${p}</option>`).join('')}
       </select>
       <label style="display:inline-flex;gap:5px;align-items:center;font-size:12px;color:var(--lar);cursor:pointer;font-weight:600" title="auditoria: produtos com venda nos últimos 6 meses cuja sugestão deu ZERO — confira se a cobertura/trânsito justifica"><input id="pedSoZero" type="checkbox" ${st.pedSoZero?'checked':''}> só vendeu-e-não-compra</label>
       <button class="btn" id="pedXls" style="padding:4px 14px;font-size:12px">⬇ Excel${st.pedSoZero?' (filtro)':''}</button>
