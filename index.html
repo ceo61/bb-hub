@@ -2646,7 +2646,7 @@ async function renderSugestoes(){
     st.sgClasseAuto=true;
   }
   const VER=st.sgVer||'avaliar';  // estágio do funil: avaliar | aguardando | revisados | mexidos | tudo
-  const lista=st.sgAB ? out  // visão 🔁: testes A/B ignoram os estágios do funil (o produto está estacionado)
+  const lista=st.sgAB ? out.filter(m=>!ocultosMov[m.cod])  // visão 🔁: ignora o funil, MAS respeita o ✓ "já avaliei" (volta em 7d + 200 views)
             : VER==='aguardando' ? out.filter(m=>ocultosMov[m.cod])
             : VER==='tudo' ? out.filter(m=>!pendSet.has(m.cod))
             : out.filter(m=>!pendSet.has(m.cod)&&!ocultosMov[m.cod]);
