@@ -1208,7 +1208,7 @@ async function abreExtrato(cod, m, acao){
   const d0=new Date(ini+'T12:00:00'); d0.setDate(d0.getDate()-62); const ini0=d0.toISOString().slice(0,10);
   const [vd,cv,ad,pr,es,cu,cc,hist,tAB,abLog,abModos]=await Promise.all([
     sb.from('fato_vendas_diaria').select('data,qtd,qtd_b2c,val_b2c,lucro_b2c,qtd_ml,val_ml,lucro_ml,qtd_atac,val_atac,lucro_atac').eq('cod',cod).gte('data',ini0).order('data').then(r=>r.data||[]),
-    sb.from('fato_conversao').select('data,views').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
+    sb.from('fato_conversao').select('data,views,compras,receita').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
     sb.from('fato_ads').select('data,custo').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
     sb.from('fato_precos').select('snapshot,codtab,filial,preco_de,preco_por,preco_real').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
     sb.from('fato_estoque').select('snapshot,estoque_util').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
@@ -1236,12 +1236,12 @@ async function abreExtrato(cod, m, acao){
       abW[w]={n, braco:abModos[ult.teste_id]==='diario'?'A/B':ult.braco, id:ult.teste_id};
     } }
   const qtdDia={}; vd.forEach(r=>{ qtdDia[r.data]=+r.qtd||0; });
-  const W={}; mondays.forEach(w=>W[w]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,ads:0,saldo:null,de:null,por:null,porReal:null,atacTab:null,mlTab:null,custo:null,ccav:null,ccbb:null});
+  const W={}; mondays.forEach(w=>W[w]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,gc:0,gr:0,ads:0,saldo:null,de:null,por:null,porReal:null,atacTab:null,mlTab:null,custo:null,ccav:null,ccbb:null});
   vd.forEach(r=>{ const a=W[wk(r.data)]; if(!a) return;
     a.q2+=+r.qtd_b2c||0; a.v2+=+r.val_b2c||0; a.l2+=+r.lucro_b2c||0;
     a.qm+=+r.qtd_ml||0; a.vm+=+r.val_ml||0; a.lm+=+r.lucro_ml||0;
     a.q1+=+r.qtd_atac||0; a.v1+=+r.val_atac||0; a.l1+=+r.lucro_atac||0; });
-  cv.forEach(r=>{ const a=W[wk(r.data)]; if(a) a.vw+=+r.views||0; });
+  cv.forEach(r=>{ const a=W[wk(r.data)]; if(a){ a.vw+=+r.views||0; a.gc+=+r.compras||0; a.gr+=+r.receita||0; } });
   ad.forEach(r=>{ const a=W[wk(r.data)]; if(a) a.ads+=+r.custo||0; });
   es.forEach(r=>{ const a=W[wk(r.snapshot)]; if(a) a.saldo=+r.estoque_util; });
   cu.forEach(r=>{ const a=W[wk(r.snapshot)]; if(a) a.custo=+r.custo; });
@@ -1253,13 +1253,13 @@ async function abreExtrato(cod, m, acao){
     else if(r.codtab==='401'){ a.mlTab=+r.preco_real||null; } });
   // agregação MENSAL: somáveis somam; pontuais (preço/custo/saldo/BGT) viram sequência de valores distintos (A → B)
   const mesDe=d=>d.slice(0,7);
-  const M={}; meses.forEach(ms=>M[mesDe(ms)]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,ads:0,saldo:[],de:[],porReal:[],atacTab:[],mlTab:[],custo:[],ccav:[],ccbb:[]});
+  const M={}; meses.forEach(ms=>M[mesDe(ms)]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,gc:0,gr:0,ads:0,saldo:[],de:[],porReal:[],atacTab:[],mlTab:[],custo:[],ccav:[],ccbb:[]});
   const pushU=(arr,v)=>{ v=+v; if(!isFinite(v))return; if(!arr.length||Math.abs(arr[arr.length-1]-v)>0.005) arr.push(v); };
   vd.forEach(r=>{ const a=M[mesDe(r.data)]; if(!a) return;
     a.q2+=+r.qtd_b2c||0; a.v2+=+r.val_b2c||0; a.l2+=+r.lucro_b2c||0;
     a.qm+=+r.qtd_ml||0; a.vm+=+r.val_ml||0; a.lm+=+r.lucro_ml||0;
     a.q1+=+r.qtd_atac||0; a.v1+=+r.val_atac||0; a.l1+=+r.lucro_atac||0; });
-  cv.forEach(r=>{ const a=M[mesDe(r.data)]; if(a) a.vw+=+r.views||0; });
+  cv.forEach(r=>{ const a=M[mesDe(r.data)]; if(a){ a.vw+=+r.views||0; a.gc+=+r.compras||0; a.gr+=+r.receita||0; } });
   ad.forEach(r=>{ const a=M[mesDe(r.data)]; if(a) a.ads+=+r.custo||0; });
   es.forEach(r=>{ const a=M[mesDe(r.snapshot)]; if(a) pushU(a.saldo,r.estoque_util); });
   cu.forEach(r=>{ const a=M[mesDe(r.snapshot)]; if(a) pushU(a.custo,r.custo); });
@@ -1285,7 +1285,7 @@ async function abreExtrato(cod, m, acao){
     const mkA=(a.atacTab&&a.custo)?a.atacTab/a.custo:null;
     const mkM=(a.mlTab&&a.custo)?a.mlTab/a.custo:null;
     const prat=a.q2>0?a.v2/a.q2:null, tick=a.q1>0?a.v1/a.q1:null, tickM=a.qm>0?a.vm/a.qm:null;
-    const conv=a.vw>0?a.q2/a.vw*100:null, roas=a.ads>0?a.v2/a.ads:null, roasMc=(a.ads>0&&a.l2!=null)?a.l2/a.ads:null;
+    const conv=a.vw>0?a.gc/a.vw*100:null, roas=a.ads>0?a.gr/a.ads:null, roasMc=(a.ads>0&&a.l2!=null)?a.l2/a.ads:null;
     const sep='border-left:2px solid var(--hair);';
     return `<tr><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${w.slice(8,10)}/${w.slice(5,7)}</b>${abW[w]?` <span title="teste A/B #${abW[w].id} — semana ${abW[w].n} do teste, braço ${abW[w].braco}" style="background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:10px;border-radius:99px;padding:1px 7px">T${abW[w].n}·${abW[w].braco}</span>`:''}</td>
       <td style="${tdc}">${a.saldo!=null?nf.format(a.saldo):'—'}${(wi===mondays.length-1&&m?._transito>0)?` <span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}</td>
@@ -1304,6 +1304,7 @@ async function abreExtrato(cod, m, acao){
       <td style="${tdc}">${F.m(prat)}</td>
       <td style="${tdc}color:var(--muted)">${F.m(a.ccav)}</td>
       <td style="${tdc}">${F.d1(mkS)}${mkS?'×':''}</td>
+      <td style="${tdc}"><b>${F.n(a.gc)}</b></td>
       <td style="${tdc}">${F.p(conv)}</td>
       <td style="${tdc}color:var(--ch1)">${F.n(a.vw)}</td>
       <td style="${tdc}">${F.r(a.ads)}</td>
@@ -1328,7 +1329,7 @@ async function abreExtrato(cod, m, acao){
     const mkA=(ult(a.atacTab)&&custoU)?ult(a.atacTab)/custoU:null;
     const mkM2=(ult(a.mlTab)&&custoU)?ult(a.mlTab)/custoU:null;
     const prat=a.q2>0?a.v2/a.q2:null, tick=a.q1>0?a.v1/a.q1:null, tickM=a.qm>0?a.vm/a.qm:null;
-    const conv=a.vw>0?a.q2/a.vw*100:null, roas=a.ads>0?a.v2/a.ads:null, roasMc=(a.ads>0&&a.l2!=null)?a.l2/a.ads:null;
+    const conv=a.vw>0?a.gc/a.vw*100:null, roas=a.ads>0?a.gr/a.ads:null, roasMc=(a.ads>0&&a.l2!=null)?a.l2/a.ads:null;
     const sep='border-left:2px solid var(--hair);';
     const dm=new Date(ms+'T12:00:00');
     return `<tr><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${MESLB[dm.getMonth()]}/${String(dm.getFullYear()).slice(2)}</b>${parcial?' <span class="gr" title="mês em andamento — números parciais">*</span>':''}</td>
@@ -1348,6 +1349,7 @@ async function abreExtrato(cod, m, acao){
       <td style="${tdc}">${F.m(prat)}</td>
       <td style="${tdc}color:var(--muted)">${fseq(a.ccav,v=>rf2.format(v))}</td>
       <td style="${tdc}">${F.d1(mkS)}${mkS?'×':''}</td>
+      <td style="${tdc}"><b>${F.n(a.gc)}</b></td>
       <td style="${tdc}">${F.p(conv)}</td>
       <td style="${tdc}color:var(--ch1)">${F.n(a.vw)}</td>
       <td style="${tdc}">${F.r(a.ads)}</td>
@@ -1427,12 +1429,12 @@ async function abreExtrato(cod, m, acao){
       <tr><th rowspan="2" id="xTh0" style="padding:7px 8px;text-align:left;position:sticky;left:0;top:0;background:var(--surface);z-index:3;vertical-align:bottom">Semana</th>
         <th colspan="3" style="padding:5px 8px;text-align:center;letter-spacing:.1em">GERAIS</th>
         <th colspan="6" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair)">BBDI — ATACADO (001)</th>
-        <th colspan="12" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair);color:var(--accent)">BBB — SITE (002)</th>
+        <th colspan="13" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair);color:var(--accent)">BBB — SITE (002)</th>
         <th colspan="5" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair)">ML (005)</th></tr>
       <tr>
         ${th('Saldo','estoque útil no fim da semana (snapshot; histórico desde 15/07/26)')}${th('Folga','saldo ÷ giro 60d÷2 (aprox — total c/ lotões)')}${th('Custo','custo unitário (desde 16/07/26)')}
         ${th('un','unidades atacado no período (semana ou mês)',1)}${th('MC 001','lucro bruto do período no Atacado e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('Tab','preço tabela 001 (real; desde 15/07/26)')}${th('Ticket','ticket médio atacado')}${th('BGT','concorrente B2B cash (desde 13/06/26)')}${th('Mkup','tabela 001 ÷ custo')}
-        ${th('un','unidades site no período (semana ou mês)',1)}${th('MC 002','lucro bruto do período no Site e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('PIX','preço FINAL à vista = POR×0,95 — o que o cliente paga (mesma régua da 1ª página)')}${th('Prat.','preço praticado site')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('Mkup','PIX (à vista real) ÷ custo — mesmo mk da 1ª página')}${th('Conv','qtd 002 ÷ views')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS','faturado 002 ÷ Ads')}${th('ROAS MC','MC 002 (lucro bruto BASE BBDI) ÷ Ads do período — régua fixa: <3 vermelho · 3 a 5 laranja · ≥5 verde')}
+        ${th('un','unidades site no período (semana ou mês)',1)}${th('MC 002','lucro bruto do período no Site e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('PIX','preço FINAL à vista = POR×0,95 — o que o cliente paga (mesma régua da 1ª página)')}${th('Prat.','preço praticado site')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('Mkup','PIX (à vista real) ÷ custo — mesmo mk da 1ª página')}${th('Compras','compras GA4 do período (pedido feito no site — independe do faturamento)')}${th('Conv','compras GA4 ÷ views GA4')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS GA4','receita GA4 ÷ Ads — venda do período no site, não o faturamento')}${th('ROAS MC','MC 002 (lucro bruto BASE BBDI) ÷ Ads do período — régua fixa: <3 vermelho · 3 a 5 laranja · ≥5 verde')}
         ${th('un','unidades Mercado Livre no período',1)}${th('MC 005','lucro bruto do período no ML e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('Tab','preço tabela 401')}${th('Ticket','ticket médio ML')}${th('Mkup','tabela 401 ÷ custo')}</tr>
       </thead>
       <tbody id="xTbody">${linhas}</tbody></table></div>
@@ -1760,7 +1762,7 @@ async function abreDiario(cod, desc){
   const [vd,ad,cv,pr,cc,es]=await Promise.all([
     sb.from('fato_vendas_diaria').select('data,qtd_b2c,val_b2c,lucro_b2c,qtd_atac,qtd_ml').eq('cod',cod).gte('data',ini),
     sb.from('fato_ads').select('data,custo,cliques').eq('cod',cod).gte('data',ini),
-    sb.from('fato_conversao').select('data,views').eq('cod',cod).gte('data',ini),
+    sb.from('fato_conversao').select('data,views,compras,receita').eq('cod',cod).gte('data',ini),
     sb.from('fato_precos').select('snapshot,filial,preco_real').eq('cod',cod).eq('codtab','002').gte('snapshot',ini),
     sb.from('fato_concorrencia').select('data,cc_avista').eq('cod',cod).gte('data',ini),
     sb.from('fato_estoque').select('snapshot,estoque_util').eq('cod',cod).gte('snapshot',ini),
@@ -1769,21 +1771,21 @@ async function abreDiario(cod, desc){
   const dd=d=>DD[d]=DD[d]||{un2:0,rec:0,mc:0,un1:0,unm:0,ads:null,clq:null,vw:null,pix:null,bgt:null,saldo:null};
   (vd.data||[]).forEach(r=>{ const a=dd(r.data); a.un2+=+r.qtd_b2c||0; a.rec+=+r.val_b2c||0; a.mc+=+r.lucro_b2c||0; a.un1+=+r.qtd_atac||0; a.unm+=+r.qtd_ml||0; });
   (ad.data||[]).forEach(r=>{ const a=dd(r.data); a.ads=(a.ads||0)+(+r.custo||0); a.clq=(a.clq||0)+(+r.cliques||0); });
-  (cv.data||[]).forEach(r=>{ const a=dd(r.data); a.vw=(a.vw||0)+(+r.views||0); });
+  (cv.data||[]).forEach(r=>{ const a=dd(r.data); a.vw=(a.vw||0)+(+r.views||0); a.gc=(a.gc||0)+(+r.compras||0); a.gr=(a.gr||0)+(+r.receita||0); });
   (pr.data||[]).forEach(r=>{ if(String(r.filial).trim()==='10') dd(r.snapshot).pix=+r.preco_real||null; });
   (cc.data||[]).forEach(r=>{ dd(r.data).bgt=+r.cc_avista||null; });
   (es.data||[]).forEach(r=>{ dd(r.snapshot).saldo=+r.estoque_util; });
   const dias=[]; for(let i=14;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); dias.push(d.toLocaleDateString('sv-SE')); }
   const SEM=['dom','seg','ter','qua','qui','sex','sáb'];
   const tdc='padding:6px 8px;text-align:right;white-space:nowrap;';
-  const T={un2:0,rec:0,mc:0,un1:0,unm:0,ads:0,clq:0,vw:0,gaps:[]}; let nFech=0;
+  const T={un2:0,rec:0,mc:0,un1:0,unm:0,ads:0,clq:0,vw:0,gc:0,gr:0,gaps:[]}; let nFech=0;
   const linhas=dias.map(dt=>{
     const a=DD[dt]||dd(dt);
     const hoje=dt===hojeISO, dow=new Date(dt+'T12:00:00').getDay(), fds=dow===0||dow===6;
-    const ticket=a.un2>0?a.rec/a.un2:null, conv=a.vw>0?a.un2/a.vw*100:null;
-    const roas=a.ads>0?a.rec/a.ads:null, rmc=a.ads>0?a.mc/a.ads:null;
+    const ticket=a.un2>0?a.rec/a.un2:null, conv=a.vw>0?(a.gc||0)/a.vw*100:null;
+    const roas=a.ads>0?(a.gr||0)/a.ads:null, rmc=a.ads>0?a.mc/a.ads:null;
     const gap=(a.pix&&a.bgt)?(a.pix/a.bgt-1)*100:null, mcp=a.rec>0?a.mc/a.rec*100:null;
-    if(!hoje){ T.un2+=a.un2; T.rec+=a.rec; T.mc+=a.mc; T.un1+=a.un1; T.unm+=a.unm; T.ads+=a.ads||0; T.clq+=a.clq||0; T.vw+=a.vw||0; if(gap!=null)T.gaps.push(gap); nFech++; }
+    if(!hoje){ T.un2+=a.un2; T.rec+=a.rec; T.mc+=a.mc; T.un1+=a.un1; T.unm+=a.unm; T.ads+=a.ads||0; T.clq+=a.clq||0; T.vw+=a.vw||0; T.gc+=a.gc||0; T.gr+=a.gr||0; if(gap!=null)T.gaps.push(gap); nFech++; }
     return `<tr${hoje?' style="opacity:.75"':''}>
       <td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${dt.slice(8,10)}/${dt.slice(5,7)}</b> <span style="font-size:10.5px;color:${fds?'var(--warn)':'var(--muted)'}">${SEM[dow]}</span>${hoje?' <span class="gr" title="hoje — números parciais">*</span>':''}</td>
       <td style="${tdc}">${a.saldo!=null?nf.format(Math.round(a.saldo)):'—'}</td>
@@ -1797,13 +1799,14 @@ async function abreDiario(cod, desc){
       <td style="${tdc}border-left:2px solid var(--hair)">${a.ads!=null?rf.format(a.ads):'—'}</td>
       <td style="${tdc}">${a.clq!=null?nf.format(a.clq):'—'}</td>
       <td style="${tdc}color:var(--ch1)">${a.vw!=null?nf.format(a.vw):'—'}</td>
+      <td style="${tdc}"><b>${a.gc?nf.format(a.gc):'—'}</b></td>
       <td style="${tdc}">${conv!=null?nf1.format(conv)+'%':'—'}</td>
       <td style="${tdc}">${roas!=null?nf1.format(roas):'—'}</td>
       <td style="${tdc}${corRmcFix(rmc)}">${rmc!=null?nf1.format(rmc):'—'}</td>
       <td style="${tdc}border-left:2px solid var(--hair);color:var(--muted)">${a.un1||a.unm?`${nf.format(a.un1)} · ${nf.format(a.unm)}`:'—'}</td>
     </tr>`; }).join('');
   const gapMed=T.gaps.length?T.gaps.reduce((s,x)=>s+x,0)/T.gaps.length:null;
-  const tConv=T.vw>0?T.un2/T.vw*100:null, tRoas=T.ads>0?T.rec/T.ads:null, tRmc=T.ads>0?T.mc/T.ads:null, tMcp=T.rec>0?T.mc/T.rec*100:null, tTick=T.un2>0?T.rec/T.un2:null;
+  const tConv=T.vw>0?T.gc/T.vw*100:null, tRoas=T.ads>0?T.gr/T.ads:null, tRmc=T.ads>0?T.mc/T.ads:null, tMcp=T.rec>0?T.mc/T.rec*100:null, tTick=T.un2>0?T.rec/T.un2:null;
   const rodape=`<tr style="font-weight:700;border-top:2px solid var(--hair)">
       <td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1">Σ ${nFech}d</td>
       <td style="${tdc}"></td>
@@ -1816,6 +1819,7 @@ async function abreDiario(cod, desc){
       <td style="${tdc}border-left:2px solid var(--hair)">${rf.format(T.ads)}</td>
       <td style="${tdc}">${nf.format(T.clq)}</td>
       <td style="${tdc}color:var(--ch1)">${nf.format(T.vw)}</td>
+      <td style="${tdc}"><b>${nf.format(T.gc)}</b></td>
       <td style="${tdc}">${tConv!=null?nf1.format(tConv)+'%':'—'}</td>
       <td style="${tdc}">${tRoas!=null?nf1.format(tRoas):'—'}</td>
       <td style="${tdc}${corRmcFix(tRmc)}">${tRmc!=null?nf1.format(tRmc):'—'}</td>
@@ -1828,7 +1832,7 @@ async function abreDiario(cod, desc){
       <span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(desc||'')} · extrato diário</span>
       ${(st.diLista&&st.diLista.length>1)?`<button id="diProx" class="btn" style="flex:none;background:var(--good);color:#fff;font-weight:700;padding:8px 20px;font-size:13px;border-radius:9px">PRÓXIMO →</button>`:''}
       <span id="diX" style="cursor:pointer;font-size:20px">✕</span></div>
-    <p class="gr" style="margin:6px 0 10px">Últimos 15 dias (site/002; * = hoje, parcial — Σ soma só os ${nFech} dias fechados). MC = lucro bruto transacional (BASE BBDI) · <b>ROAS MC</b> = MC ÷ Ads, régua fixa: <b style="color:var(--crit)">&lt;3</b> · <b style="color:var(--lar)">3 a 5</b> · <b style="color:var(--good)">≥5</b> · <b>Gap</b> = PIX ÷ BGT − 1 (<b style="color:var(--good)">verde</b> = abaixo do concorrente) · Conv = un 002 ÷ views GA4 · BGT diária desde 27/08/26 (antes, sábados) · <b>001 · ML</b> = unidades atacado e Mercado Livre.</p>
+    <p class="gr" style="margin:6px 0 10px">Últimos 15 dias (site/002; * = hoje, parcial — Σ soma só os ${nFech} dias fechados). MC = lucro bruto transacional (BASE BBDI) · <b>ROAS MC</b> = MC ÷ Ads, régua fixa: <b style="color:var(--crit)">&lt;3</b> · <b style="color:var(--lar)">3 a 5</b> · <b style="color:var(--good)">≥5</b> · <b>Gap</b> = PIX ÷ BGT − 1 (<b style="color:var(--good)">verde</b> = abaixo do concorrente) · <b>Compras/Conv/ROAS GA4</b> = pedido feito no site NO DIA (GA4) — independe do dia do faturamento (por isso fim de semana não zera) · BGT diária desde 27/08/26 (antes, sábados) · <b>001 · ML</b> = unidades atacado e Mercado Livre.</p>
     <div class="tscroll" style="max-height:70vh"><table style="width:100%;min-width:0;font-size:12.5px">
       <thead><tr>
         <th style="padding:6px 8px;text-align:left;position:sticky;left:0;top:0;background:var(--surface);z-index:3">Dia</th>
@@ -1837,7 +1841,7 @@ async function abreDiario(cod, desc){
         <th title="receita ÷ unidades do dia">Ticket</th><th title="preço à vista PIX (002/10, snapshot do dia)">PIX</th>
         <th title="BGT à vista (scrape do dia; diário desde 27/08)">BGT</th><th title="PIX ÷ BGT − 1">Gap</th>
         <th title="investimento Google Ads">Ads</th><th title="cliques pagos">Cliq</th><th title="acessos GA4 (todas as origens)">Views</th>
-        <th title="un 002 ÷ views">Conv</th><th title="receita ÷ Ads">ROAS</th><th title="MC ÷ Ads — régua fixa: <3 vermelho · 3 a 5 laranja · ≥5 verde">ROAS MC</th>
+        <th title="compras GA4 do dia (pedido feito no site — independe do faturamento)">Compras</th><th title="compras GA4 ÷ views GA4 — conversão do DIA no site">Conv</th><th title="receita GA4 do dia ÷ Ads — venda do dia, não faturamento">ROAS GA4</th><th title="MC ÷ Ads — régua fixa: <3 vermelho · 3 a 5 laranja · ≥5 verde">ROAS MC</th>
         <th title="unidades atacado (001) · Mercado Livre (005)">001 · ML</th>
       </tr></thead>
       <tbody>${linhas}${rodape}</tbody></table></div>`;
