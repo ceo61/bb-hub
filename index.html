@@ -243,6 +243,7 @@ th.ord .seta{font-size:9px;margin-left:3px}
     <a href="#skus" data-pg="skus">🧩 SKUs</a>
     <a href="#global" data-pg="global">🌐 Visão Global</a>
     <a href="#diario" data-pg="diario">📆 Diário</a>
+    <a href="#concorrencia" data-pg="concorrencia">🥊 Concorrência</a>
     <div class="navsec">Gestão</div>
     <a href="#sugestoes" data-pg="sugestoes">🎛️ CTRL ONLINE</a>
     <a href="#aprovacoes" data-pg="aprovacoes">🔍 Aprovações</a>
@@ -533,7 +534,7 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', diario:'Acompanhamento Diário — 20+ un/semana', pedido:'Pedido de Compra — importação', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -557,6 +558,7 @@ function navega(pg){
   else if(pg==='skus') renderSkus();
   else if(pg==='global') renderGlobal();
   else if(pg==='diario') renderDiario();
+  else if(pg==='concorrencia') renderConcorrencia();
   else if(pg==='pedido') renderPedido();
   else if(pg==='pressao') renderPressao();
   else if(pg==='config') renderConfig();
@@ -1665,6 +1667,87 @@ const diCorMC=p=>p==null?'':p<0?'color:var(--crit);font-weight:700':p<30?'color:
 const diCorGap=g=>g==null?'':g<0?'color:var(--good);font-weight:700':g>10?'color:var(--crit);font-weight:600':'';
 const diCorRmc=(v,med)=>{ if(v==null||med==null||med<=0) return ''; if(v>=med*1.3) return 'color:var(--good);font-weight:700'; if(v<=med*0.7) return 'color:var(--crit);font-weight:600'; return ''; };
 const corRmcFix=v=>(v==null||!isFinite(v))?'':v<3?'color:var(--crit);font-weight:600':v<5?'color:var(--lar);font-weight:600':'color:var(--good);font-weight:700';
+
+/* ---------- CONCORRÊNCIA — BGT ---------- */
+async function renderConcorrencia(){
+  const out=$('#conteudo'); out.innerHTML='<div class="carregando">Carregando concorrência…</div>';
+  try{
+    const hojeISO=new Date().toLocaleDateString('sv-SE');
+    if(!st.ccHist||st.ccHistDia!==hojeISO){
+      const ini=(()=>{const d=new Date(); d.setDate(d.getDate()-8); return d.toLocaleDateString('sv-SE');})();
+      const [hist,prods,snapP]=await Promise.all([
+        tudo('fato_concorrencia',{select:'cod,data,cc_avista,cc_b2b',mod:q=>q.gte('data',ini).order('data',{ascending:true}).order('cod',{ascending:true})}),
+        tudo('dim_produto',{select:'cod,descricao,grupo'}),
+        sb.from('fato_precos').select('snapshot').order('snapshot',{ascending:false}).limit(1)]);
+      const snap=snapP.data?.[0]?.snapshot;
+      st.ccPrecos=snap?await tudo('fato_precos',{select:'cod,codtab,filial,preco_real',eq:[['snapshot',snap]],mod:q=>q.in('codtab',['001','002']).order('cod',{ascending:true})}):[];
+      st.ccHist=hist; st.ccProds=prods; st.ccHistDia=hojeISO;
+    }
+    const D={}; (st.ccProds||[]).forEach(p=>D[p.cod]=p);
+    const pix={}, tab1={};
+    (st.ccPrecos||[]).forEach(r=>{ const f=String(r.filial).trim();
+      if(r.codtab==='002'&&f==='10') pix[r.cod]=+r.preco_real||null;
+      if(r.codtab==='001'&&f==='01') tab1[r.cod]=+r.preco_real||null; });
+    // séries por produto (dedupe data|cod) → mudança = valor difere do scrape anterior
+    const ser={}, _v=new Set();
+    (st.ccHist||[]).forEach(r=>{ const k=r.data+'|'+r.cod; if(_v.has(k))return; _v.add(k); (ser[r.cod]=ser[r.cod]||[]).push(r); });
+    const mud=[];
+    for(const cod in ser){ const l=ser[cod];
+      for(let i=1;i<l.length;i++)
+        for(const [campo,canal] of [['cc_avista','à vista'],['cc_b2b','B2B']]){
+          const de=+l[i-1][campo]||null, para=+l[i][campo]||null;
+          if(de&&para&&Math.abs(de-para)>0.009) mud.push({data:l[i].data, cod, canal, de, para, pct:(para/de-1)*100});
+        } }
+    const corte=(()=>{const d=new Date(); d.setDate(d.getDate()-7); return d.toLocaleDateString('sv-SE');})();
+    let lista=mud.filter(m=>m.data>=corte);
+    // filtros
+    const grupos=[...new Set(lista.map(m=>D[m.cod]?.grupo||'—'))].sort();
+    if(st.ccG) lista=lista.filter(m=>(D[m.cod]?.grupo||'—')===st.ccG);
+    if(st.ccCanal) lista=lista.filter(m=>m.canal===st.ccCanal);
+    if(st.ccQ){ const nq=st.ccQ.toUpperCase().replace(/[^A-Z0-9]/g,'');
+      lista=lista.filter(m=>(m.cod+' '+(D[m.cod]?.descricao||'')).toUpperCase().replace(/[^A-Z0-9]/g,'').includes(nq)); }
+    const dias=[...new Set(lista.map(m=>m.data))].sort().reverse();
+    const SEM=['dom','seg','ter','qua','qui','sex','sáb'];
+    const ultimo=dias[0];
+    const chip=(canal)=>{ const dd=lista.filter(m=>m.data===ultimo&&m.canal===canal);
+      const bx=dd.filter(m=>m.para<m.de).length, sb2=dd.length-bx;
+      return dd.length?`<span class="kpi" style="padding:7px 14px">${canal==='à vista'?'🛒 à vista':'🏭 B2B'}: <b style="color:var(--crit)">⬇ ${bx}</b> · <b style="color:var(--good)">⬆ ${sb2}</b></span>`:''; };
+    const tdc='padding:6px 9px;text-align:right;white-space:nowrap;';
+    const bloco=dt=>{ const dd=lista.filter(m=>m.data===dt).sort((a,b)=>Math.abs(b.pct)-Math.abs(a.pct));
+      const dow=new Date(dt+'T12:00:00').getDay();
+      return `<h3 style="margin:18px 2px 8px">${dt.slice(8,10)}/${dt.slice(5,7)} <span class="gr">${SEM[dow]}</span> — ${dd.length} alteração(ões)</h3>
+      <div class="tablecard"><div class="tscroll"><table style="width:100%;font-size:12.5px">
+        <thead><tr><th style="text-align:left;padding:6px 9px">Produto</th><th>Grupo</th><th>Canal</th>
+        <th title="preço BGT: anterior → novo">BGT: de → para</th><th title="variação do preço do concorrente — vermelho = ele BAIXOU (ficou mais agressivo)">Δ</th>
+        <th title="nosso preço hoje: PIX (à vista) ou tabela 001 (B2B)">Nosso</th>
+        <th title="nosso ÷ BGT novo − 1 — verde = estamos abaixo do concorrente">Gap novo</th></tr></thead><tbody>
+        ${dd.map(m=>{ const p=D[m.cod]||{}; const nosso=m.canal==='à vista'?pix[m.cod]:tab1[m.cod];
+          const gap=(nosso&&m.para)?(nosso/m.para-1)*100:null;
+          const baixou=m.para<m.de;
+          return `<tr>
+          <td style="padding:6px 9px;text-align:left;white-space:nowrap"><a href="#sugestoes/${encodeURIComponent(m.cod)}" title="abrir o extrato semanal (CTRL)" style="font-weight:600">${esc(m.cod)}</a><br><span class="gr" style="font-size:10.5px">${esc((p.descricao||'').slice(0,40))}</span></td>
+          <td style="${tdc}text-align:center"><span class="gr">${esc(p.grupo||'—')}</span></td>
+          <td style="${tdc}text-align:center"><span style="background:${m.canal==='à vista'?'var(--accent-soft)':'var(--hair)'};border-radius:9px;padding:1px 8px;font-size:11px;font-weight:600">${m.canal}</span></td>
+          <td style="${tdc}">${rf2.format(m.de)} → <b>${rf2.format(m.para)}</b></td>
+          <td style="${tdc}color:${baixou?'var(--crit)':'var(--good)'};font-weight:700">${baixou?'⬇':'⬆'} ${m.pct>0?'+':''}${nf1.format(m.pct)}%</td>
+          <td style="${tdc}">${nosso?rf2.format(nosso):'—'}</td>
+          <td style="${tdc}${gap!=null?(gap<=0?'color:var(--good);font-weight:700':'color:var(--crit);font-weight:700'):''}">${gap!=null?(gap>0?'+':'')+nf1.format(gap)+'%':'—'}</td>
+        </tr>`;}).join('')}</tbody></table></div></div>`; };
+    out.innerHTML=`
+      <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Alterações de preço do concorrente <b>BGT</b> detectadas entre um scrape e o seguinte (scrape diário desde 27/08/26; 581 produtos monitorados) — <b>memória de 7 dias</b>, o dia mais antigo sai sozinho. <b style="color:var(--crit)">⬇ vermelho</b> = BGT baixou (ficou mais agressivo) · <b style="color:var(--good)">⬆ verde</b> = BGT subiu (abriu espaço). <b>Gap novo</b> = nosso preço de hoje ÷ preço novo deles − 1 (à vista compara com nosso PIX; B2B com a tabela 001). Clique no produto para o extrato da CTRL.</p>
+      <div class="toolbar">
+        <input type="search" id="ccQ" placeholder="Buscar ref ou descrição…" value="${esc(st.ccQ||'')}">
+        <select id="ccG"><option value="">Todos os grupos</option>${grupos.map(g=>`<option ${st.ccG===g?'selected':''} value="${esc(g)}">${esc(g)}</option>`).join('')}</select>
+        <select id="ccCanal"><option value="">à vista + B2B</option><option ${st.ccCanal==='à vista'?'selected':''} value="à vista">só à vista (B2C)</option><option ${st.ccCanal==='B2B'?'selected':''} value="B2B">só B2B</option></select>
+        ${ultimo?chip('à vista')+chip('B2B'):''}
+        <span class="count">${nf.format(lista.length)} alterações em 7 dias</span>
+      </div>
+      ${dias.length?dias.map(bloco).join(''):'<p class="gr">Nenhuma alteração de preço BGT nos últimos 7 dias (com os filtros atuais).</p>'}`;
+    $('#ccQ').oninput=e=>{ st.ccQ=e.target.value; clearTimeout(st._ccT); st._ccT=setTimeout(renderConcorrencia,300); };
+    $('#ccG').onchange=e=>{ st.ccG=e.target.value; renderConcorrencia(); };
+    $('#ccCanal').onchange=e=>{ st.ccCanal=e.target.value; renderConcorrencia(); };
+  }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
+}
 
 async function renderDiario(){
   $('#conteudo').innerHTML='<div class="carregando">Carregando acompanhamento diário…</div>';
