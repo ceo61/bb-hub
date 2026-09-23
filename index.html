@@ -244,6 +244,7 @@ th.ord .seta{font-size:9px;margin-left:3px}
     <a href="#global" data-pg="global">🌐 Visão Global</a>
     <a href="#diario" data-pg="diario">📆 Diário</a>
     <a href="#concorrencia" data-pg="concorrencia">🥊 Concorrência</a>
+    <a href="#equipe" data-pg="equipe">👥 Responsáveis</a>
     <div class="navsec">Gestão</div>
     <a href="#sugestoes" data-pg="sugestoes">🎛️ CTRL ONLINE</a>
     <a href="#aprovacoes" data-pg="aprovacoes">🔍 Aprovações</a>
@@ -534,7 +535,7 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -559,6 +560,7 @@ function navega(pg){
   else if(pg==='global') renderGlobal();
   else if(pg==='diario') renderDiario();
   else if(pg==='concorrencia') renderConcorrencia();
+  else if(pg==='equipe') renderEquipe();
   else if(pg==='pedido') renderPedido();
   else if(pg==='pressao') renderPressao();
   else if(pg==='config') renderConfig();
@@ -1667,6 +1669,51 @@ const diCorMC=p=>p==null?'':p<0?'color:var(--crit);font-weight:700':p<30?'color:
 const diCorGap=g=>g==null?'':g<0?'color:var(--good);font-weight:700':g>10?'color:var(--crit);font-weight:600':'';
 const diCorRmc=(v,med)=>{ if(v==null||med==null||med<=0) return ''; if(v>=med*1.3) return 'color:var(--good);font-weight:700'; if(v<=med*0.7) return 'color:var(--crit);font-weight:600'; return ''; };
 const corRmcFix=v=>(v==null||!isFinite(v))?'':v<3?'color:var(--crit);font-weight:600':v<5?'color:var(--lar);font-weight:600':'color:var(--good);font-weight:700';
+
+/* ---------- RESPONSÁVEIS — quem cuida do quê ---------- */
+async function renderEquipe(){
+  const out=$('#conteudo'); out.innerHTML='<div class="carregando">Carregando responsáveis…</div>';
+  try{
+    const {data:resp}=await sb.from('resp_grupos').select('*').order('ordem').order('chave');
+    st.resp={}; (resp||[]).forEach(r=>st.resp[r.chave]=r.analista);
+    const podeEditar=!!st.admin;
+    out.innerHTML=`
+      <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Quem é o responsável por cada grupo de produto. <b>É este cadastro que alimenta os balõezinhos (mouse-over) das caixinhas de grupo na Visão Global</b> e dos relógios do Monitor — mudou aqui, muda lá na hora. ${podeEditar?'Edite o texto e clique 💾. Para <b>criar uma divisão nova de grupo</b> (ex.: repartir marcas entre analistas nas caixinhas), fale com o Claude — a partição dos dados é feita no banco.':'<b>Edição restrita ao administrador</b> — mudanças de responsável, fale com o Alessandro.'}</p>
+      <div class="tablecard"><div class="tscroll"><table style="width:100%;max-width:980px">
+        <thead><tr><th style="text-align:left;padding:8px 10px;width:190px">Grupo / divisão</th><th style="text-align:left;padding:8px 10px">Responsável (aparece no mouse-over)</th>${podeEditar?'<th style="width:110px"></th>':''}</tr></thead><tbody>
+        ${(resp||[]).map(r=>`<tr>
+          <td style="padding:7px 10px;font-weight:700;white-space:nowrap">${esc(r.chave)}</td>
+          <td style="padding:7px 10px">${podeEditar?`<input type="text" data-rk="${esc(r.chave)}" value="${esc(r.analista||'')}" maxlength="200" style="width:100%">`:esc(r.analista||'—')}
+            ${r.atualizado_por?`<br><span class="gr" style="font-size:10.5px">alterado por ${esc(r.atualizado_por)} em ${new Date(r.atualizado_em).toLocaleDateString('pt-BR')}</span>`:''}</td>
+          ${podeEditar?`<td style="text-align:center;white-space:nowrap"><button class="btn rSalva" data-k="${esc(r.chave)}" style="padding:4px 12px;font-size:12px">💾</button> <span class="rDel" data-k="${esc(r.chave)}" title="remover linha" style="cursor:pointer;color:var(--crit);font-weight:700">✕</span></td>`:''}
+        </tr>`).join('')}</tbody></table></div></div>
+      ${podeEditar?`<div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="rNovoK" placeholder="grupo novo (ex.: SSD)" style="width:170px">
+        <input type="text" id="rNovoA" placeholder="responsável" style="width:320px">
+        <button class="btn" id="rNovoOk" style="padding:6px 16px">+ adicionar</button>
+        <span class="gr" id="rMsg"></span></div>`:''}`;
+    if(!podeEditar) return;
+    const salva=async(chave,analista)=>{
+      const {error}=await sb.from('resp_grupos').upsert({chave, analista, atualizado_em:new Date().toISOString(), atualizado_por:st.email});
+      $('#rMsg')&&($('#rMsg').textContent=error?('erro: '+error.message):'salvo ✓');
+      if(!error) st.respDia=null;
+      return !error;
+    };
+    document.querySelectorAll('.rSalva').forEach(b=>b.onclick=async()=>{
+      const inp=document.querySelector(`input[data-rk="${b.dataset.k}"]`);
+      b.textContent='…'; await salva(b.dataset.k, inp.value.trim()); b.textContent='💾 ✓'; setTimeout(()=>b.textContent='💾',1500);
+    });
+    document.querySelectorAll('.rDel').forEach(el=>el.onclick=async()=>{
+      if(!confirm('Remover a linha '+el.dataset.k+'?')) return;
+      await sb.from('resp_grupos').delete().eq('chave',el.dataset.k); st.respDia=null; renderEquipe();
+    });
+    $('#rNovoOk').onclick=async()=>{
+      const k=$('#rNovoK').value.trim().toUpperCase(), a=$('#rNovoA').value.trim();
+      if(!k){ $('#rMsg').textContent='informe o grupo'; return; }
+      if(await salva(k,a)) renderEquipe();
+    };
+  }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
+}
 
 /* ---------- CONCORRÊNCIA — BGT ---------- */
 async function renderConcorrencia(){
@@ -3879,7 +3926,12 @@ async function renderGlobal(){
   if(!st.vgG||!grupos.includes(st.vgG)) st.vgG=grupos[0];
   // gestão atual começou em 17/08/26 (1ª ação dos analistas na CTRL) — vale para TODOS os grupos
   const GESTAO='2026-08-17';
-  const ANALISTA={
+  if(!st.resp||st.respDia!==new Date().toLocaleDateString('sv-SE')){
+    try{ const {data:_r}=await sb.from('resp_grupos').select('chave,analista');
+      st.resp={}; (_r||[]).forEach(x=>st.resp[x.chave]=x.analista); st.respDia=new Date().toLocaleDateString('sv-SE');
+    }catch(e){ st.resp=st.resp||{}; }
+  }
+  const ANALISTA_FIXO={
     'TUDO':'todos — empresa inteira',
     'BNOT':'Ale (CEO) + Richard (HP) + Diogo (marcas a partir da letra L) — ver os 3 cards no fim',
     'BNOT DE-AC-AS+':'Ale (CEO) — marcas de A a K: Dell, Acer, Asus, Apple, Compaq, Itautec…',
@@ -3890,6 +3942,7 @@ async function renderGlobal(){
     'TECL':'Rafaelly — teclados',
     'CAM_FILM':'Gabriel — câmeras e filmadoras',
   };
+  const ANALISTA=new Proxy({},{get:(_,g)=>st.resp[g]??ANALISTA_FIXO[g]});
   // divisões de BNOT vão para o FIM da fileira de pílulas
   const _ehSub=g=>g.startsWith('BNOT ');
   grupos=[...grupos.filter(g=>!_ehSub(g)), ...grupos.filter(_ehSub)];
