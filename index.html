@@ -1675,34 +1675,50 @@ async function renderEquipe(){
   const out=$('#conteudo'); out.innerHTML='<div class="carregando">Carregando responsáveis…</div>';
   try{
     const {data:resp}=await sb.from('resp_grupos').select('*').order('ordem').order('chave');
-    st.resp={}; (resp||[]).forEach(r=>st.resp[r.chave]=r.analista);
+    st.resp={}; (resp||[]).forEach(r=>{ st.resp[r.chave]=r.analista; if(r.rotulo) st.resp[r.rotulo]=r.analista; });
     const podeEditar=!!st.admin;
     out.innerHTML=`
-      <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Quem é o responsável por cada grupo de produto. <b>É este cadastro que alimenta os balõezinhos (mouse-over) das caixinhas de grupo na Visão Global</b> e dos relógios do Monitor — mudou aqui, muda lá na hora. ${podeEditar?'Edite o texto e clique 💾. Para <b>criar uma divisão nova de grupo</b> (ex.: repartir marcas entre analistas nas caixinhas), fale com o Claude — a partição dos dados é feita no banco.':'<b>Edição restrita ao administrador</b> — mudanças de responsável, fale com o Alessandro.'}</p>
-      <div class="tablecard"><div class="tscroll"><table style="width:100%;max-width:980px">
-        <thead><tr><th style="text-align:left;padding:8px 10px;width:190px">Grupo / divisão</th><th style="text-align:left;padding:8px 10px">Responsável (aparece no mouse-over)</th>${podeEditar?'<th style="width:110px"></th>':''}</tr></thead><tbody>
+      <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Quem é o responsável por cada grupo de produto. <b>Este cadastro alimenta os balõezinhos (mouse-over) das caixinhas da Visão Global</b> — responsável e nome mudam lá na hora do 💾. ${podeEditar?`Já as <b>caixinhas em si</b> (a divisão dos produtos) seguem as colunas <b>Base + Regra</b> e só mudam ao clicar <b>🔁 Refazer filtros</b>. Regra: prefixo de código com hífen (<code>KB-AC</code>), marca (<code>HP</code>), faixa de letra da marca (<code>L-Z</code>), <code>*</code> = resto do base; vários termos separados por vírgula. <b>“tira do base”</b> marcado = os produtos SAEM do grupo original (ex.: teclado Acer sai de TECL); desmarcado = aparecem nos dois (ex.: divisões do BNOT).`:'<b>Edição restrita ao administrador</b> — mudanças de responsável, fale com o Alessandro.'}</p>
+      <div class="tablecard"><div class="tscroll"><table style="width:100%;${podeEditar?'':'max-width:980px'}">
+        <thead><tr><th style="text-align:left;padding:8px 10px">Grupo</th>${podeEditar?'<th style="text-align:left;padding:8px 10px">Nome do botão</th>':''}<th style="text-align:left;padding:8px 10px">Responsável (mouse-over)</th>${podeEditar?'<th style="text-align:left;padding:8px 10px" title="grupo de origem dos produtos">Base</th><th style="text-align:left;padding:8px 10px">Regra</th><th title="tira os produtos do grupo base">tira?</th><th style="width:100px"></th>':''}</tr></thead><tbody>
         ${(resp||[]).map(r=>`<tr>
-          <td style="padding:7px 10px;font-weight:700;white-space:nowrap">${esc(r.chave)}</td>
-          <td style="padding:7px 10px">${podeEditar?`<input type="text" data-rk="${esc(r.chave)}" value="${esc(r.analista||'')}" maxlength="200" style="width:100%">`:esc(r.analista||'—')}
-            ${r.atualizado_por?`<br><span class="gr" style="font-size:10.5px">alterado por ${esc(r.atualizado_por)} em ${new Date(r.atualizado_em).toLocaleDateString('pt-BR')}</span>`:''}</td>
-          ${podeEditar?`<td style="text-align:center;white-space:nowrap"><button class="btn rSalva" data-k="${esc(r.chave)}" style="padding:4px 12px;font-size:12px">💾</button> <span class="rDel" data-k="${esc(r.chave)}" title="remover linha" style="cursor:pointer;color:var(--crit);font-weight:700">✕</span></td>`:''}
+          <td style="padding:7px 10px;font-weight:700;white-space:nowrap">${esc(r.chave)}${r.atualizado_por?`<br><span class="gr" style="font-size:10px">${esc(r.atualizado_por.split('@')[0])} · ${new Date(r.atualizado_em).toLocaleDateString('pt-BR')}</span>`:''}</td>
+          ${podeEditar?`<td style="padding:7px 10px"><input type="text" data-rot="${esc(r.chave)}" value="${esc(r.rotulo||'')}" placeholder="${esc(r.chave)}" maxlength="30" style="width:130px"></td>`:''}
+          <td style="padding:7px 10px">${podeEditar?`<input type="text" data-rk="${esc(r.chave)}" value="${esc(r.analista||'')}" maxlength="200" style="width:100%;min-width:220px">`:esc(r.analista||'—')}</td>
+          ${podeEditar?`<td style="padding:7px 10px"><input type="text" data-base="${esc(r.chave)}" value="${esc(r.base||'')}" maxlength="20" style="width:80px"></td>
+          <td style="padding:7px 10px"><input type="text" data-regra="${esc(r.chave)}" value="${esc(r.regra||'')}" maxlength="120" style="width:150px"></td>
+          <td style="text-align:center"><input type="checkbox" data-tira="${esc(r.chave)}" ${r.tira_do_grupo?'checked':''} style="width:15px;height:15px"></td>
+          <td style="text-align:center;white-space:nowrap"><button class="btn rSalva" data-k="${esc(r.chave)}" style="padding:4px 12px;font-size:12px">💾</button> <span class="rDel" data-k="${esc(r.chave)}" title="remover linha" style="cursor:pointer;color:var(--crit);font-weight:700">✕</span></td>`:''}
         </tr>`).join('')}</tbody></table></div></div>
+      ${podeEditar?`<div style="margin-top:10px"><button class="btn" id="rRefaz" style="background:var(--accent);padding:8px 20px;font-weight:700">🔁 Refazer filtros</button> <span class="gr">reconstrói as caixinhas da Visão Global a partir das regras (leva ~20s) — necessário após mudar Base/Regra/tira</span></div>`:''}
       ${podeEditar?`<div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <input type="text" id="rNovoK" placeholder="grupo novo (ex.: SSD)" style="width:170px">
         <input type="text" id="rNovoA" placeholder="responsável" style="width:320px">
         <button class="btn" id="rNovoOk" style="padding:6px 16px">+ adicionar</button>
         <span class="gr" id="rMsg"></span></div>`:''}`;
     if(!podeEditar) return;
-    const salva=async(chave,analista)=>{
-      const {error}=await sb.from('resp_grupos').upsert({chave, analista, atualizado_em:new Date().toISOString(), atualizado_por:st.email});
+    const salva=async(chave,analista,extra)=>{
+      const {error}=await sb.from('resp_grupos').upsert({chave, analista, ...(extra||{}), atualizado_em:new Date().toISOString(), atualizado_por:st.email});
       $('#rMsg')&&($('#rMsg').textContent=error?('erro: '+error.message):'salvo ✓');
       if(!error) st.respDia=null;
       return !error;
     };
     document.querySelectorAll('.rSalva').forEach(b=>b.onclick=async()=>{
-      const inp=document.querySelector(`input[data-rk="${b.dataset.k}"]`);
-      b.textContent='…'; await salva(b.dataset.k, inp.value.trim()); b.textContent='💾 ✓'; setTimeout(()=>b.textContent='💾',1500);
+      const k=b.dataset.k, v=s=>document.querySelector(`input[data-${s}="${k}"]`);
+      b.textContent='…';
+      await salva(k, v('rk').value.trim(), {rotulo:v('rot').value.trim()||null, base:v('base').value.trim().toUpperCase()||null,
+        regra:v('regra').value.trim()||null, tira_do_grupo:v('tira').checked});
+      b.textContent='💾 ✓'; setTimeout(()=>b.textContent='💾',1500);
     });
+    const rf=$('#rRefaz');
+    if(rf) rf.onclick=async()=>{
+      rf.disabled=true; rf.textContent='🔁 refazendo… (~20s)';
+      const {data,error}=await sb.rpc('refaz_grupos');
+      rf.disabled=false; rf.textContent='🔁 Refazer filtros';
+      $('#rMsg')&&($('#rMsg').textContent='');
+      alert(error?('Erro: '+error.message):(data+' — dá um F5 na Visão Global para ver as caixinhas novas.'));
+      st.vg=null; st.respDia=null;
+    };
     document.querySelectorAll('.rDel').forEach(el=>el.onclick=async()=>{
       if(!confirm('Remover a linha '+el.dataset.k+'?')) return;
       await sb.from('resp_grupos').delete().eq('chave',el.dataset.k); st.respDia=null; renderEquipe();
@@ -3927,8 +3943,8 @@ async function renderGlobal(){
   // gestão atual começou em 17/08/26 (1ª ação dos analistas na CTRL) — vale para TODOS os grupos
   const GESTAO='2026-08-17';
   if(!st.resp||st.respDia!==new Date().toLocaleDateString('sv-SE')){
-    try{ const {data:_r}=await sb.from('resp_grupos').select('chave,analista');
-      st.resp={}; (_r||[]).forEach(x=>st.resp[x.chave]=x.analista); st.respDia=new Date().toLocaleDateString('sv-SE');
+    try{ const {data:_r}=await sb.from('resp_grupos').select('chave,rotulo,analista');
+      st.resp={}; (_r||[]).forEach(x=>{ st.resp[x.chave]=x.analista; if(x.rotulo) st.resp[x.rotulo]=x.analista; }); st.respDia=new Date().toLocaleDateString('sv-SE');
     }catch(e){ st.resp=st.resp||{}; }
   }
   const ANALISTA_FIXO={
