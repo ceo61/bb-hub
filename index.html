@@ -2439,7 +2439,7 @@ async function renderPressao(){
       }
       return `<tr>
         <td style="text-align:left"><a href="#sugestoes/${encodeURIComponent(a.cod)}" title="abrir o extrato semanal do produto" style="font-weight:600">${esc(a.cod)}</a> <span data-mcw="${esc(a.cod)}" title="MC × Ads × ROAS MC — últimas 15 semanas (site)" style="cursor:pointer;opacity:.7">📈</span><br><span class="gr" style="font-size:10.5px">${esc((p.descricao||'').slice(0,30))}</span></td>
-        <td>${badge(a)}${dias?`<br><span class="gr" style="font-size:10.5px">h\u00e1 ${dias}d</span>`:''}${a.campanha?`<br><span class="gr" style="font-size:10.5px" title="${esc(a.campanha)}">${esc(a.campanha.slice(0,28))}${a.campanha.length>28?'\u2026':''}</span>`:''}</td>
+        <td>${badge(a)}${a.grupo_ads?`<br><span style="font-size:10px;font-weight:700;color:${a.grupo_ads==='so_hero'?'var(--warn)':'var(--good)'}" title="${a.grupo_ads==='so_hero'?'anuncia S\u00d3 os SKUs hero do produto':'anuncia hero e n\u00e3o-hero'}">${a.grupo_ads==='so_hero'?'\u2b50 s\u00f3 hero':'\ud83d\udfe2 aberto'}</span>`:''}${dias?`<br><span class="gr" style="font-size:10.5px">h\u00e1 ${dias}d</span>`:''}${a.campanha?`<br><span class="gr" style="font-size:10.5px" title="${esc(a.campanha)}">${esc(a.campanha.slice(0,28))}${a.campanha.length>28?'\u2026':''}</span>`:''}</td>
         <td>${a.troas?nf.format(a.troas*100)+'%':'\u2014'}</td>
         <td style="white-space:nowrap">${adCell}</td>
         <td style="${p.roas_mc_30d!=null?corRmcFix(+p.roas_mc_30d):''}">${p.roas_mc_30d!=null?nf1.format(p.roas_mc_30d)+'\u00d7':'\u2014'}</td>
@@ -2448,7 +2448,7 @@ async function renderPressao(){
         <td>${p.estoque!=null?nf.format(Math.round(p.estoque)):'\u2014'}</td>
         <td title="${p.folga_dias!=null?nf.format(Math.round(p.folga_dias))+' dias':''}" style="${p.folga_dias!=null?(p.folga_dias<30?'color:var(--crit);font-weight:700':p.folga_dias<60?'color:var(--lar);font-weight:600':''):''}">${p.folga_dias!=null?nf1.format(p.folga_dias/30.44)+' m':'\u2014'}</td>
         <td>${spark}</td>
-        <td>${a.status==='montado'?`<button class="btn prDesm" data-id="${a.id}" style="padding:2px 10px;font-size:11px">pedir desmonte</button>`:a.status==='marcado'?`${st.admin?`<button class="btn prAut" data-id="${a.id}" data-cod="${esc(a.cod)}" title="autoriza e o executor insere na campanha em at\u00e9 2 min" style="padding:2px 10px;font-size:11px;background:var(--accent)">\u2714 autorizar</button> `:''}<button class="btn prMontei" data-id="${a.id}" style="padding:2px 10px;font-size:11px;background:var(--good)">\u2705 montei</button> <button class="btn prDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">desfazer</button>`:a.status==='erro'?`<button class="btn prMontei" data-id="${a.id}" style="padding:2px 10px;font-size:11px;background:var(--good)">\u2705 montei</button> <button class="btn prDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">desfazer</button>`:''}</td>
+        <td>${a.status==='montado'?`<button class="btn prDesm" data-id="${a.id}" style="padding:2px 10px;font-size:11px">pedir desmonte</button>`:a.status==='marcado'?`<select class="prDest" data-id="${a.id}" title="destino da montagem: aberto = hero+n\u00e3o-hero \u00b7 s\u00f3 hero = restringe aos SKUs hero" style="font-size:11px;padding:2px 4px;margin-right:4px"><option value="aberto" ${(a.grupo_ads||'aberto')==='aberto'?'selected':''}>\ud83d\udfe2 aberto</option><option value="so_hero" ${a.grupo_ads==='so_hero'?'selected':''}>\u2b50 s\u00f3 hero</option></select>${st.admin?`<button class="btn prAut" data-id="${a.id}" data-cod="${esc(a.cod)}" title="autoriza e o executor insere na campanha em at\u00e9 2 min" style="padding:2px 10px;font-size:11px;background:var(--accent)">\u2714 autorizar</button> `:''}<button class="btn prMontei" data-id="${a.id}" style="padding:2px 10px;font-size:11px;background:var(--good)">\u2705 montei</button> <button class="btn prDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">desfazer</button>`:a.status==='erro'?`<button class="btn prMontei" data-id="${a.id}" style="padding:2px 10px;font-size:11px;background:var(--good)">\u2705 montei</button> <button class="btn prDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">desfazer</button>`:''}</td>
       </tr>`;}).join('')}
     </tbody></table></div></div></details>` : '';
 
@@ -2593,8 +2593,11 @@ async function renderPressao(){
       renderPressao();
     }
     if(b.classList.contains('prDesm')){ b.disabled=true; await sb.from('ads_pressao').update({status:'desmontar'}).eq('id',b.dataset.id); renderPressao(); }
+
     if(b.classList.contains('prDesc')){ b.disabled=true; await sb.from('ads_pressao').update({status:'descartado'}).eq('id',b.dataset.id); renderPressao(); }
   };
+  document.querySelectorAll('.prDest').forEach(s=>s.onchange=async e=>{ e.stopPropagation();
+    await sb.from('ads_pressao').update({grupo_ads:s.value}).eq('id',s.dataset.id); });
 }
 
 async function renderRevisoes(){
