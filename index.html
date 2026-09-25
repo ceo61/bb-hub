@@ -2376,10 +2376,17 @@ async function renderPressao(){
     if(a.status==='erro')       return `<span title="${esc(a.obs||'')}" style="background:var(--crit-soft);color:var(--crit);padding:2px 8px;border-radius:10px;font-size:11px">\u26a0 erro na montagem</span>`;
     if(a.status==='montado')   return `<span title="${esc(a.campanha||'')}" style="background:var(--good-soft);color:var(--good);padding:2px 8px;border-radius:10px;font-size:11px">\ud83d\ude80 em campanha${a.troas?' \u00b7 tROAS '+nf.format(a.troas*100)+'%':''}</span>`;
     if(a.status==='desmontar') return '<span style="background:var(--crit-soft);color:var(--crit);padding:2px 8px;border-radius:10px;font-size:11px">\ud83e\uddf9 desmonte pedido</span>';
+    if(a.status==='migrar')    return '<span style="background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:10px;font-size:11px">\ud83d\udd01 migrando de carteira\u2026</span>';
     return `<span class="gr">${esc(a.status)}</span>`;
   };
 
-  const emAcomp = Object.values(ativos);
+  if(!st.adsGrupos){ try{ st.adsGrupos=await tudo('ads_grupos',{eq:[['ativo',true]],mod:q=>q.order('familia',{ascending:true}).order('ordem',{ascending:true})}); }catch(e){ st.adsGrupos=[]; } }
+  const AG=st.adsGrupos||[];
+  const agDe=ch=>AG.find(g=>g.chave===ch);
+  const chaveDe=a=>{ const fam=(a.cod||'').split('-')[0]; const g=a.grupo_ads||''; return g?(g.includes(':')?g:fam+':'+g):(fam+':aberto'); };
+  const emAcomp0 = Object.values(ativos);
+  const cartOpts=[...new Set(emAcomp0.map(a=>chaveDe(a)).filter(ch=>agDe(ch)))];
+  const emAcomp = st.przCart ? emAcomp0.filter(a=>chaveDe(a)===st.przCart) : emAcomp0;
   // análise das apostas: métricas atuais do painel + MC/ads por semana p/ comparar ANTES × DEPOIS da montagem
   const P={}; painelRaw.forEach(p=>P[p.cod]=p);
   let mcW={}, adW={};
@@ -2413,10 +2420,11 @@ async function renderPressao(){
   };
   emAcomp.sort((a,b)=>a.status===b.status?((P[b.cod]?.ads_custo_30d||0)-(P[a.cod]?.ads_custo_30d||0)):(a.status==='montado'?-1:1));
   const blocoAcomp = emAcomp.length ? `
-    <details style="margin:0 0 14px"><summary style="cursor:pointer;font-weight:600">\ud83d\ude80 Apostas em acompanhamento (${emAcomp.length}) \u2014 a campanha est\u00e1 pagando?</summary>
+    <details open style="margin:0 0 14px"><summary style="cursor:pointer;font-weight:600">\ud83d\ude80 Apostas em acompanhamento (${emAcomp.length}${st.przCart?' de '+emAcomp0.length:''}) \u2014 a campanha est\u00e1 pagando?</summary>
+    <div style="margin:8px 0 2px"><select id="przCart" style="font-size:12px;padding:4px 8px"><option value="">todas as carteiras (${emAcomp0.length})</option>${cartOpts.map(ch=>{const g=agDe(ch);const n=emAcomp0.filter(a=>chaveDe(a)===ch).length;return `<option value="${esc(ch)}" ${st.przCart===ch?'selected':''}>${esc(g.rotulo)} \u00b7 ${g.familia} (${n})</option>`;}).join('')}</select></div>
     <p class="gr" style="margin:6px 0 6px;font-size:12px"><b>MC: antes \u2192 depois</b> = ROAS MC (MC 002 \u00f7 Ads) das semanas fechadas antes da montagem \u00d7 depois dela \u2014 \u25b2 verde melhorou, \u25bc vermelho piorou. ROAS MC m\u00eas/semana na r\u00e9gua fixa (&lt;3 vermelho \u00b7 3 a 5 laranja \u00b7 \u22655 verde). <b>ROAS Ads campanha</b> = valor de convers\u00e3o \u00f7 custo por semana (Google Ads); passe o mouse na linha do gr\u00e1fico.</p>
     <div class="tablecard" style="margin-top:4px"><div class="tscroll"><table><thead><tr>
-      <th style="text-align:left">Produto</th><th>Status</th><th>tROAS</th>
+      <th style="text-align:left">Produto</th><th>Status</th><th title="carteira/ad group onde o produto anuncia \u2014 o nome j\u00e1 diz o alvo de ROAS; trocar aqui MIGRA o produto (remove da atual e monta na nova em ~2-4 min)">Carteira</th>
       <th title="ROAS MC m\u00e9dio das semanas fechadas ANTES da montagem \u2192 DEPOIS dela">MC: antes \u2192 depois</th>
       <th title="MC 002 \u00f7 Ads, 30 dias \u2014 r\u00e9gua fixa">ROAS MC<br>m\u00eas</th>
       <th title="MC 002 \u00f7 Ads, \u00faltima semana fechada \u2014 r\u00e9gua fixa">ROAS MC<br>sem</th>
@@ -2427,7 +2435,7 @@ async function renderPressao(){
       const p=P[a.cod]||{};
       const ad2=antDep(a);
       const ss=(semPorCod[a.cod]||[]).slice(0,12).reverse();
-      const spark=ss.length>=2?`<div style="width:130px;margin:0 auto">${sparkVg(ss.map(s=>({seg:s.semana_ini,val:+s.roas||0})),'var(--accent)',v=>nf1.format(v)+'\u00d7')}</div>`:'<span class="gr" style="font-size:11px">sem semana fechada</span>';
+      const spark=ss.length>=2?`<div style="width:108px;margin:0 auto">${sparkVg(ss.map(s=>({seg:s.semana_ini,val:+s.roas||0})),'var(--accent)',v=>nf1.format(v)+'\u00d7')}</div>`:'<span class="gr" style="font-size:11px">sem semana fechada</span>';
       const dias=a.montado_em?Math.max(1,Math.round((Date.now()-new Date(a.montado_em))/864e5)):null;
       let adCell='<span class="gr">\u2014</span>';
       if(ad2){
@@ -2439,8 +2447,11 @@ async function renderPressao(){
       }
       return `<tr>
         <td style="text-align:left"><a href="#sugestoes/${encodeURIComponent(a.cod)}" title="abrir o extrato semanal do produto" style="font-weight:600">${esc(a.cod)}</a> <span data-mcw="${esc(a.cod)}" title="MC × Ads × ROAS MC — últimas 15 semanas (site)" style="cursor:pointer;opacity:.7">📈</span><br><span class="gr" style="font-size:10.5px">${esc((p.descricao||'').slice(0,30))}</span></td>
-        <td>${badge(a)}${a.grupo_ads?`<br><span style="font-size:10px;font-weight:700;color:${a.grupo_ads==='so_hero'?'var(--warn)':'var(--good)'}" title="${a.grupo_ads==='so_hero'?'anuncia S\u00d3 os SKUs hero do produto':'anuncia hero e n\u00e3o-hero'}">${a.grupo_ads==='so_hero'?'\u2b50 s\u00f3 hero':'\ud83d\udfe2 aberto'}</span>`:''}${dias?`<br><span class="gr" style="font-size:10.5px">h\u00e1 ${dias}d</span>`:''}${a.campanha?`<br><span class="gr" style="font-size:10.5px" title="${esc(a.campanha)}">${esc(a.campanha.slice(0,28))}${a.campanha.length>28?'\u2026':''}</span>`:''}</td>
-        <td>${a.troas?nf.format(a.troas*100)+'%':'\u2014'}</td>
+        <td>${badge(a)}${dias?`<br><span class="gr" style="font-size:10.5px">h\u00e1 ${dias}d</span>`:''}</td>
+        <td>${(()=>{ const fam=a.cod.split('-')[0], ch=chaveDe(a), gs=AG.filter(g=>g.familia===fam);
+          if(!gs.length) return `<span class="gr" title="${esc(a.campanha||'')}" style="font-size:11px">${esc((a.campanha||'\u2014').slice(0,22))}</span>`;
+          const trava=['desmontar','desmontado','migrar'].includes(a.status);
+          return `<select class="prDest" data-id="${a.id}" data-st="${esc(a.status)}" data-cod="${esc(a.cod)}" ${trava?'disabled':''} title="${esc(a.campanha||'carteira da montagem')}" style="font-size:11px;padding:3px 5px;max-width:170px">${gs.map(g=>`<option value="${esc(g.chave)}" ${ch===g.chave?'selected':''}>${esc(g.rotulo)}</option>`).join('')}</select>`; })()}</td>
         <td style="white-space:nowrap">${adCell}</td>
         <td style="${p.roas_mc_30d!=null?corRmcFix(+p.roas_mc_30d):''}">${p.roas_mc_30d!=null?nf1.format(p.roas_mc_30d)+'\u00d7':'\u2014'}</td>
         <td style="${p.roas_mc_sem!=null?corRmcFix(+p.roas_mc_sem):''}">${p.roas_mc_sem!=null?nf1.format(p.roas_mc_sem)+'\u00d7':'\u2014'}</td>
@@ -2448,7 +2459,7 @@ async function renderPressao(){
         <td>${p.estoque!=null?nf.format(Math.round(p.estoque)):'\u2014'}</td>
         <td title="${p.folga_dias!=null?nf.format(Math.round(p.folga_dias))+' dias':''}" style="${p.folga_dias!=null?(p.folga_dias<30?'color:var(--crit);font-weight:700':p.folga_dias<60?'color:var(--lar);font-weight:600':''):''}">${p.folga_dias!=null?nf1.format(p.folga_dias/30.44)+' m':'\u2014'}</td>
         <td>${spark}</td>
-        <td>${a.status==='montado'?`<button class="btn prDesm" data-id="${a.id}" style="padding:2px 10px;font-size:11px">pedir desmonte</button>`:a.status==='marcado'?`<select class="prDest" data-id="${a.id}" title="destino da montagem: aberto = hero+n\u00e3o-hero \u00b7 s\u00f3 hero = restringe aos SKUs hero" style="font-size:11px;padding:2px 4px;margin-right:4px"><option value="aberto" ${(a.grupo_ads||'aberto')==='aberto'?'selected':''}>\ud83d\udfe2 aberto</option><option value="so_hero" ${a.grupo_ads==='so_hero'?'selected':''}>\u2b50 s\u00f3 hero</option></select>${st.admin?`<button class="btn prAut" data-id="${a.id}" data-cod="${esc(a.cod)}" title="autoriza e o executor insere na campanha em at\u00e9 2 min" style="padding:2px 10px;font-size:11px;background:var(--accent)">\u2714 autorizar</button> `:''}<button class="btn prMontei" data-id="${a.id}" style="padding:2px 10px;font-size:11px;background:var(--good)">\u2705 montei</button> <button class="btn prDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">desfazer</button>`:a.status==='erro'?`<button class="btn prMontei" data-id="${a.id}" style="padding:2px 10px;font-size:11px;background:var(--good)">\u2705 montei</button> <button class="btn prDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">desfazer</button>`:''}</td>
+        <td style="white-space:nowrap">${a.status==='montado'?`<button class="btn prDesm" data-id="${a.id}" title="pedir desmonte \u2014 o executor remove da campanha" style="padding:2px 9px;font-size:12px">\ud83e\uddf9</button>`:a.status==='marcado'?`${st.admin?`<button class="btn prAut" data-id="${a.id}" data-cod="${esc(a.cod)}" title="autoriza e o executor monta na carteira escolhida em at\u00e9 2 min" style="padding:2px 9px;font-size:11px;background:var(--accent)">\u2714</button> `:''}<button class="btn prMontei" data-id="${a.id}" title="j\u00e1 montei manualmente no Ads" style="padding:2px 9px;font-size:11px;background:var(--good)">\u2705</button> <button class="btn prDesc" data-id="${a.id}" title="desfazer a marca\u00e7\u00e3o" style="padding:2px 9px;font-size:11px">\u21a9</button>`:a.status==='erro'?`<button class="btn prMontei" data-id="${a.id}" title="j\u00e1 montei manualmente" style="padding:2px 9px;font-size:11px;background:var(--good)">\u2705</button> <button class="btn prDesc" data-id="${a.id}" title="desfazer" style="padding:2px 9px;font-size:11px">\u21a9</button>`:''}</td>
       </tr>`;}).join('')}
     </tbody></table></div></div></details>` : '';
 
@@ -2597,7 +2608,14 @@ async function renderPressao(){
     if(b.classList.contains('prDesc')){ b.disabled=true; await sb.from('ads_pressao').update({status:'descartado'}).eq('id',b.dataset.id); renderPressao(); }
   };
   document.querySelectorAll('.prDest').forEach(s=>s.onchange=async e=>{ e.stopPropagation();
+    const g=(st.adsGrupos||[]).find(x=>x.chave===s.value);
+    if(s.dataset.st==='montado'){
+      if(!confirm(`Migrar ${s.dataset.cod} para "${g?g.rotulo:s.value}"?\nO executor remove da carteira atual e monta na nova (~2-4 min).`)){ renderPressao(); return; }
+      await sb.from('ads_pressao').update({grupo_ads:s.value, status:'migrar'}).eq('id',s.dataset.id);
+      renderPressao(); return;
+    }
     await sb.from('ads_pressao').update({grupo_ads:s.value}).eq('id',s.dataset.id); });
+  const pc=$('#przCart'); if(pc) pc.onchange=e=>{ st.przCart=e.target.value; renderPressao(); };
 }
 
 async function renderRevisoes(){
