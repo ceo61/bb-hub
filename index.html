@@ -2389,6 +2389,26 @@ async function renderPressao(){
   const AG=st.adsGrupos||[];
   const agDe=ch=>AG.find(g=>g.chave===ch);
   const chaveDe=a=>{ const fam=(a.cod||'').split('-')[0]; const g=a.grupo_ads||''; return g?(g.includes(':')?g:fam+':'+g):(fam+':aberto'); };
+  // 🧠 PARECER pela MC semanal/30d (BASE BBDI): concordo ou sugiro mover de carteira —
+  // régua fixa da casa (<3 ruim · ≥5 bom); aberto ruim → restringir; restrito curado → promover.
+  const parecer=(a,p)=>{
+    if(a.status!=='montado') return '<span class="gr">—</span>';
+    const g=agDe(chaveDe(a)); if(!g) return '<span class="gr">—</span>';
+    const m30=p?.roas_mc_30d!=null?+p.roas_mc_30d:null, ms=p?.roas_mc_sem!=null?+p.roas_mc_sem:null;
+    if(m30==null&&ms==null) return '<span class="gr" title="ainda sem MC/Ads suficientes para opinar">sem dados</span>';
+    const tt=`ROAS MC 30d ${m30!=null?nf1.format(m30)+'×':'—'} · última semana ${ms!=null?nf1.format(ms)+'×':'—'} (régua: <3 ruim · ≥5 bom)`;
+    const pill=(txt,cor,tit)=>`<span title="${esc(tit)}" style="background:var(--${cor}-soft);color:var(--${cor});padding:2px 8px;border-radius:10px;font-size:11px;white-space:nowrap">${txt}</span>`;
+    if(g.estilo!=='hero'){
+      if(m30!=null&&m30<3&&(ms==null||ms<3)) return pill('✖ sugiro 🟡 só hero','warn','MC fraca no aberto — restringir aos heros pode estancar. '+tt);
+      if(m30!=null&&m30>=3) return pill('✓ concordo — manter','good',tt);
+      return pill('~ observar','warn','sinais mistos — mais uma semana. '+tt);
+    }
+    if((m30!=null&&m30>=5)||(m30!=null&&ms!=null&&m30>=3.5&&ms>=3.5))
+      return pill('✖ sugiro 🟢 aberto','accent','curou na restrição — dá para promover. '+tt);
+    if(m30!=null&&m30<1.5&&ms!=null&&ms<1.5)
+      return pill('🧹 sugiro desmonte','crit','nem restrito paga o alvo. '+tt);
+    return pill('✓ concordo — manter','good','segue em recuperação no restrito. '+tt);
+  };
   const emAcomp0 = Object.values(ativos);
   const cartOpts=[...new Set(emAcomp0.map(a=>chaveDe(a)).filter(ch=>agDe(ch)))];
   const emAcomp = st.przCart ? emAcomp0.filter(a=>chaveDe(a)===st.przCart) : emAcomp0;
@@ -2430,6 +2450,7 @@ async function renderPressao(){
     <p class="gr" style="margin:6px 0 6px;font-size:12px"><b>MC: antes \u2192 depois</b> = ROAS MC (MC 002 \u00f7 Ads) das semanas fechadas antes da montagem \u00d7 depois dela \u2014 \u25b2 verde melhorou, \u25bc vermelho piorou. ROAS MC m\u00eas/semana na r\u00e9gua fixa (&lt;3 vermelho \u00b7 3 a 5 laranja \u00b7 \u22655 verde). <b>ROAS Ads campanha</b> = valor de convers\u00e3o \u00f7 custo por semana (Google Ads); passe o mouse na linha do gr\u00e1fico.</p>
     <div class="tablecard" style="margin-top:4px"><div class="tscroll"><table><thead><tr>
       <th style="text-align:left">Produto</th><th>Status</th><th title="carteira/ad group onde o produto anuncia \u2014 o nome j\u00e1 diz o alvo de ROAS; trocar aqui MIGRA o produto (remove da atual e monta na nova em ~2-4 min)">Carteira</th>
+      <th title="parecer autom\u00e1tico pela MC do Protheus (ROAS MC 30d + \u00faltima semana): concordo com a carteira atual ou sugiro mover \u2014 a troca \u00e9 sua, no select ao lado">Parecer</th>
       <th title="ROAS MC m\u00e9dio das semanas fechadas ANTES da montagem \u2192 DEPOIS dela">MC: antes \u2192 depois</th>
       <th title="MC 002 \u00f7 Ads, 30 dias \u2014 r\u00e9gua fixa">ROAS MC<br>m\u00eas</th>
       <th title="MC 002 \u00f7 Ads, \u00faltima semana fechada \u2014 r\u00e9gua fixa">ROAS MC<br>sem</th>
@@ -2456,7 +2477,9 @@ async function renderPressao(){
         <td>${(()=>{ const fam=a.cod.split('-')[0], ch=chaveDe(a), gs=AG.filter(g=>g.familia===fam);
           if(!gs.length) return `<span class="gr" title="${esc(a.campanha||'')}" style="font-size:11px">${esc((a.campanha||'\u2014').slice(0,22))}</span>`;
           const trava=['desmontar','desmontado','migrar'].includes(a.status);
-          return `<select class="prDest" data-id="${a.id}" data-st="${esc(a.status)}" data-cod="${esc(a.cod)}" ${trava?'disabled':''} title="${esc(a.campanha||'carteira da montagem')}" style="font-size:11px;padding:3px 5px;max-width:170px">${gs.map(g=>`<option value="${esc(g.chave)}" ${ch===g.chave?'selected':''}>${esc(g.rotulo)}</option>`).join('')}</select>`; })()}</td>
+          const gcur=agDe(ch), tint=gcur&&gcur.estilo==='hero'?'var(--warn)':'var(--good)';
+          return `<select class="prDest" data-id="${a.id}" data-st="${esc(a.status)}" data-cod="${esc(a.cod)}" ${trava?'disabled':''} title="${esc(a.campanha||'carteira da montagem')}" style="font-size:11px;padding:3px 5px;max-width:175px;color:${tint};font-weight:700;border:1.5px solid ${tint};border-radius:7px">${gs.map(g=>`<option value="${esc(g.chave)}" ${ch===g.chave?'selected':''}>${esc(g.rotulo)}</option>`).join('')}</select>`; })()}</td>
+        <td>${parecer(a,P[a.cod])}</td>
         <td style="white-space:nowrap">${adCell}</td>
         <td style="${p.roas_mc_30d!=null?corRmcFix(+p.roas_mc_30d):''}">${p.roas_mc_30d!=null?nf1.format(p.roas_mc_30d)+'\u00d7':'\u2014'}</td>
         <td style="${p.roas_mc_sem!=null?corRmcFix(+p.roas_mc_sem):''}">${p.roas_mc_sem!=null?nf1.format(p.roas_mc_sem)+'\u00d7':'\u2014'}</td>
