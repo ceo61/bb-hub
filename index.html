@@ -2521,6 +2521,7 @@ async function renderPressao(){
         Folga\u2265<input id="przFFolga" type="number" min="0" step="0.5" value="${st.przFFolga??''}" style="width:52px;padding:2px 6px;font-size:12px">m
         ROAS MC 30d\u2265<input id="przFRoas" type="number" min="0" step="0.5" value="${st.przFRoas??''}" style="width:52px;padding:2px 6px;font-size:12px">
         <label style="display:inline-flex;gap:4px;align-items:center;cursor:pointer;white-space:nowrap" title="mostra s\u00f3 o que ainda falta implementar \u2014 esconde produtos j\u00e1 marcados ou em campanha"><input id="przOcCamp" type="checkbox" ${st.przOcultaCamp?'checked':''}> s\u00f3 a implementar</label>
+        <select id="przParE" title="filtra pelo parecer de entrada/freio (janela 30d)" style="font-size:12px;padding:4px 8px"><option value="">todos os pareceres</option><option value="entrar" ${st.przParE==='entrar'?'selected':''}>\ud83d\ude80 sugiro press\u00e3o</option><option value="tirar" ${st.przParE==='tirar'?'selected':''}>\u26d4 sugiro tirar do pago</option></select>
       </span>
       <input id="przBusca" placeholder="filtrar\u2026" style="min-width:160px">
     </div>
@@ -2536,6 +2537,7 @@ async function renderPressao(){
       <th data-k="roas_mc_sem">ROAS MC<br>semana</th>
       <th data-k="roas_30d">ROAS Ads<br>30d</th>
       <th data-k="roas_ads_sem">ROAS Ads<br>semana</th>
+      <th title="parecer autom\u00e1tico em janela de 30 DIAS: \ud83d\ude80 MC\u22655\u00d7 e Ads\u2265R$100 = candidato \u00e0 press\u00e3o \u00b7 \u26d4 MC<1,5\u00d7 e Ads\u2265R$200 = tirar do pago">Parecer</th>
       <th>Campanha</th><th></th>
     </tr></thead><tbody id="przCorpo"></tbody></table></div></div>`;
 
@@ -2563,10 +2565,21 @@ async function renderPressao(){
       if(st.przFFolga!=null&&!((+p.folga_dias||0)/30.44>=st.przFFolga)) return false;
       if(st.przFRoas!=null&&!(p.roas_mc_30d!=null&&+p.roas_mc_30d>=st.przFRoas)) return false;
       if(st.przOcultaCamp&&ativos[p.cod]) return false;
+      if(st.przParE&&parE(p).k!==st.przParE) return false;
       return true;
     });
     const k=st.przSort;
     rows.sort((a,b)=>{ const x=a[k],y=b[k]; if(x==null)return 1; if(y==null)return -1; return st.przDir?(y>x?1:-1):(x>y?1:-1); });
+    // 🧠 parecer de ENTRADA (acelerar) e de FREIO (tirar do pago) — SEMPRE janela 30d
+    // ("1 semana fica muito arriscado" — CEO 26/09); piso de Ads p/ não opinar sobre ruído.
+    const parE=p=>{
+      if(ativos[p.cod]) return {k:'', html:''};
+      const m30=p.roas_mc_30d!=null?+p.roas_mc_30d:null, ads=+p.ads_custo_30d||0;
+      if(m30==null||ads<100) return {k:'', html:'<span class="gr">\u2014</span>'};
+      if(m30>=5) return {k:'entrar', html:`<span title="ROAS MC 30d ${nf1.format(m30)}\u00d7 com ${rf.format(ads)} de Ads \u2014 bem acima do alvo: candidato \u00e0 press\u00e3o" style="background:var(--good-soft);color:var(--good);padding:2px 8px;border-radius:10px;font-size:11px;white-space:nowrap">\ud83d\ude80 sugiro press\u00e3o</span>`};
+      if(m30<1.5&&ads>=200) return {k:'tirar', html:`<span title="ROAS MC 30d ${nf1.format(m30)}\u00d7 com ${rf.format(ads)} de Ads em 30 dias \u2014 mega fora do alvo: sugiro PAUSAR/excluir das P.Max (por enquanto a exclus\u00e3o \u00e9 manual \u2014 me pe\u00e7a que eu executo). Janela de 30d de prop\u00f3sito." style="background:var(--crit-soft);color:var(--crit);padding:2px 8px;border-radius:10px;font-size:11px;white-space:nowrap">\u26d4 sugiro tirar do pago</span>`};
+      return {k:'', html:'<span class="gr">\u2014</span>'};
+    };
     const cel=(v,k)=>{
       if(v==null) return '<td style="color:var(--muted)">\u2014</td>';
       const m=meds[k]; let cor='';
@@ -2587,6 +2600,7 @@ async function renderPressao(){
       ${cel(p.roas_mc_sem,'roas_mc_sem')}
       ${cel(p.roas_30d,'roas_30d')}
       ${cel(p.roas_ads_sem,'roas_ads_sem')}
+      <td>${parE(p).html}</td>
       <td>${a?badge(a):'<span class="gr" style="font-size:11px">\u2014</span>'}</td>
       <td>${a?'':`<button class="btn prMarca" data-cod="${esc(p.cod)}" style="padding:2px 10px;font-size:11px">\ud83d\ude80</button>`}</td>
     </tr>`;}).join('');
@@ -2595,6 +2609,7 @@ async function renderPressao(){
   $('#przBusca').oninput=desenha;
   let przT; const fNum=v=>{ const x=parseFloat(v); return isFinite(x)?x:null; };
   $('#przOcCamp').onchange=e=>{ st.przOcultaCamp=e.target.checked; desenha(); };
+  const ppe=$('#przParE'); if(ppe) ppe.onchange=e=>{ st.przParE=e.target.value; desenha(); };
   [['przFSaldo','przFSaldo'],['przFFolga','przFFolga'],['przFRoas','przFRoas']].forEach(([id,key])=>{
     $('#'+id).oninput=e=>{ st[key]=fNum(e.target.value); clearTimeout(przT); przT=setTimeout(desenha,250); };
   });
