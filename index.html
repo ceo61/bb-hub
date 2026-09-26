@@ -2388,7 +2388,10 @@ async function renderPressao(){
   if(!st.adsGrupos){ try{ st.adsGrupos=await tudo('ads_grupos',{eq:[['ativo',true]],mod:q=>q.order('familia',{ascending:true}).order('ordem',{ascending:true})}); }catch(e){ st.adsGrupos=[]; } }
   const AG=st.adsGrupos||[];
   const agDe=ch=>AG.find(g=>g.chave===ch);
-  const chaveDe=a=>{ const fam=(a.cod||'').split('-')[0]; const g=a.grupo_ads||''; return g?(g.includes(':')?g:fam+':'+g):(fam+':aberto'); };
+  const _fams=new Set(AG.map(g=>g.familia));
+  const famDe=cod=>{ const pre=(cod||'').split('-')[0]; if(_fams.has(pre)) return pre;
+    const gr=painelRaw.find(p=>p.cod===cod)?.grupo; return gr==='LCD'?'LCD':pre; };  // telas não têm prefixo
+  const chaveDe=a=>{ const fam=famDe(a.cod); const g=a.grupo_ads||''; return g?(g.includes(':')?g:fam+':'+g):(fam+':aberto'); };
   // 🧠 PARECER pela MC semanal/30d (BASE BBDI): concordo ou sugiro mover de carteira —
   // régua fixa da casa (<3 ruim · ≥5 bom); aberto ruim → restringir; restrito curado → promover.
   const parecer=(a,p)=>{
@@ -2474,7 +2477,7 @@ async function renderPressao(){
       return `<tr>
         <td style="text-align:left"><a href="#sugestoes/${encodeURIComponent(a.cod)}" title="abrir o extrato semanal do produto" style="font-weight:600">${esc(a.cod)}</a> <span data-mcw="${esc(a.cod)}" title="MC × Ads × ROAS MC — últimas 15 semanas (site)" style="cursor:pointer;opacity:.7">📈</span><br><span class="gr" style="font-size:10.5px">${esc((p.descricao||'').slice(0,30))}</span></td>
         <td>${badge(a)}${dias?`<br><span class="gr" style="font-size:10.5px">h\u00e1 ${dias}d</span>`:''}</td>
-        <td>${(()=>{ const fam=a.cod.split('-')[0], ch=chaveDe(a), gs=AG.filter(g=>g.familia===fam);
+        <td>${(()=>{ const fam=famDe(a.cod), ch=chaveDe(a), gs=AG.filter(g=>g.familia===fam);
           if(!gs.length) return `<span class="gr" title="${esc(a.campanha||'')}" style="font-size:11px">${esc((a.campanha||'\u2014').slice(0,22))}</span>`;
           const trava=['desmontar','desmontado','migrar'].includes(a.status);
           const gcur=agDe(ch), tint=gcur&&gcur.estilo==='hero'?'var(--warn)':'var(--good)';
