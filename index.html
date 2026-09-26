@@ -2018,9 +2018,15 @@ async function abreDiario(cod, desc){
 
 /* ---------- Pedido de Compra (importação) — método homologado 04/09/26 ---------- */
 const PED_DEF={ciclo:2, lead:160, moq:10, moqCaro:5, caroDe:250, ssEst:1, ssCre:1.5, ssPic:2, rupMult:1.5};
-function pedParams(){ try{ return {...PED_DEF, ...(JSON.parse(localStorage.getItem('bbhub-pedido')||'{}'))}; }catch(e){ return {...PED_DEF}; } }
+function pedParams(){
+  // por GRUPO (pedido_params na nuvem, carregado em renderPedido); localStorage = ponte p/ grupo sem registro
+  const doGrupo=st.pedParamsAll?.[st.pedG];
+  if(doGrupo) return {...PED_DEF, ...doGrupo};
+  try{ return {...PED_DEF, ...(JSON.parse(localStorage.getItem('bbhub-pedido')||'{}'))}; }catch(e){ return {...PED_DEF}; }
+}
 
 async function renderPedido(){
+  try{ st.pedParamsAll={}; (await tudo('pedido_params',{eq:[]})).forEach(r=>st.pedParamsAll[r.grupo]=r.params); }catch(e){ st.pedParamsAll=st.pedParamsAll||{}; }
   if(!st.pedGrupos){
     $('#conteudo').innerHTML='<div class="carregando">Carregando grupos…</div>';
     try{
@@ -2065,6 +2071,11 @@ async function rodaPedido(){
     ssEst:+$('#pedSsEst').value||1, ssCre:+$('#pedSsCre').value||1.5, ssPic:+$('#pedSsPic').value||2,
     rupMult:+$('#pedRupMult').value||1.5};
   try{ localStorage.setItem('bbhub-pedido', JSON.stringify(P)); }catch(e){}
+  // memória POR GRUPO: cada RODAR grava os parâmetros do grupo p/ o próximo dia (qualquer navegador)
+  (st.pedParamsAll=st.pedParamsAll||{})[st.pedG]={...P};
+  try{ const u=(await sb.auth.getUser()).data.user?.email||'?';
+    await sb.from('pedido_params').upsert({grupo:st.pedG, params:P, atualizado_em:new Date().toISOString(), atualizado_por:u});
+  }catch(e){}
   st.pedF=($('#pedFiltro').value||'').trim().toUpperCase();
   const out=$('#pedSaida'); out.innerHTML='<div class="carregando">Buscando produtos e 13 meses de venda…</div>';
   try{
