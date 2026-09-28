@@ -2146,16 +2146,25 @@ async function rodaPedido(){
       const m3=serie.slice(-3).reduce((s,x)=>s+x,0)/3, m12=tot12/12;
       const media=m12||1e-9, cv=Math.sqrt(serie.reduce((s,x)=>s+(x-m12)*(x-m12),0)/12)/media;
       const tend=m12>0?m3/m12:null;
-      let perfil, base, ss, novoRamp=false;
+      let perfil=null, base, ss, novoRamp=false, contraTxt=null;
       const vend1a6=serie.slice(0,6).filter(x=>x>0).length;
+      const anC=anos[p.cod]||{a1:0,a2:0,a3:0}, idadeC=idade[p.cod];
+      // lançamento de VERDADE exige produto novo (caso MI2/AP65-M2: velho esparso não é rampa)
+      const ehNovo=(idadeC!=null ? idadeC<1.5 : !((+anC.a2||0)>0||(+anC.a3||0)>0));
       if(tot12===0){ perfil='SEM VENDA'; base=0; ss=0; }
-      else if(vend1a6<=1&&m3>0){ perfil='CRESCENDO'; base=m3; ss=P.ssCre; novoRamp=true; }   // ex-RAMPANDO (fundido 08/09/26): lançamento — m12 diluída pelos meses vazios; m3 pura + flag 🟡
-      else if(tend!=null&&tend>=1.4){ perfil='CRESCENDO'; base=m3; ss=P.ssCre; }
+      else if(vend1a6<=1&&m3>0&&ehNovo){ perfil='CRESCENDO'; base=m3; ss=P.ssCre; novoRamp=true; }   // ex-RAMPANDO: m12 diluída pelos meses vazios; m3 pura + flag 🟡
+      else if(tend!=null&&tend>=1.4&&m3>=5){
+        // piso de materialidade (m3≥5: tendência sobre 2-3 un/mês é ruído — casos AS009/LE79) e
+        // CONTRA-PROVA ANUAL p/ produto pequeno: se os anos não confirmam, 3 meses não bastam
+        // (casos AC19-ONE 62→54→60 e SO19-B2 93→110→37 com tend 1,5-1,9 de amostra mínima)
+        if(m3<15&&idadeC!=null&&idadeC>=2&&(+anC.a2||0)>=30&&(+anC.a1||0)<(+anC.a2||0)*1.15){
+          contraTxt=`📉 tendência ${nf1.format(tend)}× descartada — anos não confirmam (${nf.format(anC.a2)}→${nf.format(anC.a1)})`;
+        } else { perfil='CRESCENDO'; base=m3; ss=P.ssCre; }
+      }
       // DECLÍNIO foi abolido (07/09/26): a fronteira com ESTÁVEL era instável — tudo é ESTÁVEL (m12)
       // VOLÁTIL (ex-PICOS, 08/09/26): errático sem sazonalidade real — o "espelho" desviava
       // só ~18% da m12, sem direção. Base m12; o que protege é o colchão maior (seg 2m).
-      else if(cv>=0.75){ perfil='VOLÁTIL'; base=m12; ss=P.ssPic; }
-      else { perfil='ESTÁVEL'; base=m12; ss=P.ssEst; }
+      if(!perfil){ if(cv>=0.75){ perfil='VOLÁTIL'; base=m12; ss=P.ssPic; } else { perfil='ESTÁVEL'; base=m12; ss=P.ssEst; } }
       const serieL=mesesF.map(m=>ML[p.cod]?.[m]||0);
       const baseLot=serieL.reduce((s,x)=>s+x,0)/12;   // lotes: média simples 12m — SEM tendência
       const baseConv=base; base=baseConv+baseLot;
@@ -2245,7 +2254,7 @@ async function rodaPedido(){
       }
       const folgaHoje=base>0?saldo/base:(saldo>0?Infinity:0);
       const folgaCheg=base>0?(saldo+traTot+sug-base*horiz)/base:null;
-      const flags=[]; if(censura) flags.push(censura); if(reclasTxt) flags.push(reclasTxt); if(ajusteTxt) flags.push(ajusteTxt); if(lotTxt) flags.push(lotTxt);
+      const flags=[]; if(censura) flags.push(censura); if(reclasTxt) flags.push(reclasTxt); if(contraTxt) flags.push(contraTxt); if(ajusteTxt) flags.push(ajusteTxt); if(lotTxt) flags.push(lotTxt);
       if(base>0&&(saldo+trs.filter(t=>{const dd=dMs(t.d);return dd!=null&&dd<=hojeMs+P.lead*864e5;}).reduce((s,t)=>s+t.q,0))<base*(P.lead/30.44)) flags.push('🔴 rompe antes do lead');
       if(novoRamp) flags.push('🟡 novo — validar manual');
       if(base>0&&folgaHoje>8&&sug===0) flags.push('⚪ excesso');
