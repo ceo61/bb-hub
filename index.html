@@ -2033,7 +2033,7 @@ async function abreDiario(cod, desc){
 }
 
 /* ---------- Pedido de Compra (importação) — método homologado 04/09/26 ---------- */
-const PED_DEF={ciclo:2, lead:160, moq:10, moqCaro:5, caroDe:250, ssEst:1, ssCre:1.5, ssPic:2, rupMult:1.5};
+const PED_DEF={ciclo:2, lead:160, moq:10, moqCaro:5, caroDe:250, ssEst:1, ssCre:1.5, ssPic:2, ssLot:0.5, rupMult:1.5};
 function pedParams(){
   // por GRUPO (pedido_params na nuvem, carregado em renderPedido); localStorage = ponte p/ grupo sem registro
   const doGrupo=st.pedParamsAll?.[st.pedG];
@@ -2073,6 +2073,7 @@ async function renderPedido(){
         ${num('pedSsEst','seg. ESTÁVEL (m)',P.ssEst,0.25,52)}
         ${num('pedSsCre','seg. CRESC/RAMPA (m)',P.ssCre,0.25,52)}
         ${num('pedSsPic','seg. VOLÁTIL (m)',P.ssPic,0.25,52)}
+        ${num('pedSsLot','seg. LOTÃO (m)',P.ssLot,0.25,52,'colchão SÓ da parte de lotões (distribuidor negocia prazo — a segurança do perfil protege apenas o varejo)')}
         ${num('pedRupMult','ruptura <2a: pico ×',P.rupMult??1.5,0.1,52,'produto NOVO (<2 anos) que zerou por ruptura: a base vira o pico recente × este fator — o pico em si já foi censurado pelo racionamento (AS515: faturou 17 no mês de 34 compras GA4)')}
         <button class="btn" id="pedRodar" style="padding:8px 26px;font-weight:700;font-size:13.5px">▶ RODAR</button>
       </div>
@@ -2086,7 +2087,7 @@ async function renderPedido(){
 async function rodaPedido(){
   const P={ciclo:+$('#pedCiclo').value||2, lead:+$('#pedLead').value||160,
     moq:+$('#pedMoq').value||10, moqCaro:+$('#pedMoqCaro').value||5, caroDe:+$('#pedCaroDe').value||250,
-    ssEst:+$('#pedSsEst').value||1, ssCre:+$('#pedSsCre').value||1.5, ssPic:+$('#pedSsPic').value||2,
+    ssEst:+$('#pedSsEst').value||1, ssCre:+$('#pedSsCre').value||1.5, ssPic:+$('#pedSsPic').value||2, ssLot:+$('#pedSsLot').value||0,
     rupMult:+$('#pedRupMult').value||1.5};
   try{ localStorage.setItem('bbhub-pedido', JSON.stringify(P)); }catch(e){}
   // memória POR GRUPO: cada RODAR grava os parâmetros do grupo p/ o próximo dia (qualquer navegador)
@@ -2250,7 +2251,9 @@ async function rodaPedido(){
       const mk=(custo&&prc[p.cod])?prc[p.cod]/custo:null;   // markup varejo = PIX 002 (filial 10) ÷ custo
       const moqEf=(custo!=null&&custo>=P.caroDe)?P.moqCaro:P.moq;
       const exI=extras[p.cod], exM=exI?exI.m:0;   // 🚀 meses extras de lançamento (definidos na CTRL)
-      const alvo=base*horiz+base*ss+base*exM;
+      // segurança SEPARADA (29/09/26): perfil protege o VAREJO; lotão tem colchão próprio (ssLot)
+      const lotParte=Math.min(baseLot, base), convParte=base-lotParte;
+      const alvo=base*horiz + convParte*ss + lotParte*(P.ssLot||0) + base*exM;
       const bruto=alvo-saldo-traTot;   // posição clássica: saldo + TODO o PO aberto (chega antes/junto do pedido novo)
       let sug=0;
       if(base>0&&bruto>0) sug=Math.ceil(bruto/moqEf)*moqEf;
@@ -2330,7 +2333,7 @@ function desenhaPedido(){
       ${th('a3','-3a','venda TOTAL na janela 731-1095 dias atrás (BASE BBDI) — perenidade')}${th('a2','-2a','venda TOTAL na janela 366-730 dias atrás')}${th('a1','-1a','venda TOTAL nos últimos 365 dias')}${th('m3','m3','média 3m da venda CONVENCIONAL (sem lotes)')}${th('m12','m12','média 12m da venda CONVENCIONAL')}
       ${th('tend','tend.','m3 ÷ m12')}${th('base','base/mês','demanda ADOTADA = convencional (perfil/tendência) + lotes (média simples 12m, SEM tendência)')}
       ${th('saldo','saldo','estoque útil hoje')}${th('traTot','trânsito','TODO o PO aberto conta na posição (chega antes/junto do pedido novo); tooltip: quanto chega dentro do lead e a 1ª data')}
-      ${th('folgaHoje','folga (m)','saldo ÷ base')}${th('alvo','alvo','base × horizonte + segurança do perfil')}
+      ${th('folgaHoje','folga (m)','saldo ÷ base')}${th('alvo','alvo','base×(lead+ciclo) + convencional×seg do perfil + lotes×seg lotão + extras 🚀')}
       ${th('sug','SUGESTÃO','alvo − saldo − trânsito, arredondado ao MOQ; abaixo, quantos MESES de venda a compra representa (útil ≥2 · alerta >5)')}${th('legado','LEGADO','(provisório p/ calibração) pedido gerado pelo sistema antigo — mouse mostra média e classe dele')}${th('folgaCheg','folga pós','meses de folga projetada no fim do horizonte, já com o pedido')}
       ${th('custo','custo','custo unitário')}${th('mk','mkup','preço à vista site (PIX 002, filial 10) ÷ custo — 💸 vermelho: muito abaixo da distribuição do grupo (mk<1,2 ou <55% da mediana)')}${th('valor','valor R$','sugestão × custo')}<th>flags</th>
     </tr></thead><tbody>
@@ -2391,7 +2394,7 @@ function ligaPedidoSaida(){
       const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('PEDIDO '+st.pedG);
       const P=st.pedP;
       ws.addRow([`PEDIDO DE COMPRA — ${st.pedG}${st.pedF?' · filtro '+st.pedF:''}${st.pedSoZero?' · AUDITORIA: vendeu 6m e ficou sem compra':''} · ${new Date().toLocaleDateString('pt-BR')}`]).font={bold:true,size:13};
-      ws.addRow([`parâmetros: lead ${P.lead}d · ciclo ${P.ciclo}m · MOQ ${P.moq}/${P.moqCaro} (caro ≥ R$${P.caroDe}) · seg ${P.ssEst}/${P.ssCre}/${P.ssPic}m`]);
+      ws.addRow([`parâmetros: lead ${P.lead}d · ciclo ${P.ciclo}m · MOQ ${P.moq}/${P.moqCaro} (caro ≥ R$${P.caroDe}) · seg ${P.ssEst}/${P.ssCre}/${P.ssPic}m · seg lotão ${P.ssLot}m`]);
       ws.addRow([]);
       ws.addRow(['cod','descrição','EAN','voltagem','amperagem','capacidade','perfil','idade (anos)',...(st.pedMeses||[]).flatMap(m=>[m+' conv',m+' lotes']),'-3a','-2a','-1a','m3 conv','m12 conv','tend','base conv','base lotes','base/mês','saldo','trânsito(horiz)','trânsito(total)','1ª chegada','folga hoje (m)','alvo','SUGESTÃO','meses compra','LEGADO','folga pós (m)','custo','mkup 002','valor R$','flags']).font={bold:true};
       for(const r of (st.pedVis||st.pedRows).slice().sort((a,b)=>b.sug-a.sug))
