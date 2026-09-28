@@ -2057,7 +2057,7 @@ async function renderPedido(){
   st.pedG=st.pedG||'BNOT';
   const num=(id,lb,v,step,w,tit)=>`<label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="${tit||''}">${lb}<input id="${id}" type="number" step="${step}" value="${v}" style="width:${w}px;padding:3px 6px;font-size:12.5px;text-align:right"></label>`;
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Venda separada em dois números por mês</b>: convencional em cima (site + ML + atacado do dia-a-dia) e <span style="color:var(--lar)">+lotes</span> embaixo (dia com atacado ≥50 un). A <b>tendência só se aplica ao convencional</b>; lotes entram pela <b>média simples de 12 meses</b>, sem tendência (lote não cresce em tendência). base/mês = convencional + lotes: <b>ESTÁVEL</b> usa média 12m · <b>CRESCENDO</b> usa média 3m pura (lançamentos também caem aqui, com flag 🟡) (o crescimento já está nela — sem extrapolar) · <b>VOLÁTIL</b> (variação alta) usa média 12m com colchão de segurança maior. Pedido = demanda×(lead+ciclo) + segurança − saldo − trânsito que chega no horizonte, arredondado ao MOQ. Ajuste os parâmetros e <b>RODAR</b>.</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Venda separada em dois números por mês</b>: convencional em cima (site + ML + atacado do dia-a-dia) e <span style="color:var(--lar)">+lotes</span> embaixo (notas de distribuidor: linha ≥50 un; dia com atacado fracionado ≥50 tb conta). A <b>tendência só se aplica ao convencional</b>; lotes entram pela <b>média simples de 12 meses</b>, sem tendência (lote não cresce em tendência). base/mês = convencional + lotes: <b>ESTÁVEL</b> usa média 12m · <b>CRESCENDO</b> usa média 3m pura (lançamentos também caem aqui, com flag 🟡) (o crescimento já está nela — sem extrapolar) · <b>VOLÁTIL</b> (variação alta) usa média 12m com colchão de segurança maior. Pedido = demanda×(lead+ciclo) + segurança − saldo − trânsito que chega no horizonte, arredondado ao MOQ. Ajuste os parâmetros e <b>RODAR</b>.</p>
     <div style="display:flex;gap:8px;margin:0 0 8px;flex-wrap:wrap;align-items:center">
       ${st.pedGrupos.map(g=>`<button class="pedG" data-g="${esc(g)}" style="padding:5px 16px;border-radius:9px;cursor:pointer;${g===st.pedG?'background:var(--accent);color:#fff;border:2px solid var(--accent);font-weight:800;box-shadow:0 1px 6px rgba(42,120,214,.45)':'background:none;color:var(--accent);border:1px solid var(--accent);font-weight:600'}">${g===st.pedG?'✓ ':''}${esc(g)}</button>`).join('')}
       <input id="pedFiltro" placeholder="filtrar por marca/código… (ex.: ACER)" value="${esc(st.pedF||'')}" style="margin-left:auto;padding:6px 12px;min-width:220px">
@@ -2145,9 +2145,15 @@ async function rodaPedido(){
     vendas.forEach(r=>{
       const _k=r.data+'|'+r.cod; if(_visto.has(_k)) return; _visto.add(_k);
       const mes=r.data.slice(0,7); const at=+r.qtd_atac||0;
-      const conv=(+r.qtd_b2c||0)+(+r.qtd_ml||0)+(at<50?at:0);
+      // LOTE POR NOTA (29/09/26): distribuidor = notas com linha >=50 (qtd_atac_lotao);
+      // rede de segurança AC081: se o RESTO do atacado do dia (sem as notas grandes)
+      // ainda soma >=50, é compra fracionada de distribuidor — vira lote também.
+      const notas=Math.min(at, +r.qtd_atac_lotao||0);
+      const resto=at-notas;
+      const lote=notas+(resto>=50?resto:0);
+      const conv=(+r.qtd_b2c||0)+(+r.qtd_ml||0)+(at-lote);
       (M[r.cod]=M[r.cod]||{})[mes]=(M[r.cod]?.[mes]||0)+conv;
-      if(at>=50) (ML[r.cod]=ML[r.cod]||{})[mes]=(ML[r.cod]?.[mes]||0)+at;
+      if(lote>0) (ML[r.cod]=ML[r.cod]||{})[mes]=(ML[r.cod]?.[mes]||0)+lote;
     });
     const mesesF=[]; { const d=new Date(); d.setDate(1);
       for(let k=12;k>=1;k--){ const x=new Date(d); x.setMonth(d.getMonth()-k); mesesF.push(x.toLocaleDateString('sv-SE').slice(0,7)); } }
