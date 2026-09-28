@@ -1407,6 +1407,9 @@ async function abreExtrato(cod, m, acao){
       <button class="btn" id="xAprova" style="padding:7px 18px;flex:none">✔ OK — aprovar</button>
       <button id="xOkProx" title="conferi e está OK — sem ajuste (mesmo efeito do ✓ da lista: sai da fila por 7 dias + 200 views) e já abre o PRÓXIMO produto da lista" style="background:var(--good);color:#fff;border:none;border-radius:9px;padding:8px 16px;flex:none;font-weight:700">✓ Sem ajuste → próximo</button>
       <button id="xAbBtn" title="Rotação semanal automática entre dois preços B2C (troca domingo 23h)" style="border:1px solid var(--accent);color:var(--accent);border-radius:9px;padding:8px 14px;flex:none;font-weight:600">🔁 Incluir teste semanal</button>
+      <span style="flex:none;display:inline-flex;align-items:center;gap:4px;border:1px dashed var(--warn);border-radius:9px;padding:6px 10px" title="produto LANÇAMENTO: meses EXTRAS de cobertura no Pedido de Compra — quando o pedido RODAR, soma esses meses ao alvo deste produto">
+        🚀 lançamento: +<input id="xExtra" type="number" min="0" max="9" step="1" placeholder="0" style="width:36px;text-align:center;font-weight:700"> m
+        <button class="btn" id="xExtraOk" style="padding:3px 10px;font-size:11px">ok</button><span class="gr" id="xExtraMsg" style="font-size:10.5px"></span></span>
       <span id="xAbForm" class="hide" style="display:none;gap:10px;align-items:flex-end;flex-wrap:wrap">
         <span>Preço A (à vista)<br><input type="number" step="0.01" min="0" id="xAbA" value="${m?.p_site!=null?(+m.p_site).toFixed(2):''}" style="width:100px;text-align:right"></span>
         <span>Preço B (à vista)<br><input type="number" step="0.01" min="0" id="xAbB" style="width:100px;text-align:right"></span>
@@ -1534,6 +1537,19 @@ async function abreExtrato(cod, m, acao){
     ov.querySelector('#xMkM').textContent=(+xMl2.value>0?'fica ':'')+hint(+xMl2.value, alvoM, true);
   };
   [xAt,xDe,xa,xMl2].forEach(i=>i.oninput=atualiza); atualiza();
+  (async()=>{ try{
+    const {data:ex}=await sb.from('pedido_extra').select('*').eq('cod',cod).maybeSingle();
+    const inp=ov.querySelector('#xExtra'), msg=ov.querySelector('#xExtraMsg');
+    if(ex&&inp){ inp.value=ex.meses; msg.textContent=`por ${(ex.definido_por||'').split('@')[0]} em ${new Date(ex.definido_em).toLocaleDateString('pt-BR')}`; }
+  }catch(e){} })();
+  ov.querySelector('#xExtraOk').onclick=async()=>{
+    const inp=ov.querySelector('#xExtra'), msg=ov.querySelector('#xExtraMsg');
+    const v=Math.max(0,Math.min(9,Math.round(+inp.value||0)));
+    let em='?'; try{ em=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e){}
+    if(v===0){ await sb.from('pedido_extra').delete().eq('cod',cod); msg.textContent='removido — pedido volta ao alvo normal'; inp.value=''; return; }
+    const {error}=await sb.from('pedido_extra').upsert({cod, meses:v, definido_por:em, definido_em:new Date().toISOString()});
+    msg.textContent=error?('erro: '+error.message):`salvo ✓ +${v}m — o próximo RODAR do pedido usa`;
+  };
   const okProx=ov.querySelector('#xOkProx');
   if(okProx) okProx.onclick=async()=>{
     okProx.disabled=true; okProx.textContent='marcando…';
@@ -2107,6 +2123,7 @@ async function rodaPedido(){
     const est={},tra={},cus={},prc={},idade={},anos={},legado={};
     (await tudo('fato_vendas_anos',{eq:[]})).forEach(r=>anos[r.cod]={a1:+r.ano1||0,a2:+r.ano2||0,a3:+r.ano3||0});
     try{ (await tudo('pedido_legado',{eq:[]})).forEach(r=>legado[r.cod]={ped:+r.pedido||0, media:r.media!=null?+r.media:null, classe:r.classe||''}); }catch(e){}
+    const extras={}; try{ (await tudo('pedido_extra',{eq:[]})).forEach(r=>extras[r.cod]={m:+r.meses||0, por:(r.definido_por||'').split('@')[0]}); }catch(e){}
     for(let i=0;i<cods.length;i+=60){
       const lote=cods.slice(i,i+60);
       const [e,t,c]=await Promise.all([
@@ -2226,7 +2243,8 @@ async function rodaPedido(){
       const custo=cus[p.cod];
       const mk=(custo&&prc[p.cod])?prc[p.cod]/custo:null;   // markup varejo = PIX 002 (filial 10) ÷ custo
       const moqEf=(custo!=null&&custo>=P.caroDe)?P.moqCaro:P.moq;
-      const alvo=base*horiz+base*ss;
+      const exI=extras[p.cod], exM=exI?exI.m:0;   // 🚀 meses extras de lançamento (definidos na CTRL)
+      const alvo=base*horiz+base*ss+base*exM;
       const bruto=alvo-saldo-traTot;   // posição clássica: saldo + TODO o PO aberto (chega antes/junto do pedido novo)
       let sug=0;
       if(base>0&&bruto>0) sug=Math.ceil(bruto/moqEf)*moqEf;
@@ -2254,7 +2272,7 @@ async function rodaPedido(){
       }
       const folgaHoje=base>0?saldo/base:(saldo>0?Infinity:0);
       const folgaCheg=base>0?(saldo+traTot+sug-base*horiz)/base:null;
-      const flags=[]; if(censura) flags.push(censura); if(reclasTxt) flags.push(reclasTxt); if(contraTxt) flags.push(contraTxt); if(ajusteTxt) flags.push(ajusteTxt); if(lotTxt) flags.push(lotTxt);
+      const flags=[]; if(exM>0) flags.push(`🚀 lançamento: +${exM}m no alvo (${exI.por})`); if(censura) flags.push(censura); if(reclasTxt) flags.push(reclasTxt); if(contraTxt) flags.push(contraTxt); if(ajusteTxt) flags.push(ajusteTxt); if(lotTxt) flags.push(lotTxt);
       if(base>0&&(saldo+trs.filter(t=>{const dd=dMs(t.d);return dd!=null&&dd<=hojeMs+P.lead*864e5;}).reduce((s,t)=>s+t.q,0))<base*(P.lead/30.44)) flags.push('🔴 rompe antes do lead');
       if(novoRamp) flags.push('🟡 novo — validar manual');
       if(base>0&&folgaHoje>8&&sug===0) flags.push('⚪ excesso');
