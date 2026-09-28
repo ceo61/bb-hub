@@ -2030,8 +2030,10 @@ async function renderPedido(){
   if(!st.pedGrupos){
     $('#conteudo').innerHTML='<div class="carregando">Carregando grupos…</div>';
     try{
-      const gs=await tudo('dim_produto',{select:'grupo',eq:[]});
-      const cnt={}; gs.forEach(r=>{ if(r.grupo) cnt[r.grupo]=(cnt[r.grupo]||0)+1; });
+      // famílias agregadas (familia_produto = mesmo CASE da Visão Global: FONTES=FONT+FCNN+FOUN,
+      // CAM_FILM=BDSC+BDV+BBRO+CADV+CADS, SSD_MEM=SSD+MEMN+MEMD…) — pedido cobre o grupo INTEIRO
+      const gs=await tudo('familia_produto',{select:'familia',eq:[]});
+      const cnt={}; gs.forEach(r=>{ if(r.familia&&r.familia!=='—') cnt[r.familia]=(cnt[r.familia]||0)+1; });
       st.pedGrupos=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,14).map(x=>x[0]);
     }catch(e){ $('#conteudo').innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; return; }
   }
@@ -2079,7 +2081,13 @@ async function rodaPedido(){
   st.pedF=($('#pedFiltro').value||'').trim().toUpperCase();
   const out=$('#pedSaida'); out.innerHTML='<div class="carregando">Buscando produtos e 13 meses de venda…</div>';
   try{
-    const prods=(await tudo('dim_produto',{select:'cod,descricao,bloqueado,ean,voltagem,amperagem,capacidade',eq:[['grupo',st.pedG]]}))
+    const fcods=(await tudo('familia_produto',{select:'cod',eq:[['familia',st.pedG]],mod:q=>q.order('cod',{ascending:true})})).map(r=>r.cod);
+    const prodsRaw=[];
+    for(let i=0;i<fcods.length;i+=150){
+      const lote=fcods.slice(i,i+150);
+      prodsRaw.push(...await tudo('dim_produto',{select:'cod,descricao,bloqueado,ean,voltagem,amperagem,capacidade',mod:q=>q.in('cod',lote)}));
+    }
+    const prods=prodsRaw
       .filter(p=>!+p.bloqueado)
       .filter(p=>!st.pedF||(p.cod+' '+(p.descricao||'')).toUpperCase().includes(st.pedF));
     if(!prods.length){ out.innerHTML='<p class="gr">Nenhum produto no filtro.</p>'; return; }
