@@ -1205,6 +1205,7 @@ async function abreExtrato(cod, m, acao){
   const NW=18;
   const seg=new Date(); seg.setHours(12,0,0,0); seg.setDate(seg.getDate()-((seg.getDay()+6)%7));
   const mondays=[]; for(let i=NW;i>=1;i--){ const d=new Date(seg); d.setDate(d.getDate()-7*i); mondays.push(d.toISOString().slice(0,10)); }
+  const segAtual=new Date(seg).toISOString().slice(0,10);   // semana ABERTA (linha EM CURSO)
   const NM=12;  // visão mensal: últimos 12 meses (o corrente é parcial)
   const meses=[]; { const dm=new Date(); dm.setHours(12,0,0,0); dm.setDate(1); dm.setMonth(dm.getMonth()-(NM-1));
     for(let i=0;i<NM;i++){ meses.push(dm.toISOString().slice(0,10)); dm.setMonth(dm.getMonth()+1); } }
@@ -1240,7 +1241,7 @@ async function abreExtrato(cod, m, acao){
       abW[w]={n, braco:abModos[ult.teste_id]==='diario'?'A/B':ult.braco, id:ult.teste_id};
     } }
   const qtdDia={}; vd.forEach(r=>{ qtdDia[r.data]=+r.qtd||0; });
-  const W={}; mondays.forEach(w=>W[w]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,gc:0,gr:0,ads:0,saldo:null,de:null,por:null,porReal:null,atacTab:null,mlTab:null,custo:null,ccav:null,ccbb:null});
+  const W={}; [...mondays, segAtual].forEach(w=>W[w]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,gc:0,gr:0,ads:0,saldo:null,de:null,por:null,porReal:null,atacTab:null,mlTab:null,custo:null,ccav:null,ccbb:null});
   vd.forEach(r=>{ const a=W[wk(r.data)]; if(!a) return;
     a.q2+=+r.qtd_b2c||0; a.v2+=+r.val_b2c||0; a.l2+=+r.lucro_b2c||0;
     a.qm+=+r.qtd_ml||0; a.vm+=+r.val_ml||0; a.lm+=+r.lucro_ml||0;
@@ -1283,7 +1284,7 @@ async function abreExtrato(cod, m, acao){
   const corMC=p=>p==null?'':p<0?'color:var(--crit);font-weight:700':p<30?'color:var(--crit)':p<40?'color:var(--warn)':'color:var(--good)';
   const mcCell=(l,v)=>{ const p=mcp(l,v); return `${l?rf.format(l):'—'}${p!=null?` <span style="font-size:11px;${corMC(p)}">${nf1.format(p)}%</span>`:''}`; };
   const tdc='padding:5px 8px;white-space:nowrap;font-size:12px;text-align:right;';
-  const linhas=mondays.map((w,wi)=>{ const a=W[w];
+  const linhas=[...mondays, segAtual].map((w,wi)=>{ const a=W[w]; const emCurso=(w===segAtual);
     const g=giro60(w), folga=(a.saldo!=null&&g>0)?a.saldo/g:null;
     const mkS=(a.porReal&&a.custo)?a.porReal/a.custo:null;  // mesma régua da 1ª página: à vista PIX ÷ custo
     const mkA=(a.atacTab&&a.custo)?a.atacTab/a.custo:null;
@@ -1291,8 +1292,8 @@ async function abreExtrato(cod, m, acao){
     const prat=a.q2>0?a.v2/a.q2:null, tick=a.q1>0?a.v1/a.q1:null, tickM=a.qm>0?a.vm/a.qm:null;
     const conv=a.vw>0?a.gc/a.vw*100:null, roas=a.ads>0?a.gr/a.ads:null, roasMc=(a.ads>0&&a.l2!=null)?a.l2/a.ads:null;
     const sep='border-left:2px solid var(--hair);';
-    return `<tr><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${w.slice(8,10)}/${w.slice(5,7)}</b>${abW[w]?` <span title="teste A/B #${abW[w].id} — semana ${abW[w].n} do teste, braço ${abW[w].braco}" style="background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:10px;border-radius:99px;padding:1px 7px">T${abW[w].n}·${abW[w].braco}</span>`:''}</td>
-      <td style="${tdc}">${a.saldo!=null?nf.format(a.saldo):'—'}${(wi===mondays.length-1&&m?._transito>0)?` <span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}</td>
+    return `<tr><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1">${emCurso?'<b style="color:var(--accent)">EM CURSO</b> <span class="gr" title="semana aberta — números parciais; saldo/custo/preços de HOJE">*</span>':'<b>'+w.slice(8,10)+'/'+w.slice(5,7)+'</b>'}${abW[w]?` <span title="teste A/B #${abW[w].id} — semana ${abW[w].n} do teste, braço ${abW[w].braco}" style="background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:10px;border-radius:99px;padding:1px 7px">T${abW[w].n}·${abW[w].braco}</span>`:''}</td>
+      <td style="${tdc}">${a.saldo!=null?nf.format(a.saldo):'—'}${(emCurso&&m?._transito>0)?` <span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}</td>
       <td style="${tdc}${corF(folga)}">${F.d1(folga)}</td>
       <td style="${tdc}">${F.m(a.custo)}</td>
       <td style="${tdc}${sep}">${F.n(a.q1)}</td>
@@ -1456,7 +1457,7 @@ async function abreExtrato(cod, m, acao){
                    h.de_sugerido!=null?('DE→'+rf2.format(h.de_sugerido)):null].filter(Boolean).join(' · ');
         return `<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><span class="gr" style="flex:none">${dt}</span>${badge}<span class="gr" style="flex:none">${esc((h.aprovado_por||'').split('@')[0])}</span><span style="flex:none">${mud}</span>${h.justificativa?`<span style="flex:1;color:var(--ink2)">“${esc(h.justificativa)}”</span>`:''}</div>`;
       }).join('')}</div></div>`:''}
-    <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom. Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões). ${acao?'Topo = a sugestão do analista exatamente como registrada (era → fica, markup resultante e alvo que ele viu); aplicar/devolver é na página Aprovações.':'Preencha o preço novo em cima, JUSTIFIQUE e OK — entra na MESMA fila de execução do Aprovar.'}</p>`;
+    <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom + linha <b style="color:var(--accent)">EM CURSO</b> (semana aberta: parcial, com saldo/custo/preços de HOJE — é ela que o analista deve olhar para precificar). Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões). ${acao?'Topo = a sugestão do analista exatamente como registrada (era → fica, markup resultante e alvo que ele viu); aplicar/devolver é na página Aprovações.':'Preencha o preço novo em cima, JUSTIFIQUE e OK — entra na MESMA fila de execução do Aprovar.'}</p>`;
   ov.querySelector('#mcX').onclick=()=>ov.remove();
   // botão verde "Diário" na linha Semanal/Mensal — só para elegíveis (20+ un/semana)
   (async()=>{
