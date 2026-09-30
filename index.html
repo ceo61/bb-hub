@@ -2128,6 +2128,7 @@ async function rodaPedido(){
     (await tudo('fato_vendas_anos',{eq:[]})).forEach(r=>anos[r.cod]={a1:+r.ano1||0,a2:+r.ano2||0,a3:+r.ano3||0});
     try{ (await tudo('pedido_legado',{eq:[]})).forEach(r=>legado[r.cod]={ped:+r.pedido||0, media:r.media!=null?+r.media:null, classe:r.classe||''}); }catch(e){}
     const extras={}; try{ (await tudo('pedido_extra',{eq:[]})).forEach(r=>extras[r.cod]={m:+r.meses||0, por:(r.definido_por||'').split('@')[0]}); }catch(e){}
+    const backlog={}; try{ (await tudo('fato_backlog',{eq:[]})).forEach(r=>backlog[r.cod]={q:+r.qtd||0, peds:r.pedidos||''}); }catch(e){}
     for(let i=0;i<cods.length;i+=60){
       const lote=cods.slice(i,i+60);
       const [e,t,c]=await Promise.all([
@@ -2257,7 +2258,9 @@ async function rodaPedido(){
       // segurança SEPARADA (29/09/26): perfil protege o VAREJO; lotão tem colchão próprio (ssLot)
       const lotParte=Math.min(baseLot, base), convParte=base-lotParte;
       const alvo=base*horiz + convParte*ss + lotParte*(P.ssLot||0) + base*exM;
-      const bruto=alvo-saldo-traTot;   // posição clássica: saldo + TODO o PO aberto (chega antes/junto do pedido novo)
+      const bk=backlog[p.cod], bkl=bk?bk.q:0;
+      // encomendas: pedidos de venda LIBERADOS pelo financeiro aguardando estoque (SC9 blEst=02) — demanda JÁ vendida
+      const bruto=alvo-saldo-traTot+bkl;   // posição clássica: saldo + TODO o PO aberto − encomendas represadas
       let sug=0;
       if(base>0&&bruto>0) sug=Math.ceil(bruto/moqEf)*moqEf;
       // 📏 MESES DE COMPRA (doutrina 07/09/26): compra útil = pelo menos 2 médias de venda.
@@ -2284,14 +2287,14 @@ async function rodaPedido(){
       }
       const folgaHoje=base>0?saldo/base:(saldo>0?Infinity:0);
       const folgaCheg=base>0?(saldo+traTot+sug-base*horiz)/base:null;
-      const flags=[]; if(exM>0) flags.push(`🚀 lançamento: +${exM}m no alvo (${exI.por})`); if(censura) flags.push(censura); if(reclasTxt) flags.push(reclasTxt); if(contraTxt) flags.push(contraTxt); if(ajusteTxt) flags.push(ajusteTxt); if(lotTxt) flags.push(lotTxt);
+      const flags=[]; if(bkl>0) flags.push(`🧾 ${nf.format(Math.round(bkl))} un VENDIDAS aguardando estoque — peds: ${bk.peds}`); if(exM>0) flags.push(`🚀 lançamento: +${exM}m no alvo (${exI.por})`); if(censura) flags.push(censura); if(reclasTxt) flags.push(reclasTxt); if(contraTxt) flags.push(contraTxt); if(ajusteTxt) flags.push(ajusteTxt); if(lotTxt) flags.push(lotTxt);
       if(base>0&&(saldo+trs.filter(t=>{const dd=dMs(t.d);return dd!=null&&dd<=hojeMs+P.lead*864e5;}).reduce((s,t)=>s+t.q,0))<base*(P.lead/30.44)) flags.push('🔴 rompe antes do lead');
       if(novoRamp) flags.push('🟡 novo — validar manual');
       if(base>0&&folgaHoje>8&&sug===0) flags.push('⚪ excesso');
       const serie6L=serieL.slice(-6);
       const lg=legado[p.cod]||null;
       rows.push({cod:p.cod, desc:p.descricao||'', ean:p.ean||'', volt:p.voltagem||'', amper:p.amperagem||'', capac:p.capacidade||'', perfil, serie6:serie.slice(-6), serie6L, a1:an.a1, a2:an.a2, a3:an.a3, m3, m12, tend, base, baseConv, baseLot, idade:idade[p.cod]??null, mSusp, saldo, legado:lg?lg.ped:null, legadoTip:lg?`media legado ${nf1.format(lg.media||0)} · ${lg.classe}`:'',
-        traHoriz, traTot, prox, folgaHoje, alvo, sug, mesesCompra, folgaCheg, custo, mk, valor:custo!=null?sug*custo:null, flags:flags.join(' ')});
+        traHoriz, traTot, prox, bkl, bklPed:bk?bk.peds:'', folgaHoje, alvo, sug, mesesCompra, folgaCheg, custo, mk, valor:custo!=null?sug*custo:null, flags:flags.join(' ')});
     }
     // 💸 MARKUP VAREJO vs distribuição do grupo: só alerta quem estamos COMPRANDO (sug>0)
     { const mks=rows.map(r=>r.mk).filter(m=>m>0).sort((a,b)=>a-b);
@@ -2336,7 +2339,7 @@ function desenhaPedido(){
       ${th('a3','-3a','venda TOTAL na janela 731-1095 dias atrás (BASE BBDI) — perenidade')}${th('a2','-2a','venda TOTAL na janela 366-730 dias atrás')}${th('a1','-1a','venda TOTAL nos últimos 365 dias')}${th('m3','m3','média 3m da venda CONVENCIONAL (sem lotes)')}${th('m12','m12','média 12m da venda CONVENCIONAL')}
       ${th('tend','tend.','m3 ÷ m12')}${th('base','base/mês','demanda ADOTADA = convencional (perfil/tendência) + lotes (média simples 12m, SEM tendência)')}
       ${th('saldo','saldo','estoque útil hoje')}${th('traTot','trânsito','TODO o PO aberto conta na posição (chega antes/junto do pedido novo); tooltip: quanto chega dentro do lead e a 1ª data')}
-      ${th('folgaHoje','folga (m)','saldo ÷ base')}${th('alvo','alvo','base×(lead+ciclo) + convencional×seg do perfil + lotes×seg lotão + extras 🚀')}
+      ${th('bkl','encom.','pedidos de venda LIBERADOS pelo financeiro aguardando ESTOQUE (SC9, bloqueio 02) — demanda já vendida: SOMA à necessidade; mouse mostra os pedidos')}${th('folgaHoje','folga (m)','saldo ÷ base')}${th('alvo','alvo','base×(lead+ciclo) + convencional×seg do perfil + lotes×seg lotão + extras 🚀')}
       ${th('sug','SUGESTÃO','alvo − saldo − trânsito, arredondado ao MOQ; abaixo, quantos MESES de venda a compra representa (útil ≥2 · alerta >5)')}${th('legado','LEGADO','(provisório p/ calibração) pedido gerado pelo sistema antigo — mouse mostra média e classe dele')}${th('folgaCheg','folga pós','meses de folga projetada no fim do horizonte, já com o pedido')}
       ${th('custo','custo','custo unitário')}${th('mk','mkup','preço à vista site (PIX 002, filial 10) ÷ custo — 💸 vermelho: muito abaixo da distribuição do grupo (mk<1,2 ou <55% da mediana)')}${th('valor','valor R$','sugestão × custo')}<th>flags</th>
     </tr></thead><tbody>
@@ -2348,7 +2351,7 @@ function desenhaPedido(){
       <td>${nf.format(Math.round(S(r=>r.a3)))}</td><td>${nf.format(Math.round(S(r=>r.a2)))}</td><td>${nf.format(Math.round(S(r=>r.a1)))}</td>
       <td>${nf.format(Math.round(S(r=>r.m3)))}</td><td>${nf.format(Math.round(S(r=>r.m12)))}</td><td></td>
       <td style="white-space:nowrap">${nf.format(Math.round(S(r=>r.base)))}<br><span class="gr" style="font-size:10.5px">${nf.format(Math.round(S(r=>r.baseConv)))}+<span style="color:var(--lar)">${nf.format(Math.round(S(r=>r.baseLot)))}</span></span></td>
-      <td>${nf.format(Math.round(S(r=>r.saldo)))}</td><td>${nf.format(Math.round(S(r=>r.traTot)))}</td><td></td>
+      <td>${nf.format(Math.round(S(r=>r.saldo)))}</td><td>${nf.format(Math.round(S(r=>r.traTot)))}</td><td style="color:var(--warn)">${nf.format(Math.round(S(r=>r.bkl)))}</td><td></td>
       <td>${nf.format(Math.round(S(r=>r.alvo)))}</td>
       <td style="color:var(--accent);font-size:13px">${nf.format(S(r=>r.sug))}</td>
       <td>${nf.format(S(r=>r.legado))}</td><td></td><td></td><td></td>
@@ -2365,6 +2368,7 @@ function desenhaPedido(){
       <td style="white-space:nowrap;${r.mSusp?'background:var(--warn-soft)':''}" title="${r.mSusp?'⚠ MÉDIA SUSPEITA (ver flags) · ':''}convencional ${nf1.format(r.baseConv)} (perfil ${r.perfil}) + lotes ${nf1.format(r.baseLot)} (média 12m)"><b>${nf1.format(r.base)}</b>${r.baseLot>=0.5?`<br><span class="gr" style="font-size:10.5px">${nf1.format(r.baseConv)}+<span style="color:var(--lar)">${nf1.format(r.baseLot)}</span></span>`:''}</td>
       <td>${nf.format(Math.round(r.saldo))}</td>
       <td title="chega dentro do lead: ${nf.format(Math.round(r.traHoriz))}${r.prox?' · 1ª chegada '+r.prox.slice(8,10)+'/'+r.prox.slice(5,7):''}">${r.traTot?nf.format(Math.round(r.traTot)):'—'}</td>
+      <td title="${esc(r.bklPed||'')}" style="${r.bkl?'color:var(--warn);font-weight:700':''}">${r.bkl?nf.format(Math.round(r.bkl)):'—'}</td>
       <td style="${r.folgaHoje!==Infinity&&r.folgaHoje<P.lead/30.44?'color:var(--crit);font-weight:700':''}">${r.folgaHoje===Infinity?'∞':nf1.format(r.folgaHoje)}</td>
       <td>${nf.format(Math.round(r.alvo))}</td>
       <td style="font-weight:800;${r.sug>0?'color:var(--accent);font-size:13px':''}">${r.sug?nf.format(r.sug):'0'}${r.mesesCompra!=null?`<br><small style="font-weight:400;color:${r.mesesCompra>5?'var(--crit)':r.mesesCompra<1?'var(--lar)':'var(--muted)'}">${nf1.format(r.mesesCompra)} m</small>`:''}</td>
@@ -2399,9 +2403,9 @@ function ligaPedidoSaida(){
       ws.addRow([`PEDIDO DE COMPRA — ${st.pedG}${st.pedF?' · filtro '+st.pedF:''}${st.pedSoZero?' · AUDITORIA: vendeu 6m e ficou sem compra':''} · ${new Date().toLocaleDateString('pt-BR')}`]).font={bold:true,size:13};
       ws.addRow([`parâmetros: lead ${P.lead}d · ciclo ${P.ciclo}m · MOQ ${P.moq}/${P.moqCaro} (caro ≥ R$${P.caroDe}) · seg ${P.ssEst}/${P.ssCre}/${P.ssPic}m · seg lotão ${P.ssLot}m`]);
       ws.addRow([]);
-      ws.addRow(['cod','descrição','EAN','voltagem','amperagem','capacidade','perfil','idade (anos)',...(st.pedMeses||[]).flatMap(m=>[m+' conv',m+' lotes']),'-3a','-2a','-1a','m3 conv','m12 conv','tend','base conv','base lotes','base/mês','saldo','trânsito(horiz)','trânsito(total)','1ª chegada','folga hoje (m)','alvo','SUGESTÃO','meses compra','LEGADO','folga pós (m)','custo','mkup 002','valor R$','flags']).font={bold:true};
+      ws.addRow(['cod','descrição','EAN','voltagem','amperagem','capacidade','perfil','idade (anos)',...(st.pedMeses||[]).flatMap(m=>[m+' conv',m+' lotes']),'-3a','-2a','-1a','m3 conv','m12 conv','tend','base conv','base lotes','base/mês','saldo','trânsito(horiz)','trânsito(total)','1ª chegada','encomendas','folga hoje (m)','alvo','SUGESTÃO','meses compra','LEGADO','folga pós (m)','custo','mkup 002','valor R$','flags']).font={bold:true};
       for(const r of (st.pedVis||st.pedRows).slice().sort((a,b)=>b.sug-a.sug))
-        ws.addRow([r.cod,r.desc,r.ean,r.volt,r.amper,r.capac,r.perfil,r.idade,...r.serie6.flatMap((v,i2)=>[Math.round(v),Math.round(r.serie6L?.[i2]||0)]),r.a3,r.a2,r.a1,+r.m3.toFixed(1),+r.m12.toFixed(1),r.tend!=null?+r.tend.toFixed(2):null,+r.baseConv.toFixed(1),+r.baseLot.toFixed(1),+r.base.toFixed(1),Math.round(r.saldo),Math.round(r.traHoriz),Math.round(r.traTot),r.prox||'',r.folgaHoje===Infinity?null:+r.folgaHoje.toFixed(1),Math.round(r.alvo),r.sug,r.mesesCompra!=null?+r.mesesCompra.toFixed(1):null,r.legado,r.folgaCheg!=null?+r.folgaCheg.toFixed(1):null,r.custo,r.mk!=null?+r.mk.toFixed(2):null,r.valor?Math.round(r.valor):null,r.flags]);
+        ws.addRow([r.cod,r.desc,r.ean,r.volt,r.amper,r.capac,r.perfil,r.idade,...r.serie6.flatMap((v,i2)=>[Math.round(v),Math.round(r.serie6L?.[i2]||0)]),r.a3,r.a2,r.a1,+r.m3.toFixed(1),+r.m12.toFixed(1),r.tend!=null?+r.tend.toFixed(2):null,+r.baseConv.toFixed(1),+r.baseLot.toFixed(1),+r.base.toFixed(1),Math.round(r.saldo),Math.round(r.traHoriz),Math.round(r.traTot),r.prox||'',Math.round(r.bkl||0),r.folgaHoje===Infinity?null:+r.folgaHoje.toFixed(1),Math.round(r.alvo),r.sug,r.mesesCompra!=null?+r.mesesCompra.toFixed(1):null,r.legado,r.folgaCheg!=null?+r.folgaCheg.toFixed(1):null,r.custo,r.mk!=null?+r.mk.toFixed(2):null,r.valor?Math.round(r.valor):null,r.flags]);
       const buf=await wb.xlsx.writeBuffer();
       const a=document.createElement('a');
       a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
