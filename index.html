@@ -2079,122 +2079,12 @@ async function renderPedido(){
         ${num('pedSsLot','seg. LOTÃO (m)',P.ssLot,0.25,52,'colchão SÓ da parte de lotões (distribuidor negocia prazo — a segurança do perfil protege apenas o varejo)')}
         ${num('pedRupMult','ruptura <2a: pico ×',P.rupMult??1.5,0.1,52,'produto NOVO (<2 anos) que zerou por ruptura: a base vira o pico recente × este fator — o pico em si já foi censurado pelo racionamento (AS515: faturou 17 no mês de 34 compras GA4)')}
         <button class="btn" id="pedRodar" style="padding:8px 26px;font-weight:700;font-size:13.5px">▶ RODAR</button>
-        <button class="btn" id="pedParal" title="caça o perfil DE3410: produto que vendia FIRME (≥10 un/semana por 2+ semanas) e PARALISOU (0 venda por 2+ semanas fechadas = ruptura) — mostra o que está vindo e se é o bastante" style="padding:8px 18px;background:var(--warn);font-weight:700">🕳 Paralisados</button>
       </div>
     </div>
     <div id="pedSaida">${st.pedHtml||'<p class="gr">Escolha o grupo, ajuste os parâmetros e clique RODAR.</p>'}</div>`;
   document.querySelectorAll('.pedG').forEach(b=>b.onclick=()=>{ st.pedG=b.dataset.g; renderPedido(); });
   $('#pedRodar').onclick=()=>rodaPedido();
-  $('#pedParal').onclick=()=>rodaParalisados();
   if(st.pedRows) ligaPedidoSaida();
-}
-
-async function rodaParalisados(){
-  // 🕳 PERFIL DE3410 (30/09/26): vendia ≥10/sem por 2+ semanas seguidas e ZEROU por 2+ semanas
-  // fechadas até hoje (ruptura silenciosa). Mostra ritmo, perda e SE a reposição que vem basta.
-  const FIRME=10, N_FIRME=2, N_ZERO=2, SEMS=26;
-  const P=pedParams();
-  const out=$('#pedSaida'); out.innerHTML='<div class="carregando">Caçando paralisados em '+esc(st.pedG)+'…</div>';
-  try{
-    const fcods=(await tudo('familia_produto',{select:'cod',eq:[['familia',st.pedG]],mod:q=>q.order('cod',{ascending:true})})).map(r=>r.cod);
-    const D={};
-    for(let i=0;i<fcods.length;i+=150){
-      (await tudo('dim_produto',{select:'cod,descricao,bloqueado',mod:q=>q.in('cod',fcods.slice(i,i+150))})).forEach(p=>{ if(!+p.bloqueado) D[p.cod]=p.descricao||''; });
-    }
-    const cods=Object.keys(D);
-    const iniD=(()=>{ const d=new Date(); d.setDate(d.getDate()-SEMS*7-7); return d.toLocaleDateString('sv-SE'); })();
-    const vendas=[];
-    for(let i=0;i<cods.length;i+=60){
-      out.innerHTML=`<div class="carregando">Vendas semanais… ${Math.min(i+60,cods.length)}/${cods.length}</div>`;
-      vendas.push(...await tudo('fato_vendas_diaria',{select:'data,cod,qtd',mod:q=>q.gte('data',iniD).in('cod',cods.slice(i,i+60)).order('data',{ascending:true}).order('cod',{ascending:true})}));
-    }
-    // semanas fechadas seg-dom (a corrente fica fora)
-    const segAtu=(()=>{ const d=new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()-((d.getDay()+6)%7)); return d.toLocaleDateString('sv-SE'); })();
-    const wk=ds=>{ const d=new Date(ds+'T12:00:00'); d.setDate(d.getDate()-((d.getDay()+6)%7)); return d.toLocaleDateString('sv-SE'); };
-    const SEML=[]; { const d=new Date(segAtu+'T12:00:00'); for(let i=SEMS;i>=1;i--){ const x=new Date(d); x.setDate(d.getDate()-7*i); SEML.push(x.toLocaleDateString('sv-SE')); } }
-    const W={}; const _v=new Set();
-    vendas.forEach(r=>{ const k=r.data+'|'+r.cod; if(_v.has(k))return; _v.add(k);
-      const w=wk(r.data); ((W[r.cod]=W[r.cod]||{})[w]=(W[r.cod]?.[w]||0)+(+r.qtd||0)); });
-    // snapshots
-    const [snapE,snapT]=await Promise.all([
-      sb.from('fato_estoque').select('snapshot').order('snapshot',{ascending:false}).limit(1),
-      sb.from('fato_transito').select('snapshot').order('snapshot',{ascending:false}).limit(1)]);
-    const est={},tra={},prox={},bkg={};
-    for(let i=0;i<cods.length;i+=60){
-      const lote=cods.slice(i,i+60);
-      const [e,t,b]=await Promise.all([
-        tudo('fato_estoque',{select:'cod,estoque_util',eq:[['snapshot',snapE.data[0].snapshot]],mod:q=>q.in('cod',lote)}),
-        tudo('fato_transito',{select:'cod,qtd_pendente,chegada_prevista',eq:[['snapshot',snapT.data[0].snapshot]],mod:q=>q.in('cod',lote)}),
-        tudo('fato_backlog',{mod:q=>q.in('cod',lote)}).catch(()=>[])]);
-      e.forEach(r=>est[r.cod]=+r.estoque_util||0);
-      t.forEach(r=>{ tra[r.cod]=(tra[r.cod]||0)+(+r.qtd_pendente||0);
-        const d=String(r.chegada_prevista||'').replace(/-/g,'');
-        if(/^\d{8}$/.test(d)&&(!prox[r.cod]||d<prox[r.cod])) prox[r.cod]=d; });
-      b.forEach(r=>bkg[r.cod]={q:+r.qtd||0,peds:r.pedidos||''});
-    }
-    const casos=[];
-    for(const cod of cods){
-      const s=SEML.map(w=>Math.round(W[cod]?.[w]||0));
-      // parado: zeros consecutivos no FIM
-      let z=0; for(let i=s.length-1;i>=0&&s[i]===0;i--) z++;
-      if(z<N_ZERO||z>=s.length) continue;
-      // firme: sequência de semanas ≥FIRME imediatamente antes da parada
-      let f=0, soma=0;
-      for(let i=s.length-z-1;i>=0&&s[i]>=FIRME;i--){ f++; soma+=s[i]; }
-      if(f<N_FIRME) continue;
-      const ritmo=soma/f;
-      const saldo=est[cod]||0, vem=tra[cod]||0, enc=bkg[cod]?.q||0;
-      const liq=saldo+vem-enc;
-      const cob=ritmo>0?liq/ritmo:0;                 // semanas de ritmo cobertas pelo que há+vem
-      const leadSem=P.lead/7, horizSem=(P.lead/30.44+P.ciclo)*4.345;
-      const parecer=liq<=0?['⛔ NADA vindo — pedir JÁ','var(--crit)']
-        :cob<leadSem?[`⛔ vem pouco: ${nf1.format(cob)} sem de ritmo (lead ${Math.round(leadSem)} sem)`,'var(--crit)']
-        :cob<horizSem?[`⚠ vem justo: ${nf1.format(cob)} sem de ritmo`,'var(--lar)']
-        :[`✓ vem ok: ${nf1.format(cob)} sem de ritmo`,'var(--good)'];
-      casos.push({cod, desc:D[cod], s, ritmo, f, z, perda:ritmo*z, saldo, vem, prox:prox[cod]||'', enc, encPeds:bkg[cod]?.peds||'', cob, parecer});
-    }
-    casos.sort((a,b)=>b.perda-a.perda);
-    st.paralCasos=casos;
-    const px=d=>d?d.slice(6,8)+'/'+d.slice(4,6):'—';
-    out.innerHTML=`
-      <div style="display:flex;gap:12px;align-items:baseline;margin:0 0 8px;flex-wrap:wrap">
-        <b style="font-size:14px">🕳 ${casos.length} produto(s) PARALISADOS em ${esc(st.pedG)}</b>
-        <span class="gr">vendia ≥${FIRME}/sem por ${N_FIRME}+ semanas → 0 por ${N_ZERO}+ semanas fechadas · perda estimada = ritmo × semanas parado</span>
-        ${casos.length?`<button class="btn" id="paralXls" style="padding:5px 16px">📗 Excel</button>`:''}
-      </div>
-      ${casos.length?`<div class="tablecard"><div class="tscroll"><table><thead><tr>
-        <th style="text-align:left">Produto</th><th title="média das semanas firmes antes da parada">ritmo<br><span class="gr">un/sem</span></th>
-        <th title="semanas firmes consecutivas antes de parar">firme<br><span class="gr">sem</span></th>
-        <th>parado<br><span class="gr">sem</span></th><th title="ritmo × semanas parado">perda<br><span class="gr">est. un</span></th>
-        <th>saldo</th><th title="POs abertos (qtd pendente); embaixo, 1ª chegada prevista">vindo</th>
-        <th title="pedidos de venda liberados aguardando estoque">encom.</th>
-        <th title="últimas 12 semanas (mais antiga → mais recente)">série 12 sem</th><th>está vindo o bastante?</th></tr></thead><tbody>
-        ${casos.map(c=>`<tr>
-          <td style="text-align:left;white-space:nowrap"><a href="#sugestoes/${encodeURIComponent(c.cod)}" style="font-weight:700">${esc(c.cod)}</a><br><span class="gr" style="font-size:10.5px">${esc(c.desc.slice(0,34))}</span></td>
-          <td style="font-weight:700">${nf1.format(c.ritmo)}</td><td>${c.f}</td>
-          <td style="color:var(--crit);font-weight:800">${c.z}</td>
-          <td style="color:var(--crit);font-weight:700">${nf.format(Math.round(c.perda))}</td>
-          <td>${nf.format(Math.round(c.saldo))}</td>
-          <td>${c.vem?nf.format(Math.round(c.vem)):'—'}${c.prox?`<br><span class="gr" style="font-size:10.5px">chega ${px(c.prox)}</span>`:''}</td>
-          <td title="${esc(c.encPeds)}" style="${c.enc?'color:var(--warn);font-weight:700':''}">${c.enc?nf.format(Math.round(c.enc)):'—'}</td>
-          <td style="white-space:nowrap;font-size:10.5px;color:var(--muted)">${c.s.slice(-12).join(' ')}</td>
-          <td style="color:${c.parecer[1]};font-weight:700;white-space:nowrap">${c.parecer[0]}</td>
-        </tr>`).join('')}</tbody></table></div></div>`
-      :'<p class="gr">Nenhum produto com esse perfil no grupo — boa notícia.</p>'}`;
-    const bx=$('#paralXls');
-    if(bx) bx.onclick=async()=>{
-      const XL=await import('https://esm.sh/exceljs@4.4.0'); const ExcelJS=XL.default??XL;
-      const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('PARALISADOS '+st.pedG);
-      ws.addRow([`PARALISADOS — ${st.pedG} · vendia ≥${FIRME}/sem (${N_FIRME}+ sem) e zerou (${N_ZERO}+ sem) · ${new Date().toLocaleDateString('pt-BR')}`]).font={bold:true,size:13};
-      ws.addRow(['parecer compara (saldo+vindo−encomendas) com o ritmo semanal × lead/horizonte do grupo']);
-      ws.addRow([]);
-      ws.addRow(['cod','descrição','ritmo un/sem','semanas firmes','semanas parado','perda estimada','saldo','vindo (POs)','1ª chegada','encomendas','cobertura vinda (sem)','parecer',...Array.from({length:12},(_,i)=>'sem-'+(12-i))]).font={bold:true};
-      st.paralCasos.forEach(c=>ws.addRow([c.cod,c.desc,+c.ritmo.toFixed(1),c.f,c.z,Math.round(c.perda),Math.round(c.saldo),Math.round(c.vem),c.prox?c.prox.slice(6,8)+'/'+c.prox.slice(4,6)+'/'+c.prox.slice(0,4):'',Math.round(c.enc),+c.cob.toFixed(1),c.parecer[0],...c.s.slice(-12)]));
-      const buf=await wb.xlsx.writeBuffer();
-      const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([buf]));
-      a.download=`PARALISADOS_${st.pedG}_${new Date().toLocaleDateString('sv-SE')}.xlsx`; a.click();
-    };
-  }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
 }
 
 async function rodaPedido(){
@@ -2239,6 +2129,7 @@ async function rodaPedido(){
     try{ (await tudo('pedido_legado',{eq:[]})).forEach(r=>legado[r.cod]={ped:+r.pedido||0, media:r.media!=null?+r.media:null, classe:r.classe||''}); }catch(e){}
     const extras={}; try{ (await tudo('pedido_extra',{eq:[]})).forEach(r=>extras[r.cod]={m:+r.meses||0, por:(r.definido_por||'').split('@')[0]}); }catch(e){}
     const backlog={}; try{ (await tudo('fato_backlog',{eq:[]})).forEach(r=>backlog[r.cod]={q:+r.qtd||0, peds:r.pedidos||''}); }catch(e){}
+    st.pedNimp={}; try{ (await tudo('pedido_nao_importar',{eq:[]})).forEach(r=>st.pedNimp[r.cod]={por:(r.marcado_por||'').split('@')[0], em:r.marcado_em}); }catch(e){}
     for(let i=0;i<cods.length;i+=60){
       const lote=cods.slice(i,i+60);
       const [e,t,c]=await Promise.all([
@@ -2406,6 +2297,11 @@ async function rodaPedido(){
       rows.push({cod:p.cod, desc:p.descricao||'', ean:p.ean||'', volt:p.voltagem||'', amper:p.amperagem||'', capac:p.capacidade||'', perfil, serie6:serie.slice(-6), serie6L, a1:an.a1, a2:an.a2, a3:an.a3, m3, m12, tend, base, baseConv, baseLot, idade:idade[p.cod]??null, mSusp, saldo, legado:lg?lg.ped:null, legadoTip:lg?`media legado ${nf1.format(lg.media||0)} · ${lg.classe}`:'',
         traHoriz, traTot, prox, bkl, bklPed:bk?bk.peds:'', folgaHoje, alvo, sug, mesesCompra, folgaCheg, custo, mk, valor:custo!=null?sug*custo:null, flags:flags.join(' ')});
     }
+    // 🚫 NÃO IMPORTAR MAIS: decisão gravada (pedido_nao_importar) — zera a sugestão e marca a linha
+    rows.forEach(r=>{ const n=st.pedNimp[r.cod]; if(!n) return;
+      r.nimp=true; r._sugSave=r.sug; r._valorSave=r.valor; r.sug=0; r.valor=0; r.mesesCompra=null;
+      r.flags=(r.flags?r.flags+' ':'')+`🚫 NÃO IMPORTAR MAIS (${n.por}${n.em?' · '+new Date(n.em).toLocaleDateString('pt-BR'):''})`;
+    });
     // 💸 MARKUP VAREJO vs distribuição do grupo: só alerta quem estamos COMPRANDO (sug>0)
     { const mks=rows.map(r=>r.mk).filter(m=>m>0).sort((a,b)=>a-b);
       const medMk=mks.length?mks[Math.floor(mks.length/2)]:null;
@@ -2467,7 +2363,7 @@ function desenhaPedido(){
       <td>${nf.format(S(r=>r.legado))}</td><td></td><td></td><td></td>
       <td>${rf.format(S(r=>r.valor))}</td><td></td></tr>`; })()}
     ${ordenado.map(r=>`<tr${r.sug>0?'':' style="opacity:.6"'}>
-      <td style="text-align:left;white-space:nowrap;position:sticky;left:0;background:var(--surface);z-index:2" title="${esc(r.desc)}${r.volt?' · '+esc(r.volt):''}${r.amper?' · '+esc(r.amper):''}${r.capac?' · '+esc(r.capac):''}${r.ean?' · EAN '+esc(r.ean):''}"><b>${esc(r.cod)}</b><br><span class="gr" style="font-size:10.5px">${esc(r.desc.slice(0,34))}</span></td>
+      <td style="text-align:left;white-space:nowrap;position:sticky;left:0;background:var(--surface);z-index:2" title="${esc(r.desc)}${r.volt?' · '+esc(r.volt):''}${r.amper?' · '+esc(r.amper):''}${r.capac?' · '+esc(r.capac):''}${r.ean?' · EAN '+esc(r.ean):''}"><b>${esc(r.cod)}</b> ${r.nimp?`<span style="background:var(--crit-soft);color:var(--crit);padding:1px 7px;border-radius:9px;font-size:10px;font-weight:800">🚫 NÃO IMPORTAR</span> <span class="pedNimp" data-cod="${esc(r.cod)}" title="voltar a importar" style="cursor:pointer;color:var(--warn);font-weight:700">↩</span>`:`<span class="pedNimp" data-cod="${esc(r.cod)}" title="marcar NÃO IMPORTAR MAIS — fica gravado p/ todos e sai do pedido de importação" style="cursor:pointer;opacity:.45">🚫</span>`}<br><span class="gr" style="font-size:10.5px">${esc(r.desc.slice(0,34))}</span></td>
       <td><span style="color:${corP[r.perfil]||'var(--ink)'};font-weight:700;font-size:11px">${r.perfil}</span></td>
       <td style="${r.idade!=null&&r.idade<1?'color:var(--warn);font-weight:700':''}">${r.idade!=null?(r.idade<1?'NOVO '+Math.round(r.idade*12)+'m':nf1.format(r.idade)+'a'):'—'}</td>
       ${r.serie6.map((v,i2)=>{ const l=r.serie6L?.[i2]||0;
@@ -2494,6 +2390,26 @@ function desenhaPedido(){
 }
 
 function ligaPedidoSaida(){
+  document.querySelectorAll('.pedNimp').forEach(el=>el.onclick=async e=>{ e.stopPropagation();
+    const cod=el.dataset.cod, r=(st.pedRows||[]).find(x=>x.cod===cod); if(!r) return;
+    if(!r.nimp){
+      if(!confirm(`Marcar ${cod} como NÃO IMPORTAR MAIS?\nFica gravado para todos e sai do pedido de compra (reversível pelo ↩).`)) return;
+      let em='?'; try{ em=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e2){}
+      const {error}=await sb.from('pedido_nao_importar').upsert({cod, marcado_por:em, marcado_em:new Date().toISOString()});
+      if(error){ alert('Erro: '+error.message); return; }
+      r.nimp=true; r._sugSave=r.sug; r._valorSave=r.valor; r.sug=0; r.valor=0; r.mesesCompra=null;
+      r.flags=(r.flags?r.flags+' ':'')+`🚫 NÃO IMPORTAR MAIS (${em.split('@')[0]} · ${new Date().toLocaleDateString('pt-BR')})`;
+      (st.pedNimp=st.pedNimp||{})[cod]={por:em.split('@')[0]};
+    }else{
+      const {error}=await sb.from('pedido_nao_importar').delete().eq('cod',cod);
+      if(error){ alert('Erro: '+error.message); return; }
+      r.nimp=false; r.sug=r._sugSave||0; r.valor=r._valorSave||null;
+      r.mesesCompra=(r.base>0&&r.sug>0)?r.sug/r.base:null;
+      r.flags=(r.flags||'').replace(/ ?🚫 NÃO IMPORTAR MAIS \([^)]*\)/,'');
+      delete st.pedNimp[cod];
+    }
+    desenhaPedido();
+  });
   const pf=$('#pedPerfilF');
   if(pf) pf.onchange=e=>{ st.pedPerfilF=e.target.value; desenhaPedido(); };
   const z=$('#pedSoZero');
