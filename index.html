@@ -4113,7 +4113,7 @@ function sparkVg(pts, cor, fmt, mark){
     <circle cx="${x(pts.length-1).toFixed(1)}" cy="${y(pts[pts.length-1].val).toFixed(1)}" r="3" fill="${cor}"/></svg>`;
 }
 
-function gaugeMon(pMc,pAds,corMc,trilha){
+function gaugeMon(pMc,pAds,pClq,corMc,trilha){
   const W=200,H=180,cx=100,cy=92,R=70;
   // escala espichada: 0% às 7h · 100% às 12h · 200% às 5h (1,5° por ponto percentual)
   const ang=p=>Math.max(-160,Math.min(160,(p-100)*1.5));
@@ -4132,13 +4132,14 @@ function gaugeMon(pMc,pAds,corMc,trilha){
   const needle=(p,len,cor,w,op)=>{ if(p==null) return ''; const [x,y]=pt(ang(p),len);
     return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="${cor}" stroke-width="${w}" stroke-linecap="round"${op?` stroke-opacity="${op}"`:''}/>`; };
   const rastro=(trilha||[]).map(t=>
-    needle(t.pAds,42,'var(--accent)',2.4,t.op)+needle(t.pMc,57,corMc,2.8,t.op)).join('');
+    needle(t.pAds,40,'var(--accent)',2.4,t.op)+needle(t.pClq,50,'var(--ch1)',2.4,t.op)+needle(t.pMc,60,corMc,2.8,t.op)).join('');
   return `<svg viewBox="0 0 ${W} ${H}" style="width:min(250px,100%);height:auto">
     <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--hair)" stroke-width="2.4"/>
     ${g}
     ${rastro}
-    ${needle(pAds,46,'var(--accent)',3.6)}
-    ${needle(pMc,62,corMc,4.4)}
+    ${needle(pAds,44,'var(--accent)',3.6)}
+    ${needle(pClq,54,'var(--ch1)',3.2)}
+    ${needle(pMc,64,corMc,4.4)}
     <circle cx="${cx}" cy="${cy}" r="5" fill="var(--ink)"/>
   </svg>`;
 }
@@ -4243,7 +4244,7 @@ async function renderGlobal(){
   const MONG={BNOT:'Baterias',FONTES:'Fontes',LCD:'Telas',TECL:'Teclados'};
   const GRM=['BNOT','FONTES','LCD','TECL'];
   // ads dos relógios = investimento pelo NOME das campanhas (visão da categoria: Shopping+P.Max+Search+Display…)
-  const MGm={}; (st.mon||[]).forEach(r=>{ (MGm[r.grupo]=MGm[r.grupo]||{})[r.data]={mc:+r.mc||0,ads:+(r.ads_nome??r.ads)||0}; });
+  const MGm={}; (st.mon||[]).forEach(r=>{ (MGm[r.grupo]=MGm[r.grupo]||{})[r.data]={mc:+r.mc||0,ads:+(r.ads_nome??r.ads)||0,clq:+r.cliques||0}; });
   const hojeIm=new Date().toLocaleDateString('sv-SE');
   const segNow=(()=>{ const x=new Date(); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x.toLocaleDateString('sv-SE'); })();
   const mesSem=s=>{ const q=new Date(s+'T12:00:00'); q.setDate(q.getDate()+3); return q.toLocaleDateString('sv-SE').slice(0,7); };
@@ -4258,77 +4259,84 @@ async function renderGlobal(){
     for(let i2=1;i2<=k;i2++){ const d=new Date(y,m-1-i2,1,12); out.push(d.toLocaleDateString('sv-SE').slice(0,7)); } return out; };
   const m12sem=mesesAntes(mesDaSem,12), m12mes=mesesAntes(mesKey,12);
   const benchSem=g=>{ const S=MGm[g]||{};
-    const oM=Array(7).fill(0), oA=Array(7).fill(0), oN=Array(7).fill(0);
-    let tM=0,tA=0,n=0;
+    const oM=Array(7).fill(0), oA=Array(7).fill(0), oC=Array(7).fill(0), oN=Array(7).fill(0);
+    let tM=0,tA=0,tC=0,n=0;
     for(const mes of m12sem){ const s0=segDoMesN(mes,nAtual); if(!s0) continue;
-      let wM=0,wA=0,tem=false;
+      let wM=0,wA=0,wC=0,tem=false;
       for(let o=0;o<7;o++){ const d=new Date(s0+'T12:00:00'); d.setDate(d.getDate()+o); const iso=d.toLocaleDateString('sv-SE');
-        const v=S[iso]; if(v){ tem=true; wM+=v.mc; wA+=v.ads; oM[o]+=v.mc; oA[o]+=v.ads; oN[o]++; } }
-      if(tem){ tM+=wM; tA+=wA; n++; } }
+        const v=S[iso]; if(v){ tem=true; wM+=v.mc; wA+=v.ads; wC+=v.clq||0; oM[o]+=v.mc; oA[o]+=v.ads; oC[o]+=v.clq||0; oN[o]++; } }
+      if(tem){ tM+=wM; tA+=wA; tC+=wC; n++; } }
     if(!n) return null;
-    return {mc:tM/n, ads:tA/n, oM:oM.map((v,i2)=>oN[i2]?v/oN[i2]:0), oA:oA.map((v,i2)=>oN[i2]?v/oN[i2]:0)}; };
+    return {mc:tM/n, ads:tA/n, clq:tC/n, oM:oM.map((v,i2)=>oN[i2]?v/oN[i2]:0), oA:oA.map((v,i2)=>oN[i2]?v/oN[i2]:0), oC:oC.map((v,i2)=>oN[i2]?v/oN[i2]:0)}; };
   const projSem=(g,b,corte)=>{ const S=MGm[g]||{};
-    let rM=0,rA=0,eM=0,eA=0,dias=0;
+    let rM=0,rA=0,rC=0,eM=0,eA=0,eC=0,dias=0;
     for(let o=0;o<7;o++){ const d=new Date(segNow+'T12:00:00'); d.setDate(d.getDate()+o);
       const iso=d.toLocaleDateString('sv-SE'); if(iso>=corte) break;
-      const v=S[iso]||{mc:0,ads:0}; rM+=v.mc; rA+=v.ads; eM+=b.oM[o]; eA+=b.oA[o]; dias++; }
-    const fM=b.mc>0?eM/b.mc:0, fA=b.ads>0?eA/b.ads:0;
-    return {dias, rMc:rM, rAds:rA, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null}; };
-  const benchMes=g=>{ const S=MGm[g]||{};
+      const v=S[iso]||{mc:0,ads:0,clq:0}; rM+=v.mc; rA+=v.ads; rC+=v.clq||0; eM+=b.oM[o]; eA+=b.oA[o]; eC+=b.oC[o]; dias++; }
+    const fM=b.mc>0?eM/b.mc:0, fA=b.ads>0?eA/b.ads:0, fC=b.clq>0?eC/b.clq:0;
+    return {dias, rMc:rM, rAds:rA, rClq:rC, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null, projClq:fC>0?rC/fC:null}; };
+  const benchMes=(g,mesRef=mesKey)=>{ const S=MGm[g]||{}; const m12ref=(mesRef===mesKey)?m12mes:mesesAntes(mesRef,12);
     // perfil por DIA DA SEMANA (sáb/dom quase não faturam; ads de fds ≈ meio dia) aplicado ao calendário real do mês
-    const wM=Array(7).fill(0), wA=Array(7).fill(0), wN=Array(7).fill(0);
-    let tM=0,tA=0,n=0;
-    for(const mes of m12mes){ let mM=0,mA=0,tem=false;
+    const wM=Array(7).fill(0), wA=Array(7).fill(0), wC=Array(7).fill(0), wN=Array(7).fill(0);
+    let tM=0,tA=0,tC=0,n=0;
+    for(const mes of m12ref){ let mM=0,mA=0,mC=0,tem=false;
       const [y,mm]=mes.split('-').map(Number), nd=new Date(y,mm,0).getDate();
       for(let dd=1;dd<=nd;dd++){ const iso=mes+'-'+String(dd).padStart(2,'0'); const v=S[iso];
-        if(v){ tem=true; mM+=v.mc; mA+=v.ads; const dw=new Date(iso+'T12:00:00').getDay(); wM[dw]+=v.mc; wA[dw]+=v.ads; wN[dw]++; } }
-      if(tem){ tM+=mM; tA+=mA; n++; } }
+        if(v){ tem=true; mM+=v.mc; mA+=v.ads; mC+=v.clq||0; const dw=new Date(iso+'T12:00:00').getDay(); wM[dw]+=v.mc; wA[dw]+=v.ads; wC[dw]+=v.clq||0; wN[dw]++; } }
+      if(tem){ tM+=mM; tA+=mA; tC+=mC; n++; } }
     if(!n) return null;
-    return {mc:tM/n, ads:tA/n, wM:wM.map((v,i2)=>wN[i2]?v/wN[i2]:0), wA:wA.map((v,i2)=>wN[i2]?v/wN[i2]:0)}; };
-  const projMes=(g,b,corte)=>{ const S=MGm[g]||{};
-    const [y,m]=mesKey.split('-').map(Number), nd=new Date(y,m,0).getDate();
-    let rM=0,rA=0,eM=0,eA=0,fullM=0,fullA=0,dias=0;
-    for(let dd=1;dd<=nd;dd++){ const iso=mesKey+'-'+String(dd).padStart(2,'0');
+    return {mc:tM/n, ads:tA/n, clq:tC/n, wM:wM.map((v,i2)=>wN[i2]?v/wN[i2]:0), wA:wA.map((v,i2)=>wN[i2]?v/wN[i2]:0), wC:wC.map((v,i2)=>wN[i2]?v/wN[i2]:0)}; };
+  const projMes=(g,b,corte,mesRef=mesKey)=>{ const S=MGm[g]||{};
+    const [y,m]=mesRef.split('-').map(Number), nd=new Date(y,m,0).getDate();
+    let rM=0,rA=0,rC=0,eM=0,eA=0,eC=0,fullM=0,fullA=0,fullC=0,dias=0;
+    for(let dd=1;dd<=nd;dd++){ const iso=mesRef+'-'+String(dd).padStart(2,'0');
       const dw=new Date(iso+'T12:00:00').getDay();
-      fullM+=b.wM[dw]; fullA+=b.wA[dw];
-      if(iso<corte){ const v=S[iso]||{mc:0,ads:0}; rM+=v.mc; rA+=v.ads; eM+=b.wM[dw]; eA+=b.wA[dw]; dias++; } }
-    const fM=fullM>0?eM/fullM:0, fA=fullA>0?eA/fullA:0;
-    return {dias, rMc:rM, rAds:rA, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null}; };
+      fullM+=b.wM[dw]; fullA+=b.wA[dw]; fullC+=b.wC[dw];
+      if(iso<corte){ const v=S[iso]||{mc:0,ads:0,clq:0}; rM+=v.mc; rA+=v.ads; rC+=v.clq||0; eM+=b.wM[dw]; eA+=b.wA[dw]; eC+=b.wC[dw]; dias++; } }
+    const fM=fullM>0?eM/fullM:0, fA=fullA>0?eA/fullA:0, fC=fullC>0?eC/fullC:0;
+    return {dias, rMc:rM, rAds:rA, rClq:rC, projMc:fM>0?rM/fM:null, projAds:fA>0?rA/fA:null, projClq:fC>0?rC/fC:null}; };
   const MET={}; metasArr.forEach(r=>MET[r.tipo+'|'+r.chave+'|'+r.grupo]=r);
-  const cardMon=(tipo,chave,g,b,proj,trilha)=>{
+  const cardMon=(tipo,chave,g,b,proj,trilha,passado)=>{
     if(!b) return `<div style="border:1px solid var(--hair);border-radius:12px;padding:10px;text-align:center"><b>${MONG[g]}</b><p class="gr">sem histórico</p></div>`;
     const ov=MET[tipo+'|'+chave+'|'+g];
     const metaMc=(ov&&ov.mc_meta!=null)?+ov.mc_meta:Math.round(b.mc);
     const metaAds=(ov&&ov.ads_meta!=null)?+ov.ads_meta:Math.round(b.ads);
+    const metaClq=(ov&&ov.clq_meta!=null)?+ov.clq_meta:Math.round(b.clq||0);
     const pMc=(proj&&proj.projMc!=null&&metaMc>0)?proj.projMc/metaMc*100:null;
     const pAds=(proj&&proj.projAds!=null&&metaAds>0)?proj.projAds/metaAds*100:null;
+    const pClq=(proj&&proj.projClq!=null&&metaClq>0)?proj.projClq/metaClq*100:null;
     const corMc=pMc==null?'var(--muted)':pMc>=100?'var(--good)':pMc>=80?'var(--lar)':'var(--crit)';
     const tr=(trilha||[]).map((p,i2)=>({
       pMc:(p&&p.projMc!=null&&metaMc>0)?p.projMc/metaMc*100:null,
       pAds:(p&&p.projAds!=null&&metaAds>0)?p.projAds/metaAds*100:null,
-      op:i2===0?0.4:0.18 })).filter(t=>t.pMc!=null||t.pAds!=null);
-    const lbl=tipo==='semana'?'na semana':'no mês';
+      pClq:(p&&p.projClq!=null&&metaClq>0)?p.projClq/metaClq*100:null,
+      op:i2===0?0.4:0.18 })).filter(t=>t.pMc!=null||t.pAds!=null||t.pClq!=null);
+    const lbl=passado?'no mês (fechado)':(tipo==='semana'?'na semana':'no mês');
     const temDia=proj&&proj.dias>0;
-    return `<div style="border:1px solid var(--hair);border-radius:12px;padding:12px 10px;text-align:center;min-width:0">
-      <b style="font-size:14px" title="analista: ${esc(ANALISTA[g]||MONG[g])}">${MONG[g]}</b>
-      ${gaugeMon(pMc,pAds,corMc,tr)}
+    return `<div style="border:1px ${passado?'dashed var(--muted)':'solid var(--hair)'};border-radius:12px;padding:12px 10px;text-align:center;min-width:0${passado?';filter:saturate(.45) opacity(.88)':''}">
+      <b style="font-size:14px" title="analista: ${esc(ANALISTA[g]||MONG[g])}">${MONG[g]}${passado?' <span class="gr" style="font-size:10px;letter-spacing:.1em">FECHADO</span>':''}</b>
+      ${gaugeMon(pMc,pAds,pClq,corMc,tr)}
       <div style="font-size:11.5px;text-align:left;max-width:250px;margin:6px auto 0;line-height:1.6">
-        <div style="display:flex;justify-content:space-between;gap:8px"><span class="gr">Realizado (${temDia?proj.dias+'d':'0d'}):</span><span style="white-space:nowrap">MC <b>${temDia?nf.format(Math.round(proj.rMc)):'—'}</b> · Ads ${temDia?nf.format(Math.round(proj.rAds)):'—'}</span></div>
-        <div style="display:flex;justify-content:space-between;gap:8px"><span class="gr">Projetado ${lbl}:</span><span style="white-space:nowrap">MC <b>${temDia&&proj.projMc!=null?nf.format(Math.round(proj.projMc)):'—'}</b> · Ads ${temDia&&proj.projAds!=null?nf.format(Math.round(proj.projAds)):'—'}</span></div>
+        <div style="display:flex;justify-content:space-between;gap:8px"><span class="gr">${passado?'Fechou':'Realizado'} (${temDia?proj.dias+'d':'0d'}):</span><span style="white-space:nowrap">MC <b>${temDia?nf.format(Math.round(proj.rMc)):'—'}</b> · Ads ${temDia?nf.format(Math.round(proj.rAds)):'—'} · Clq ${temDia?nf.format(Math.round(proj.rClq||0)):'—'}</span></div>
+        ${passado?'':`<div style="display:flex;justify-content:space-between;gap:8px"><span class="gr">Projetado ${lbl}:</span><span style="white-space:nowrap">MC <b>${temDia&&proj.projMc!=null?nf.format(Math.round(proj.projMc)):'—'}</b> · Ads ${temDia&&proj.projAds!=null?nf.format(Math.round(proj.projAds)):'—'} · Clq ${temDia&&proj.projClq!=null?nf.format(Math.round(proj.projClq)):'—'}</span></div>`}
         <div style="border-top:1px dashed var(--hair);margin:6px 0"></div>
-        <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;flex-wrap:wrap">
-          <span class="gr" title="média das ${tipo==='semana'?'mesmas semanas':'somas mensais'} dos últimos 12 meses: MC ${nf.format(Math.round(b.mc))} · Ads ${nf.format(Math.round(b.ads))}">Meta${ov?' <b style="color:var(--accent)">editada</b>':' (média 12m)'}:</span>
-          <span style="white-space:nowrap">MC<input id="monMc-${tipo}-${g}" type="number" value="${metaMc}" style="width:72px;padding:2px 4px;font-size:11px;text-align:right;margin:0 4px 0 3px">Ads<input id="monAds-${tipo}-${g}" type="number" value="${metaAds}" style="width:60px;padding:2px 4px;font-size:11px;text-align:right;margin:0 4px 0 3px"><button class="btn monSalva" data-tipo="${tipo}" data-chave="${chave}" data-g="${g}" title="salvar o esperado — vale só para ${tipo==='semana'?'esta semana':'este mês'}" style="padding:2px 8px;font-size:11px">💾</button></span>
-        </div>
+        ${passado?`<div style="display:flex;justify-content:space-between;gap:8px"><span class="gr">Meta era${ov?' (editada)':''}:</span><span style="white-space:nowrap">MC ${nf.format(metaMc)} · Ads ${nf.format(metaAds)} · Clq ${nf.format(metaClq)}</span></div>`
+        :`<div style="display:flex;justify-content:space-between;gap:6px;align-items:center;flex-wrap:wrap">
+          <span class="gr" title="média das ${tipo==='semana'?'mesmas semanas':'somas mensais'} dos últimos 12 meses: MC ${nf.format(Math.round(b.mc))} · Ads ${nf.format(Math.round(b.ads))} · Cliques ${nf.format(Math.round(b.clq||0))}">Meta${ov?' <b style="color:var(--accent)">editada</b>':' (média 12m)'}:</span>
+          <span style="white-space:nowrap">MC<input id="monMc-${tipo}-${g}" type="number" value="${metaMc}" style="width:66px;padding:2px 4px;font-size:11px;text-align:right;margin:0 3px 0 3px">Ads<input id="monAds-${tipo}-${g}" type="number" value="${metaAds}" style="width:54px;padding:2px 4px;font-size:11px;text-align:right;margin:0 3px 0 3px">Clq<input id="monClq-${tipo}-${g}" type="number" value="${metaClq}" style="width:54px;padding:2px 4px;font-size:11px;text-align:right;margin:0 3px 0 3px"><button class="btn monSalva" data-tipo="${tipo}" data-chave="${chave}" data-g="${g}" title="salvar o esperado — vale só para ${tipo==='semana'?'esta semana':'este mês'}" style="padding:2px 8px;font-size:11px">💾</button></span>
+        </div>`}
       </div>
-      <div class="gr" style="font-size:10px;letter-spacing:.12em;margin-top:10px">POSIÇÃO HOJE</div>
-      <div style="font-size:18px;margin-top:2px"><b style="color:${corMc}">MC ${pMc!=null?Math.round(pMc)+'%':'—'}</b> · <b style="color:var(--accent)">Ads ${pAds!=null?Math.round(pAds)+'%':'—'}</b></div>
+      <div class="gr" style="font-size:10px;letter-spacing:.12em;margin-top:10px">${passado?'FECHAMENTO':'POSIÇÃO HOJE'}</div>
+      <div style="font-size:17px;margin-top:2px"><b style="color:${corMc}">MC ${pMc!=null?Math.round(pMc)+'%':'—'}</b> · <b style="color:var(--accent)">Ads ${pAds!=null?Math.round(pAds)+'%':'—'}</b> · <b style="color:var(--ch1)">Clq ${pClq!=null?Math.round(pClq)+'%':'—'}</b></div>
     </div>`; };
   const dAtras=k=>{ const d=new Date(); d.setDate(d.getDate()-k); return d.toLocaleDateString('sv-SE'); };
   const cardsMonSem=GRM.map(g=>{ const b=benchSem(g);
     return cardMon('semana',segNow,g,b,b?projSem(g,b,hojeIm):null,b?[projSem(g,b,dAtras(1)),projSem(g,b,dAtras(2))]:[]); }).join('');
   const cardsMonMes=GRM.map(g=>{ const b=benchMes(g);
     return cardMon('mes',mesKey,g,b,b?projMes(g,b,hojeIm):null,b?[projMes(g,b,dAtras(1)),projMes(g,b,dAtras(2))]:[]); }).join('');
+  const mesPrev=mesesAntes(mesKey,1)[0], iniMesAtual=mesKey+'-01';
+  const cardsMonPas=GRM.map(g=>{ const b=benchMes(g,mesPrev);
+    return cardMon('mes',mesPrev,g,b,b?projMes(g,b,iniMesAtual,mesPrev):null,[],true); }).join('');
   const fimSemMon=(()=>{ const d=new Date(segNow+'T12:00:00'); d.setDate(d.getDate()+6); return d.toLocaleDateString('sv-SE'); })();
   const MESNM=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
   $('#conteudo').innerHTML=`
@@ -4363,13 +4371,18 @@ async function renderGlobal(){
     <p class="gr" style="margin:10px 2px 0">Cores nos valores = posição na distribuição das próprias semanas/dias do grupo: <span style="color:var(--good);font-weight:600">verde</span> = terço alto · <span style="color:var(--crit);font-weight:600">vermelho</span> = terço baixo (na BGT, preço alto do concorrente = verde). Semana/dia em curso (*) fica sem cor. Grupos = mesas de analista (mesma consolidação da curva ABC).</p>
     <div class="tablecard" style="margin-top:16px;padding:12px 16px">
       <div class="eyebrow">⏱ Monitor da semana — ${nAtual}ª semana do mês (${segNow.slice(8,10)}/${segNow.slice(5,7)} a ${fimSemMon.slice(8,10)}/${fimSemMon.slice(5,7)})</div>
-      <p class="gr" style="margin:4px 0 10px"><b>12h = 100% do esperado</b> (escala: 7h = 0% · 5h = 200%). Ponteiro <b>comprido</b> = MC · <b>curto azul</b> = Ads. <b>Ads = investimento da categoria pelo NOME das campanhas</b> (Shopping, P.Max, Search, Display… — ativas ou pausadas; institucionais/gerais ficam fora). Esperado = média das ${nAtual}ªs semanas dos <b>últimos 12 meses</b> — ajuste nas caixas e salve (💾 vale só para esta semana; na virada, volta o histórico da semana nova). A projeção pega o realizado dos dias já fechados e divide pela fração que esses dias representam na semana histórica — com 1 dia você já vê a perspectiva. <b>Sábado e domingo já pesam pouco sozinhos</b>: o padrão é por dia da semana (dom quase não fatura; ads de fds ≈ meio dia útil cada). <b>Rastro em degradê</b> = onde o ponteiro estava ontem e anteontem — dá pra ver se a semana está melhorando ou piorando.</p>
+      <p class="gr" style="margin:4px 0 10px"><b>12h = 100% do esperado</b> (escala: 7h = 0% · 5h = 200%). Ponteiro <b>comprido</b> = MC · <b>médio</b> = Cliques · <b>curto azul</b> = Ads — se Ads sobe sem Cliques acompanhar, o CPC encareceu; se Cliques sobem sem MC, o tráfego não está virando margem. <b>Ads = investimento da categoria pelo NOME das campanhas</b> (Shopping, P.Max, Search, Display… — ativas ou pausadas; institucionais/gerais ficam fora). Esperado = média das ${nAtual}ªs semanas dos <b>últimos 12 meses</b> — ajuste nas caixas e salve (💾 vale só para esta semana; na virada, volta o histórico da semana nova). A projeção pega o realizado dos dias já fechados e divide pela fração que esses dias representam na semana histórica — com 1 dia você já vê a perspectiva. <b>Sábado e domingo já pesam pouco sozinhos</b>: o padrão é por dia da semana (dom quase não fatura; ads de fds ≈ meio dia útil cada). <b>Rastro em degradê</b> = onde o ponteiro estava ontem e anteontem — dá pra ver se a semana está melhorando ou piorando.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px">${cardsMonSem}</div>
     </div>
     <div class="tablecard" style="margin-top:14px;padding:12px 16px">
       <div class="eyebrow">⏱ Monitor do mês — ${MESNM[+mesKey.slice(5,7)-1]}/${mesKey.slice(2,4)}</div>
       <p class="gr" style="margin:4px 0 10px">Mesma leitura, agregando os dias do mês que vão passando e <b>projetando o fechamento</b> contra a média dos últimos 12 meses — cada dia pesa pelo seu padrão de dia da semana no calendário real do mês (fds conta quase nada na MC e ~meio dia no Ads). Metas editáveis por mês.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px">${cardsMonMes}</div>
+    </div>
+    <div class="tablecard" style="margin-top:14px;padding:12px 16px;border-style:dashed;background:transparent">
+      <div class="eyebrow" style="color:var(--muted)">🕰 Mês passado — ${MESNM[+mesPrev.slice(5,7)-1]}/${mesPrev.slice(2,4)} (FECHADO)</div>
+      <p class="gr" style="margin:4px 0 10px">O retrato final de ${MESNM[+mesPrev.slice(5,7)-1]} contra a meta da época — a bússola do que corrigir agora: onde o MC fechou abaixo de 100% com Ads/Cliques acima, a verba não virou margem.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px">${cardsMonPas}</div>
     </div>`;
   document.querySelectorAll('.kpi[data-vg]').forEach(b=>b.onclick=()=>{st.vgG=b.dataset.vg;renderGlobal();});
   $('#vgVSem').onclick=()=>{st.vgVista='sem';renderGlobal();};
@@ -4380,7 +4393,8 @@ async function renderGlobal(){
     const ads=parseFloat(document.getElementById('monAds-'+tipo+'-'+g).value)||null;
     let email='?'; try{ email=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e){}
     b.disabled=true; b.textContent='…';
-    const {error}=await sb.from('monitor_metas').upsert({tipo,chave,grupo:g,mc_meta:mc,ads_meta:ads,autor:email,atualizado_em:new Date().toISOString()},{onConflict:'tipo,chave,grupo'});
+    const clq=+($('#monClq-'+tipo+'-'+g)?.value)||null;
+    const {error}=await sb.from('monitor_metas').upsert({tipo,chave,grupo:g,mc_meta:mc,ads_meta:ads,clq_meta:clq,autor:email,atualizado_em:new Date().toISOString()},{onConflict:'tipo,chave,grupo'});
     if(error){ alert('Erro ao salvar: '+error.message); b.disabled=false; b.textContent='💾'; return; }
     renderGlobal();
   });
