@@ -4132,13 +4132,13 @@ function gaugeMon(pMc,pAds,pClq,corMc,trilha){
   const needle=(p,len,cor,w,op)=>{ if(p==null) return ''; const [x,y]=pt(ang(p),len);
     return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="${cor}" stroke-width="${w}" stroke-linecap="round"${op?` stroke-opacity="${op}"`:''}/>`; };
   const rastro=(trilha||[]).map(t=>
-    needle(t.pAds,40,'var(--accent)',2.4,t.op)+needle(t.pClq,50,'var(--ch1)',2.4,t.op)+needle(t.pMc,60,corMc,2.8,t.op)).join('');
+    needle(t.pAds,40,'#a855f7',2.4,t.op)+needle(t.pClq,50,'var(--accent)',2.4,t.op)+needle(t.pMc,60,corMc,2.8,t.op)).join('');
   return `<svg viewBox="0 0 ${W} ${H}" style="width:min(250px,100%);height:auto">
     <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--hair)" stroke-width="2.4"/>
     ${g}
     ${rastro}
-    ${needle(pAds,44,'var(--accent)',3.6)}
-    ${needle(pClq,54,'var(--ch1)',3.2)}
+    ${needle(pAds,44,'#a855f7',3.6)}
+    ${needle(pClq,54,'var(--accent)',3.2)}
     ${needle(pMc,64,corMc,4.4)}
     <circle cx="${cx}" cy="${cy}" r="5" fill="var(--ink)"/>
   </svg>`;
@@ -4327,7 +4327,7 @@ async function renderGlobal(){
         </div>`}
       </div>
       <div class="gr" style="font-size:10px;letter-spacing:.12em;margin-top:10px">${passado?'FECHAMENTO':'POSIÇÃO HOJE'}</div>
-      <div style="font-size:17px;margin-top:2px"><b style="color:${corMc}">MC ${pMc!=null?Math.round(pMc)+'%':'—'}</b> · <b style="color:var(--accent)">Ads ${pAds!=null?Math.round(pAds)+'%':'—'}</b> · <b style="color:var(--ch1)">Clq ${pClq!=null?Math.round(pClq)+'%':'—'}</b></div>
+      <div style="font-size:17px;margin-top:2px"><b style="color:${corMc}">MC ${pMc!=null?Math.round(pMc)+'%':'—'}</b> · <b style="color:#a855f7">Ads ${pAds!=null?Math.round(pAds)+'%':'—'}</b> · <b style="color:var(--accent)">Clq ${pClq!=null?Math.round(pClq)+'%':'—'}</b></div>
     </div>`; };
   const dAtras=k=>{ const d=new Date(); d.setDate(d.getDate()-k); return d.toLocaleDateString('sv-SE'); };
   const cardsMonSem=GRM.map(g=>{ const b=benchSem(g);
@@ -4371,7 +4371,7 @@ async function renderGlobal(){
     <p class="gr" style="margin:10px 2px 0">Cores nos valores = posição na distribuição das próprias semanas/dias do grupo: <span style="color:var(--good);font-weight:600">verde</span> = terço alto · <span style="color:var(--crit);font-weight:600">vermelho</span> = terço baixo (na BGT, preço alto do concorrente = verde). Semana/dia em curso (*) fica sem cor. Grupos = mesas de analista (mesma consolidação da curva ABC).</p>
     <div class="tablecard" style="margin-top:16px;padding:12px 16px">
       <div class="eyebrow">⏱ Monitor da semana — ${nAtual}ª semana do mês (${segNow.slice(8,10)}/${segNow.slice(5,7)} a ${fimSemMon.slice(8,10)}/${fimSemMon.slice(5,7)})</div>
-      <p class="gr" style="margin:4px 0 10px"><b>12h = 100% do esperado</b> (escala: 7h = 0% · 5h = 200%). Ponteiro <b>comprido</b> = MC · <b>médio</b> = Cliques · <b>curto azul</b> = Ads — se Ads sobe sem Cliques acompanhar, o CPC encareceu; se Cliques sobem sem MC, o tráfego não está virando margem. <b>Ads = investimento da categoria pelo NOME das campanhas</b> (Shopping, P.Max, Search, Display… — ativas ou pausadas; institucionais/gerais ficam fora). Esperado = média das ${nAtual}ªs semanas dos <b>últimos 12 meses</b> — ajuste nas caixas e salve (💾 vale só para esta semana; na virada, volta o histórico da semana nova). A projeção pega o realizado dos dias já fechados e divide pela fração que esses dias representam na semana histórica — com 1 dia você já vê a perspectiva. <b>Sábado e domingo já pesam pouco sozinhos</b>: o padrão é por dia da semana (dom quase não fatura; ads de fds ≈ meio dia útil cada). <b>Rastro em degradê</b> = onde o ponteiro estava ontem e anteontem — dá pra ver se a semana está melhorando ou piorando.</p>
+      <p class="gr" style="margin:4px 0 10px"><b>12h = 100% do esperado</b> (escala: 7h = 0% · 5h = 200%). Ponteiro <b>comprido</b> = MC (<span style="color:var(--good)">verde</span>/<span style="color:var(--lar)">amarelo</span>/<span style="color:var(--crit)">vermelho</span> pela posição) · <b style="color:var(--accent)">médio azul</b> = Cliques · <b style="color:#a855f7">curto roxo</b> = Ads — se Ads sobe sem Cliques acompanhar, o CPC encareceu; se Cliques sobem sem MC, o tráfego não está virando margem. <b>Ads = investimento da categoria pelo NOME das campanhas</b> (Shopping, P.Max, Search, Display… — ativas ou pausadas; institucionais/gerais ficam fora). Esperado = média das ${nAtual}ªs semanas dos <b>últimos 12 meses</b> — ajuste nas caixas e salve (💾 vale só para esta semana; na virada, volta o histórico da semana nova). A projeção pega o realizado dos dias já fechados e divide pela fração que esses dias representam na semana histórica — com 1 dia você já vê a perspectiva. <b>Sábado e domingo já pesam pouco sozinhos</b>: o padrão é por dia da semana (dom quase não fatura; ads de fds ≈ meio dia útil cada). <b>Rastro em degradê</b> = onde o ponteiro estava ontem e anteontem — dá pra ver se a semana está melhorando ou piorando.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px">${cardsMonSem}</div>
     </div>
     <div class="tablecard" style="margin-top:14px;padding:12px 16px">
