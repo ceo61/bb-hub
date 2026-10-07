@@ -247,6 +247,7 @@ tr.emcurso td{opacity:.55}
     <a href="#diario" data-pg="diario">📆 Diário</a>
     <a href="#concorrencia" data-pg="concorrencia">🥊 Concorrência</a>
     <a href="#equipe" data-pg="equipe">👥 Responsáveis</a>
+    <a href="#adscentral" data-pg="adscentral">📡 Central de Ads</a>
     <div class="navsec">Gestão</div>
     <a href="#sugestoes" data-pg="sugestoes">🎛️ CTRL ONLINE</a>
     <a href="#aprovacoes" data-pg="aprovacoes">🔍 Aprovações</a>
@@ -537,7 +538,7 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -563,6 +564,7 @@ function navega(pg){
   else if(pg==='diario') renderDiario();
   else if(pg==='concorrencia') renderConcorrencia();
   else if(pg==='equipe') renderEquipe();
+  else if(pg==='adscentral') renderAdsCentral();
   else if(pg==='pedido') renderPedido();
   else if(pg==='pressao') renderPressao();
   else if(pg==='config') renderConfig();
@@ -1689,6 +1691,108 @@ const diCorMC=p=>p==null?'':p<0?'color:var(--crit);font-weight:700':p<30?'color:
 const diCorGap=g=>g==null?'':g<0?'color:var(--good);font-weight:700':g>10?'color:var(--crit);font-weight:600':'';
 const diCorRmc=(v,med)=>{ if(v==null||med==null||med<=0) return ''; if(v>=med*1.3) return 'color:var(--good);font-weight:700'; if(v<=med*0.7) return 'color:var(--crit);font-weight:600'; return ''; };
 const corRmcFix=v=>(v==null||!isFinite(v))?'':v<3?'color:var(--crit);font-weight:600':v<5?'color:var(--lar);font-weight:600':'color:var(--good);font-weight:700';
+
+/* ---------- CENTRAL DE ADS — alvos, orçamento e religação ---------- */
+async function renderAdsCentral(){
+  const out=$('#conteudo'); out.innerHTML='<div class="carregando">Carregando Central de Ads…</div>';
+  try{
+    const d35=(()=>{const d=new Date(); d.setDate(d.getDate()-35); return d.toLocaleDateString('sv-SE');})();
+    const ontem=(()=>{const d=new Date(); d.setDate(d.getDate()-1); return d.toLocaleDateString('sv-SE');})();
+    const [cfg,diario,alvos,ga4o,fato]=await Promise.all([
+      tudo('ads_campanha_cfg',{eq:[]}),
+      tudo('fato_ads_campanha',{mod:q=>q.gte('data',d35).order('data',{ascending:true}).order('camp_id',{ascending:true})}),
+      tudo('ads_alvos',{mod:q=>q.in('status',['proposto','autorizado','erro']).order('id',{ascending:false})}),
+      sb.from('fato_conversao').select('compras').eq('data',ontem).then(r=>(r.data||[]).reduce((s,x)=>s+(+x.compras||0),0)),
+      sb.from('fato_vendas_diaria').select('qtd_b2c').eq('data',ontem).then(r=>(r.data||[]).reduce((s,x)=>s+(+x.qtd_b2c||0),0))]);
+    const hoje=new Date().toLocaleDateString('sv-SE');
+    const d7=(()=>{const d=new Date(); d.setDate(d.getDate()-7); return d.toLocaleDateString('sv-SE');})();
+    const d14=(()=>{const d=new Date(); d.setDate(d.getDate()-14); return d.toLocaleDateString('sv-SE');})();
+    const M={};
+    diario.forEach(r=>{ if(r.data>=hoje) return;
+      const m=M[r.camp_id]=M[r.camp_id]||{c7:0,k7:0,v7:0,n7:0,cP:0,kP:0,vP:0,c30:0,v30:0};
+      m.c30+=+r.custo||0; m.v30+=+r.valor_conv||0;
+      if(r.data>=d7){ m.c7+=+r.custo||0; m.k7+=+r.cliques||0; m.v7+=+r.valor_conv||0; m.n7+=+r.conv||0; }
+      else if(r.data>=d14){ m.cP+=+r.custo||0; m.kP+=+r.cliques||0; m.vP+=+r.valor_conv||0; } });
+    const grpDe=n=>{ const s=(n||'').toLowerCase();
+      if(/c[âa]mera|filmadora/.test(s)) return 'CAM';
+      if(/tecl/.test(s)) return 'TECL'; if(/tela|lcd/.test(s)) return 'LCD';
+      if(/fonte|\bfte\b/.test(s)) return 'FONTES'; if(/bateria|\bbat\b/.test(s)) return 'BNOT'; return '—'; };
+    const camps=cfg.map(c=>({...c, m:M[c.camp_id]||{c7:0,k7:0,v7:0,n7:0,cP:0,kP:0,vP:0,c30:0,v30:0}, grp:grpDe(c.nome)}))
+      .filter(c=>c.m.c30>0 || c.m.c7>0).sort((a,b)=>b.m.c7-a.m.c7);
+    const T7=camps.reduce((s,c)=>({c:s.c+c.m.c7,k:s.k+c.m.k7,v:s.v+c.m.v7}),{c:0,k:0,v:0});
+    const TP=camps.reduce((s,c)=>({c:s.c+c.m.cP,k:s.k+c.m.kP,v:s.v+c.m.vP}),{c:0,k:0,v:0});
+    const medidorOk=ga4o>0&&fato>0&&(ga4o/Math.max(1,fato))>=0.5;
+    const delta=(a,b)=>b>0?` <small style="color:${a>=b?'var(--crit)':'var(--good)'}">${a>=b?'+':''}${nf.format(Math.round((a/b-1)*100))}%</small>`:'';
+    const pend=alvos.filter(a=>a.status==='proposto'), fila=alvos.filter(a=>a.status==='autorizado'), erros=alvos.filter(a=>a.status==='erro');
+    out.innerHTML=`
+      <div class="banner ${medidorOk?'':'ambar'}" style="${medidorOk?'background:var(--good-soft);color:var(--good)':'background:var(--crit-soft);color:var(--crit)'};font-weight:700">
+        ${medidorOk?'🟢 medidor de conversão OK':'🔴 MEDIDOR DE CONVERSÃO QUEBRADO'} — ontem: ${nf.format(ga4o)} compras no GA4 × ${nf.format(fato)} un faturadas no site. ${medidorOk?'':'O purchase do GA4 não está disparando: Smart Bidding às cegas. Não solte orçamento antes de consertar.'}
+      </div>
+      <p style="margin:8px 0 10px;color:var(--muted);font-size:12.5px"><b>Plano da religação</b>: consertar o purchase → no MESMO dia subir os alvos de tROAS (trava o patamar enxuto) → orçamento como teto → soltar aos poucos pela régua do ROAS MC. Proponha alvo/orçamento na linha (analista propõe, admin ✔ autoriza, executor aplica no Google Ads em ≤2 min). tROAS em múltiplo (3.5 = 350%).</p>
+      <div class="toolbar">
+        <span class="kpi" style="padding:7px 14px">Custo 7d: <b>${rf.format(T7.c)}</b>${delta(T7.c,TP.c)}</span>
+        <span class="kpi" style="padding:7px 14px">CPC 7d: <b>${T7.k?rf2.format(T7.c/T7.k):'—'}</b>${TP.k?delta(T7.c/Math.max(1,T7.k),TP.c/Math.max(1,TP.k)):''}</span>
+        <span class="kpi" style="padding:7px 14px">Valor conv 7d: <b>${rf.format(T7.v)}</b>${delta(T7.v,TP.v)}</span>
+        <span class="kpi" style="padding:7px 14px">${camps.length} campanhas ativas</span>
+      </div>
+      ${(pend.length||fila.length||erros.length)?`<div class="banner ambar" style="display:grid;gap:5px;font-weight:400">
+        ${pend.map(a=>`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">⏳ <b>${esc(a.nome)}</b> ${a.troas_novo?'tROAS→'+nf1.format(a.troas_novo):''} ${a.budget_novo?'orç→R$'+nf.format(a.budget_novo)+'/d':''} <span class="gr">(${esc((a.proposto_por||'').split('@')[0])})</span>
+          ${st.admin?`<button class="btn acAut" data-id="${a.id}" style="padding:2px 10px;font-size:11px;background:var(--accent)">✔ autorizar</button>`:'<span class="gr">aguarda ✔</span>'}
+          <button class="btn acDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">✖</button></div>`).join('')}
+        ${fila.map(a=>`<div>⚙️ <b>${esc(a.nome)}</b> autorizado — aplicando em ≤2 min…</div>`).join('')}
+        ${erros.map(a=>`<div>⚠ <b>${esc(a.nome)}</b>: <span class="gr">${esc(a.obs||'')}</span> <button class="btn acDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">limpar</button></div>`).join('')}
+      </div>`:''}
+      <div class="tablecard"><div class="tscroll"><table><thead><tr>
+        <th style="text-align:left">Campanha</th><th>grupo</th><th>canal</th>
+        <th title="tROAS vigente (campanha; grupos com alvo próprio viram sublinhas)">alvo</th>
+        <th title="orçamento diário">orç/dia</th>
+        <th>custo 7d</th><th>CPC 7d</th><th title="conversões 7d (lado Google)">conv 7d</th>
+        <th title="valor de conversão 7d">valor 7d</th>
+        <th title="valor conv ÷ custo">ROAS 7d</th><th>ROAS 30d</th>
+        <th title="propor alvo novo (múltiplo) e/ou orçamento novo — entra na fila do ✔">propor</th></tr></thead><tbody>
+        ${camps.map(c=>{ const m=c.m, cpc=m.k7?m.c7/m.k7:null, cpcP=m.kP?m.cP/m.kP:null;
+          const grupos=(typeof c.grupos==='string'?JSON.parse(c.grupos||'[]'):(c.grupos||[]));
+          const linha=`<tr>
+          <td style="text-align:left;max-width:280px"><span title="${esc(c.nome)}">${esc(c.nome.slice(0,42))}${c.nome.length>42?'…':''}</span></td>
+          <td><span class="gr">${c.grp}</span></td><td><span class="gr" style="font-size:10.5px">${esc((c.canal||'').replace('PERFORMANCE_MAX','P.MAX'))}</span></td>
+          <td style="font-weight:700">${c.troas?nf1.format(c.troas):'—'}</td>
+          <td>${c.budget?rf.format(c.budget):'—'}</td>
+          <td>${rf.format(m.c7)}${delta(m.c7,m.cP)}</td>
+          <td>${cpc!=null?rf2.format(cpc):'—'}${cpcP?delta(cpc,cpcP):''}</td>
+          <td>${nf.format(Math.round(m.n7))}</td><td>${rf.format(m.v7)}</td>
+          <td style="${m.c7>0?corRmcFix(m.v7/m.c7):''}">${m.c7>0?nf1.format(m.v7/m.c7):'—'}</td>
+          <td style="${m.c30>0?corRmcFix(m.v30/m.c30):''}">${m.c30>0?nf1.format(m.v30/m.c30):'—'}</td>
+          <td style="white-space:nowrap"><input type="number" step="0.1" placeholder="tROAS" data-tr="${c.camp_id}" style="width:56px;font-size:11px;padding:2px 4px"><input type="number" step="10" placeholder="R$/d" data-bg="${c.camp_id}" style="width:62px;font-size:11px;padding:2px 4px;margin-left:3px"><button class="btn acProp" data-id="${c.camp_id}" data-nivel="campanha" data-nome="${esc(c.nome.slice(0,60))}" style="padding:2px 9px;font-size:11px;margin-left:3px">→</button></td>
+        </tr>`;
+          const subs=grupos.map(g2=>`<tr style="opacity:.85">
+          <td style="text-align:left;padding-left:26px"><span class="gr">└ grupo:</span> ${esc(g2.nome.slice(0,36))}</td>
+          <td></td><td></td><td style="font-weight:700;color:var(--accent)">${nf1.format(g2.troas)}</td><td colspan="7" class="gr" style="text-align:left;font-size:11px">alvo próprio do grupo (sobrepõe a campanha)</td>
+          <td style="white-space:nowrap"><input type="number" step="0.1" placeholder="tROAS" data-tr="${g2.id}" style="width:56px;font-size:11px;padding:2px 4px"><button class="btn acProp" data-id="${g2.id}" data-nivel="grupo" data-nome="${esc((c.nome+' › '+g2.nome).slice(0,60))}" style="padding:2px 9px;font-size:11px;margin-left:3px">→</button></td>
+        </tr>`).join('');
+          return linha+subs; }).join('')}
+      </tbody></table></div></div>
+      <p class="gr" style="margin:8px 2px 0">ROAS aqui é o do GOOGLE (valor de conversão ÷ custo) — com o medidor quebrado ele fica cego junto; a régua de verdade segue sendo o ROAS MC dos relógios. Dados diários via ETL (D-1); foto de alvos/orçamentos de ${esc(cfg[0]?.atualizado||'—')}.</p>`;
+    document.querySelectorAll('.acProp').forEach(b=>b.onclick=async()=>{
+      const tr=+document.querySelector(`input[data-tr="${b.dataset.id}"]`)?.value||null;
+      const bgEl=document.querySelector(`input[data-bg="${b.dataset.id}"]`);
+      const bg=bgEl?(+bgEl.value||null):null;
+      if(!tr&&!bg){ alert('Preencha tROAS e/ou orçamento.'); return; }
+      let em='?'; try{ em=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e){}
+      const {error}=await sb.from('ads_alvos').insert({nivel:b.dataset.nivel, alvo_id:b.dataset.id, nome:b.dataset.nome, troas_novo:tr, budget_novo:bg, proposto_por:em});
+      if(error){ alert('Erro: '+error.message); return; }
+      renderAdsCentral();
+    });
+    document.querySelectorAll('.acAut').forEach(b=>b.onclick=async()=>{
+      let em='?'; try{ em=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e){}
+      b.disabled=true;
+      await sb.from('ads_alvos').update({status:'autorizado', autorizado_por:em, autorizado_em:new Date().toISOString()}).eq('id',b.dataset.id);
+      renderAdsCentral();
+    });
+    document.querySelectorAll('.acDesc').forEach(b=>b.onclick=async()=>{
+      b.disabled=true; await sb.from('ads_alvos').update({status:'descartado'}).eq('id',b.dataset.id); renderAdsCentral();
+    });
+  }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
+}
 
 /* ---------- RESPONSÁVEIS — quem cuida do quê ---------- */
 async function renderEquipe(){
