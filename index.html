@@ -1693,20 +1693,44 @@ const diCorRmc=(v,med)=>{ if(v==null||med==null||med<=0) return ''; if(v>=med*1.
 const corRmcFix=v=>(v==null||!isFinite(v))?'':v<3?'color:var(--crit);font-weight:600':v<5?'color:var(--lar);font-weight:600':'color:var(--good);font-weight:700';
 
 /* ---------- CENTRAL DE ADS — alvos, orçamento e religação ---------- */
+function fluxoSvg(series,opt){
+  opt=opt||{}; const W=opt.w||460,H=opt.h||150,P={l:46,r:14,t:10,b:18};
+  const vivas=series.filter(s=>s.pts&&s.pts.length);
+  if(!vivas.length) return '<p class="gr" style="margin:20px 0">sem dados ainda — clica 🔄 atualizar agora</p>';
+  const xs=vivas.flatMap(s=>s.pts.map(p=>p.x)), ys=vivas.flatMap(s=>s.pts.map(p=>p.y));
+  const x0=Math.min(...xs),x1=Math.max(...xs),y1=Math.max(1,...ys);
+  const X=v=>P.l+(x1>x0?(v-x0)/(x1-x0):0)*(W-P.l-P.r), Y=v=>H-P.b-(v/y1)*(H-P.t-P.b);
+  const kf=v=>v>=1000?('R$'+(v/1000).toFixed(1).replace('.',',')+'k'):('R$'+Math.round(v));
+  let g='';
+  for(let i=1;i<=3;i++){ const yv=y1*i/3, y=Y(yv);
+    g+=`<line x1="${P.l}" y1="${y}" x2="${W-P.r}" y2="${y}" stroke="var(--muted)" opacity=".25" stroke-dasharray="2 3"/><text x="${P.l-4}" y="${y+3}" text-anchor="end" font-size="9" fill="var(--muted)">${kf(yv)}</text>`; }
+  (opt.vlines||[]).forEach(v=>{ if(v.x>=x0&&v.x<=x1){ const x=X(v.x);
+    g+=`<line x1="${x}" y1="${P.t}" x2="${x}" y2="${H-P.b}" stroke="var(--muted)" stroke-dasharray="3 3" opacity=".5"/><text x="${x+3}" y="${P.t+7}" font-size="8.5" fill="var(--muted)">${v.lbl}</text>`; }});
+  vivas.forEach(s=>{
+    const d=s.pts.map((p,i)=>(i?'L':'M')+X(p.x).toFixed(1)+' '+Y(p.y).toFixed(1)).join(' ');
+    g+=`<path d="${d}" fill="none" stroke="${s.cor}" stroke-width="${s.w||2}" ${s.dash?`stroke-dasharray="${s.dash}"`:''} opacity="${s.op||1}"/>`;
+    s.pts.forEach(p=>{ g+=`<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="5" fill="transparent"><title>${p.lbl}</title></circle>`; });
+    if(s.fim){ const p=s.pts[s.pts.length-1];
+      g+=`<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="3" fill="${s.cor}"/><text x="${Math.min(X(p.x)+4,W-P.r-34)}" y="${Math.max(Y(p.y)-6,10)}" font-size="9.5" font-weight="700" fill="${s.cor}">${s.fim}</text>`; }
+  });
+  (opt.xlabels||[]).forEach(l=>{ if(l.x>=x0&&l.x<=x1) g+=`<text x="${X(l.x).toFixed(1)}" y="${H-4}" font-size="8.5" fill="var(--muted)" text-anchor="middle">${l.t}</text>`; });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${g}</svg>`;
+}
 const adsUrl=(campId,agId)=>{ const p=[]; if(campId)p.push('campaignId='+campId); if(agId)p.push('adGroupId='+agId);
   const o=localStorage.getItem('bbhub-ads-ocid'); if(o)p.push('ocid='+o);
   return 'https://ads.google.com/aw/'+(agId?'adgroups':'overview')+'?'+p.join('&'); };
 async function renderAdsCentral(){
   const out=$('#conteudo'); out.innerHTML='<div class="carregando">Carregando Central de Ads…</div>';
   try{
-    const d35=(()=>{const d=new Date(); d.setDate(d.getDate()-35); return d.toLocaleDateString('sv-SE');})();
+    const d63=(()=>{const d=new Date(); d.setDate(d.getDate()-63); return d.toLocaleDateString('sv-SE');})();
     const ontem=(()=>{const d=new Date(); d.setDate(d.getDate()-1); return d.toLocaleDateString('sv-SE');})();
-    const [cfg,diario,alvos,ga4o,fato]=await Promise.all([
+    const [cfg,diario,alvos,ga4o,fato,fx]=await Promise.all([
       tudo('ads_campanha_cfg',{eq:[]}),
-      tudo('fato_ads_campanha',{mod:q=>q.gte('data',d35).order('data',{ascending:true}).order('camp_id',{ascending:true})}),
+      tudo('fato_ads_campanha',{mod:q=>q.gte('data',d63).order('data',{ascending:true}).order('camp_id',{ascending:true})}),
       tudo('ads_alvos',{mod:q=>q.in('status',['proposto','autorizado','erro']).order('id',{ascending:false})}),
       sb.from('fato_conversao').select('compras').eq('data',ontem).then(r=>(r.data||[]).reduce((s,x)=>s+(+x.compras||0),0)),
-      sb.from('fato_vendas_diaria').select('qtd_b2c').eq('data',ontem).then(r=>(r.data||[]).reduce((s,x)=>s+(+x.qtd_b2c||0),0))]);
+      sb.from('fato_vendas_diaria').select('qtd_b2c').eq('data',ontem).then(r=>(r.data||[]).reduce((s,x)=>s+(+x.qtd_b2c||0),0)),
+      tudo('ads_fluxo_hora',{mod:q=>q.order('data',{ascending:true}).order('hora',{ascending:true})})]);
     const hoje=new Date().toLocaleDateString('sv-SE');
     const d7=(()=>{const d=new Date(); d.setDate(d.getDate()-7); return d.toLocaleDateString('sv-SE');})();
     const d14=(()=>{const d=new Date(); d.setDate(d.getDate()-14); return d.toLocaleDateString('sv-SE');})();
@@ -1730,6 +1754,39 @@ async function renderAdsCentral(){
     const g2c={}; camps.forEach(c=>{ (typeof c.grupos==='string'?JSON.parse(c.grupos||'[]'):(c.grupos||[])).forEach(g2=>{ g2c[g2.id]=c.camp_id; }); });
     const alvoUrl=a=>a.nivel==='grupo'?adsUrl(g2c[a.alvo_id]||'',a.alvo_id):adsUrl(a.alvo_id);
     const LNK='color:inherit;text-decoration:underline dotted;text-underline-offset:3px';
+    /* ---- 💸 fluxo do investimento ---- */
+    const ROXO='#a855f7';
+    const porDia={}; (fx||[]).forEach(r=>{ (porDia[r.data]=porDia[r.data]||{})[r.hora]=+r.custo||0; });
+    const fxAtuIso=(fx||[]).reduce((m,r)=>r.atualizado_em>m?r.atualizado_em:m,'');
+    const fxAtu=fxAtuIso?new Date(fxAtuIso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
+    const diasPrev=Object.keys(porDia).filter(d=>d<hoje).sort().slice(-14);
+    const horasHoje=porDia[hoje]||{};
+    const hMax=Object.keys(horasHoje).length?Math.max(...Object.keys(horasHoje).map(Number)):-1;
+    let accH=0; const serHoje=[];
+    for(let h=0;h<=hMax;h++){ accH+=horasHoje[h]||0; serHoje.push({x:h,y:accH,lbl:h+'h — R$ '+nf.format(Math.round(accH))+' acumulado hoje'}); }
+    let accM=0; const serMed=[];
+    for(let h=0;h<24;h++){ let s=0,n=0; diasPrev.forEach(d=>{ if(porDia[d][h]!=null){ s+=porDia[d][h]; n++; } }); if(n)accM+=s/n; serMed.push({x:h,y:accM,lbl:h+'h — média 14d: R$ '+nf.format(Math.round(accM))}); }
+    const medAgora=hMax>=0?(serMed[Math.min(hMax,23)]||{}).y||0:0;
+    const pctH=(hMax>=0&&medAgora>0)?(accH/medAgora-1)*100:null;
+    const chipHoje=pctH==null?'':` — <b style="color:${pctH>=-10?'var(--good)':'var(--crit)'}">${pctH>=0?'+':''}${nf.format(Math.round(pctH))}%</b> vs média na mesma hora`;
+    const svgA=fluxoSvg([
+      {pts:serMed,cor:'var(--muted)',dash:'4 4',w:1.6,op:.8},
+      {pts:serHoje,cor:ROXO,w:2.4,fim:hMax>=0?('R$'+nf.format(Math.round(accH))):''}],
+      {xlabels:[{x:0,t:'0h'},{x:6,t:'6h'},{x:12,t:'12h'},{x:18,t:'18h'},{x:23,t:'23h'}]});
+    const porData={}; diario.forEach(r=>{ if(r.data<hoje) porData[r.data]=(porData[r.data]||0)+(+r.custo||0); });
+    const datas=[]; for(let i=28;i>=1;i--){ const d=new Date(); d.setDate(d.getDate()-i); datas.push(d.toLocaleDateString('sv-SE')); }
+    const serDia=datas.map((d,i)=>({x:i,y:porData[d]||0,lbl:d.slice(8,10)+'/'+d.slice(5,7)+' — R$ '+nf.format(Math.round(porData[d]||0))}));
+    const serRef=datas.map((d,i)=>{ const wd=new Date(d+'T12:00:00').getDay(); let s=0,n=0;
+      for(let k=29;k<=56;k++){ const p=new Date(); p.setDate(p.getDate()-k); const ps=p.toLocaleDateString('sv-SE');
+        if(p.getDay()===wd && porData[ps]!=null){ s+=porData[ps]; n++; } }
+      return {x:i,y:n?s/n:0,lbl:d.slice(8,10)+'/'+d.slice(5,7)+' — média sem. anteriores: R$ '+nf.format(Math.round(n?s/n:0))}; });
+    const vls=[]; const ix=s=>datas.indexOf(s);
+    if(ix('2026-09-28')>=0) vls.push({x:ix('2026-09-28'),lbl:'site novo'});
+    if(ix('2026-10-07')>=0) vls.push({x:ix('2026-10-07'),lbl:'conserto'});
+    const svgB=fluxoSvg([
+      {pts:serRef,cor:'var(--muted)',dash:'4 4',w:1.6,op:.8},
+      {pts:serDia,cor:ROXO,w:2.4,fim:serDia.length?('R$'+nf.format(Math.round(serDia[serDia.length-1].y))):''}],
+      {vlines:vls,xlabels:[0,7,14,21,27].map(i=>({x:i,t:(datas[i]||'').slice(8,10)+'/'+(datas[i]||'').slice(5,7)}))});
     out.innerHTML=`
       <div class="banner ${medidorOk?'':'ambar'}" style="${medidorOk?'background:var(--good-soft);color:var(--good)':'background:var(--crit-soft);color:var(--crit)'};font-weight:700">
         ${medidorOk?'🟢 medidor de conversão OK':'🔴 MEDIDOR DE CONVERSÃO QUEBRADO'} — ontem: ${nf.format(ga4o)} compras no GA4 × ${nf.format(fato)} un faturadas no site. ${medidorOk?'':'O purchase do GA4 não está disparando: Smart Bidding às cegas. Não solte orçamento antes de consertar.'}
@@ -1748,6 +1805,19 @@ async function renderAdsCentral(){
         ${fila.map(a=>`<div>⚙️ <b>${esc(a.nome)}</b> autorizado — aplicando em ≤2 min…</div>`).join('')}
         ${erros.map(a=>`<div>⚠ <b>${esc(a.nome)}</b>: <span class="gr">${esc(a.obs||'')}</span> <button class="btn acDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">limpar</button></div>`).join('')}
       </div>`:''}
+      <div class="tablecard" style="padding:12px 16px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+          <b>💸 Fluxo do investimento</b>
+          <span class="gr" style="font-size:11.5px">${fxAtu?('foto do Ads às '+fxAtu):'sem foto ainda'}</span>
+          <button class="btn" id="afRef" style="padding:3px 12px;font-size:11.5px">🔄 atualizar agora</button>
+          <span class="gr" id="afMsg" style="font-size:11.5px"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px">
+          <div><div class="gr" style="font-size:11.5px;margin-bottom:2px"><b>HOJE, hora a hora</b> (acumulado, roxo) × média 14d (tracejado)${chipHoje}</div>${svgA}</div>
+          <div><div class="gr" style="font-size:11.5px;margin-bottom:2px"><b>DIA A DIA, 4 semanas</b> (roxo) × média do mesmo dia-da-semana nas 4 semanas anteriores (tracejado)</div>${svgB}</div>
+        </div>
+        <p class="gr" style="margin:6px 0 0;font-size:11px">Hora no fuso da conta (Brasília); o custo intradiário do Google Ads pode atrasar alguns minutos. O 🔄 pede uma foto nova — o executor busca no Ads em até 2 min.</p>
+      </div>
       <div class="tablecard"><div class="tscroll"><table><thead><tr>
         <th style="text-align:left">Campanha</th><th>grupo</th><th>canal</th>
         <th title="tROAS vigente (campanha; grupos com alvo próprio viram sublinhas)">alvo</th>
@@ -1797,6 +1867,25 @@ async function renderAdsCentral(){
     document.querySelectorAll('.acDesc').forEach(b=>b.onclick=async()=>{
       b.disabled=true; await sb.from('ads_alvos').update({status:'descartado'}).eq('id',b.dataset.id); renderAdsCentral();
     });
+    const afB=document.getElementById('afRef');
+    if(afB) afB.onclick=async()=>{
+      const m=document.getElementById('afMsg');
+      afB.disabled=true; m.textContent='pedido enviado — buscando no Ads (até 2 min)…';
+      let em='?'; try{ em=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e){}
+      const antes=fxAtuIso;
+      const {error}=await sb.from('ads_fluxo_req').insert({pedido_por:em});
+      if(error){ m.textContent='erro: '+error.message; afB.disabled=false; return; }
+      const t0=Date.now();
+      const tick=async()=>{
+        if(location.hash.indexOf('adscentral')<0) return;
+        const {data}=await sb.from('ads_fluxo_hora').select('atualizado_em').order('atualizado_em',{ascending:false}).limit(1);
+        const novo=data?.[0]?.atualizado_em||'';
+        if(novo && novo!==antes){ renderAdsCentral(); return; }
+        if(Date.now()-t0>180000){ m.textContent='ainda não voltou — o executor roda a cada 2 min no Mac do CEO; tenta de novo.'; afB.disabled=false; return; }
+        setTimeout(tick,5000);
+      };
+      setTimeout(tick,7000);
+    };
   }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
 }
 
