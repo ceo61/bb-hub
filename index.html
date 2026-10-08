@@ -1744,8 +1744,11 @@ async function renderAdsCentral(){
       if(/c[âa]mera|filmadora/.test(s)) return 'CAM';
       if(/tecl/.test(s)) return 'TECL'; if(/tela|lcd/.test(s)) return 'LCD';
       if(/fonte|\bfte\b/.test(s)) return 'FONTES'; if(/bateria|\bbat\b/.test(s)) return 'BNOT'; return '—'; };
+    const afG=localStorage.getItem('bbhub-afgrp')||'TODOS';
+    const afD=localStorage.getItem('bbhub-afdia')||'hoje';
+    const afCasa=g=>afG==='TODOS'||g===afG||(afG==='OUTROS'&&g==='—');
     const camps=cfg.map(c=>({...c, m:M[c.camp_id]||{c7:0,k7:0,v7:0,n7:0,cP:0,kP:0,vP:0,c30:0,v30:0}, grp:grpDe(c.nome)}))
-      .filter(c=>c.m.c30>0 || c.m.c7>0).sort((a,b)=>b.m.c7-a.m.c7);
+      .filter(c=>c.m.c30>0 || c.m.c7>0).filter(c=>afCasa(c.grp)).sort((a,b)=>b.m.c7-a.m.c7);
     const T7=camps.reduce((s,c)=>({c:s.c+c.m.c7,k:s.k+c.m.k7,v:s.v+c.m.v7}),{c:0,k:0,v:0});
     const TP=camps.reduce((s,c)=>({c:s.c+c.m.cP,k:s.k+c.m.kP,v:s.v+c.m.vP}),{c:0,k:0,v:0});
     const medidorOk=ga4o>0&&fato>0&&(ga4o/Math.max(1,fato))>=0.5;
@@ -1756,14 +1759,16 @@ async function renderAdsCentral(){
     const LNK='color:inherit;text-decoration:underline dotted;text-underline-offset:3px';
     /* ---- 💸 fluxo do investimento ---- */
     const ROXO='#a855f7';
-    const porDia={}; (fx||[]).forEach(r=>{ (porDia[r.data]=porDia[r.data]||{})[r.hora]=+r.custo||0; });
+    const fxF=(fx||[]).filter(r=>afCasa(grpDe(r.nome)));
+    const porDia={}; fxF.forEach(r=>{ const o=porDia[r.data]=porDia[r.data]||{}; o[r.hora]=(o[r.hora]||0)+(+r.custo||0); });
     const fxAtuIso=(fx||[]).reduce((m,r)=>r.atualizado_em>m?r.atualizado_em:m,'');
     const fxAtu=fxAtuIso?new Date(fxAtuIso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
-    const diasPrev=Object.keys(porDia).filter(d=>d<hoje).sort().slice(-14);
-    const horasHoje=porDia[hoje]||{};
+    const diaVis=afD==='ontem'?ontem:hoje;
+    const diasPrev=Object.keys(porDia).filter(d=>d<diaVis).sort().slice(-14);
+    const horasHoje=porDia[diaVis]||{};
     const hMax=Object.keys(horasHoje).length?Math.max(...Object.keys(horasHoje).map(Number)):-1;
     let accH=0; const serHoje=[];
-    for(let h=0;h<=hMax;h++){ accH+=horasHoje[h]||0; serHoje.push({x:h,y:accH,lbl:h+'h — R$ '+nf.format(Math.round(accH))+' acumulado hoje'}); }
+    for(let h=0;h<=hMax;h++){ accH+=horasHoje[h]||0; serHoje.push({x:h,y:accH,lbl:h+'h — R$ '+nf.format(Math.round(accH))+' acumulado '+(afD==='ontem'?'ontem':'hoje')}); }
     let accM=0; const serMed=[];
     for(let h=0;h<24;h++){ let s=0,n=0; diasPrev.forEach(d=>{ if(porDia[d][h]!=null){ s+=porDia[d][h]; n++; } }); if(n)accM+=s/n; serMed.push({x:h,y:accM,lbl:h+'h — média 14d: R$ '+nf.format(Math.round(accM))}); }
     const medAgora=hMax>=0?(serMed[Math.min(hMax,23)]||{}).y||0:0;
@@ -1773,7 +1778,7 @@ async function renderAdsCentral(){
       {pts:serMed,cor:'var(--muted)',dash:'4 4',w:1.6,op:.8},
       {pts:serHoje,cor:ROXO,w:2.4,fim:hMax>=0?('R$'+nf.format(Math.round(accH))):''}],
       {xlabels:[{x:0,t:'0h'},{x:6,t:'6h'},{x:12,t:'12h'},{x:18,t:'18h'},{x:23,t:'23h'}]});
-    const porData={}; diario.forEach(r=>{ if(r.data<hoje) porData[r.data]=(porData[r.data]||0)+(+r.custo||0); });
+    const porData={}; diario.forEach(r=>{ if(r.data<hoje&&afCasa(grpDe(r.nome))) porData[r.data]=(porData[r.data]||0)+(+r.custo||0); });
     const datas=[]; for(let i=28;i>=1;i--){ const d=new Date(); d.setDate(d.getDate()-i); datas.push(d.toLocaleDateString('sv-SE')); }
     const serDia=datas.map((d,i)=>({x:i,y:porData[d]||0,lbl:d.slice(8,10)+'/'+d.slice(5,7)+' — R$ '+nf.format(Math.round(porData[d]||0))}));
     const serRef=datas.map((d,i)=>{ const wd=new Date(d+'T12:00:00').getDay(); let s=0,n=0;
@@ -1809,12 +1814,17 @@ async function renderAdsCentral(){
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
           <b>💸 Fluxo do investimento</b>
           <span class="gr" style="font-size:11.5px">${fxAtu?('foto do Ads às '+fxAtu):'sem foto ainda'}</span>
+          <select id="afGrp" style="font-size:11.5px;padding:3px 6px">${['TODOS','BNOT','FONTES','LCD','TECL','CAM','OUTROS'].map(g=>`<option ${g===afG?'selected':''}>${g}</option>`).join('')}</select>
+          <span style="display:inline-flex;gap:2px">
+            <button class="btn" id="afDiaH" style="padding:3px 10px;font-size:11.5px;${afD!=='ontem'?'background:var(--accent);color:#fff':''}">hoje</button>
+            <button class="btn" id="afDiaO" style="padding:3px 10px;font-size:11.5px;${afD==='ontem'?'background:var(--accent);color:#fff':''}">ontem</button>
+          </span>
           <button class="btn" id="afRef" style="padding:3px 12px;font-size:11.5px">🔄 atualizar agora</button>
           <span class="gr" id="afMsg" style="font-size:11.5px"></span>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px">
-          <div><div class="gr" style="font-size:11.5px;margin-bottom:2px"><b>HOJE, hora a hora</b> (acumulado, roxo) × média 14d (tracejado)${chipHoje}</div>${svgA}</div>
-          <div><div class="gr" style="font-size:11.5px;margin-bottom:2px"><b>DIA A DIA, 4 semanas</b> (roxo) × média do mesmo dia-da-semana nas 4 semanas anteriores (tracejado)</div>${svgB}</div>
+          <div><div class="gr" style="font-size:11.5px;margin-bottom:2px"><b>${afD==='ontem'?'ONTEM':'HOJE'}${afG!=='TODOS'?' · '+afG:''}, hora a hora</b> (acumulado, roxo) × média 14d (tracejado)${chipHoje}</div>${svgA}</div>
+          <div><div class="gr" style="font-size:11.5px;margin-bottom:2px"><b>DIA A DIA${afG!=='TODOS'?' · '+afG:''}, 4 semanas</b> (roxo) × média do mesmo dia-da-semana nas 4 semanas anteriores (tracejado)</div>${svgB}</div>
         </div>
         <p class="gr" style="margin:6px 0 0;font-size:11px">Hora no fuso da conta (Brasília); o custo intradiário do Google Ads pode atrasar alguns minutos. O 🔄 pede uma foto nova — o executor busca no Ads em até 2 min.</p>
       </div>
@@ -1867,6 +1877,11 @@ async function renderAdsCentral(){
     document.querySelectorAll('.acDesc').forEach(b=>b.onclick=async()=>{
       b.disabled=true; await sb.from('ads_alvos').update({status:'descartado'}).eq('id',b.dataset.id); renderAdsCentral();
     });
+    const afGs=document.getElementById('afGrp');
+    if(afGs) afGs.onchange=()=>{ localStorage.setItem('bbhub-afgrp',afGs.value); renderAdsCentral(); };
+    const afBH=document.getElementById('afDiaH'), afBO=document.getElementById('afDiaO');
+    if(afBH) afBH.onclick=()=>{ localStorage.setItem('bbhub-afdia','hoje'); renderAdsCentral(); };
+    if(afBO) afBO.onclick=()=>{ localStorage.setItem('bbhub-afdia','ontem'); renderAdsCentral(); };
     const afB=document.getElementById('afRef');
     if(afB) afB.onclick=async()=>{
       const m=document.getElementById('afMsg');
