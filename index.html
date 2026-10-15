@@ -1769,12 +1769,14 @@ async function renderAdsCentral(){
     const hMax=Object.keys(horasHoje).length?Math.max(...Object.keys(horasHoje).map(Number)):-1;
     let accH=0; const serHoje=[];
     for(let h=0;h<=hMax;h++){ accH+=horasHoje[h]||0; serHoje.push({x:h,y:accH,lbl:h+'h — R$ '+nf.format(Math.round(accH))+' acumulado '+(afD==='ontem'?'ontem':'hoje')}); }
-    const mH={}; (fxm||[]).forEach(r=>{ if(afCasa(grpDe(r.nome))) mH[r.hora]=(mH[r.hora]||0)+(+r.custo_medio||0); });
+    const dowJs=new Date(diaVis+'T12:00:00').getDay(); const dowRef=dowJs===0?7:dowJs;
+    const DOWNOME=['','segundas','terças','quartas','quintas','sextas','sábados','domingos'][dowRef];
+    const mH={}; (fxm||[]).forEach(r=>{ if(r.dow===dowRef&&afCasa(grpDe(r.nome))) mH[r.hora]=(mH[r.hora]||0)+(+r.custo_medio||0); });
     let accM=0; const serMed=[];
-    for(let h=0;h<24;h++){ accM+=mH[h]||0; serMed.push({x:h,y:accM,lbl:h+'h — média 90d: R$ '+nf.format(Math.round(accM))}); }
+    for(let h=0;h<24;h++){ accM+=mH[h]||0; serMed.push({x:h,y:accM,lbl:h+'h — média das '+DOWNOME+' (90d): R$ '+nf.format(Math.round(accM))}); }
     const medAgora=hMax>=0?(serMed[Math.min(hMax,23)]||{}).y||0:0;
     const pctH=(hMax>=0&&medAgora>0)?(accH/medAgora-1)*100:null;
-    const chipHoje=pctH==null?'':` — <b style="color:${pctH>=-10?'var(--good)':'var(--crit)'}">${pctH>=0?'+':''}${nf.format(Math.round(pctH))}%</b> vs média na mesma hora`;
+    const chipHoje=pctH==null?'':` — <b style="color:${pctH>=-10?'var(--good)':'var(--crit)'}">${pctH>=0?'+':''}${nf.format(Math.round(pctH))}%</b> vs ${DOWNOME} na mesma hora`;
     const svgA=fluxoSvg([
       {pts:serMed,cor:'var(--muted)',dash:'4 4',w:1.6,op:.8},
       {pts:serHoje,cor:ROXO,w:2.4,fim:hMax>=0?('R$'+nf.format(Math.round(accH))):''}],
@@ -1824,7 +1826,7 @@ async function renderAdsCentral(){
           <span class="gr" id="afMsg" style="font-size:11.5px"></span>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px">
-          <div><div class="gr" style="font-size:11.5px;margin-bottom:2px"><b>${afD==='ontem'?'ONTEM':'HOJE'}${afG!=='TODOS'?' · '+afG:''}, hora a hora</b> (acumulado, roxo) × média 90d (tracejado)${chipHoje}</div>${svgA}</div>
+          <div><div class="gr" style="font-size:11.5px;margin-bottom:2px"><b>${afD==='ontem'?'ONTEM':'HOJE'}${afG!=='TODOS'?' · '+afG:''}, hora a hora</b> (acumulado, roxo) × média das ${DOWNOME} em 90d (tracejado)${chipHoje}</div>${svgA}</div>
           <div><div class="gr" style="font-size:11.5px;margin-bottom:2px"><b>DIA A DIA${afG!=='TODOS'?' · '+afG:''}, 4 semanas</b> (roxo) × média do mesmo dia-da-semana nas 4 semanas anteriores (tracejado)</div>${svgB}</div>
         </div>
         <p class="gr" style="margin:6px 0 0;font-size:11px">Hora no fuso da conta (Brasília); o custo intradiário do Google Ads pode atrasar alguns minutos. O 🔄 pede uma foto nova — o executor busca no Ads em até 2 min.</p>
