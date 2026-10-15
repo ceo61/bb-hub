@@ -1947,7 +1947,7 @@ async function abreExtratoCamp(cid){
       <td>${nf.format(o.k)}</td><td>${cpc?rf2.format(cpc):'—'}</td>
       <td>${nf.format(Math.round(o.n))}</td><td>${rf.format(o.v)}</td>
       <td style="${rc}">${o.c?nf1.format(roas):'—'}</td></tr>`;
-  }).reverse().join('');
+  }).join('');
   ov.firstElementChild.innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <b style="font-size:16px">${esc(c.nome)}</b>
