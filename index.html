@@ -1825,6 +1825,35 @@ async function renderAdsCentral(){
       return {c,rs,dAtual,roas7,uso,isRef,is7v,score,acao};
     }).filter(x=>x.score>30&&x.rs.med>50).sort((a,b)=>b.score-a.score).slice(0,12);
     const maxScore=Math.max(1,...idx.map(x=>x.score));
+    idx.forEach((x,i)=>x.rank=i+1);
+    const porGrpIdx={}; idx.forEach(x=>{ (porGrpIdx[x.c.grp]=porGrpIdx[x.c.grp]||[]).push(x); });
+    const grpTot={};
+    camps.forEach(c=>{ const rs=refStats[c.camp_id]||{med:0,p90:0};
+      const t=grpTot[c.grp]=grpTot[c.grp]||{c7:0,v7:0,orc:0,med:0,p90:0,alvoW:0};
+      t.c7+=c.m.c7; t.v7+=c.m.v7; t.orc+=c.budget||0; t.med+=rs.med; t.p90+=rs.p90; t.alvoW+=(c.troas||0)*c.m.c7; });
+    const idxTbody=Object.keys(porGrpIdx)
+      .sort((a,b)=>porGrpIdx[b].reduce((s,x)=>s+x.score,0)-porGrpIdx[a].reduce((s,x)=>s+x.score,0))
+      .map(gk=>{
+        const linhasG=porGrpIdx[gk].map(x=>{ const c=x.c, pts=Math.round(x.score/maxScore*100);
+          return `<tr>
+          <td style="font-weight:700">${x.rank}</td>
+          <td style="text-align:left;max-width:250px;white-space:nowrap"><a href="${adsUrl(c.camp_id)}" target="_blank" rel="noopener" style="${LNK}">${esc(c.nome.slice(0,34))}</a> <button class="btn acExt" data-id="${c.camp_id}" style="padding:0 6px;font-size:11px">📊</button></td>
+          <td style="position:relative;min-width:84px"><span style="position:absolute;left:2px;top:20%;bottom:20%;width:${pts}%;background:#a855f72e;border-radius:3px"></span><span style="position:relative;font-weight:700">${pts}</span></td>
+          <td style="white-space:nowrap">${rf.format(x.dAtual)} → ${rf.format(x.rs.med)} · <b>${rf.format(x.rs.p90)}</b></td>
+          <td style="${x.uso>=0.8?'font-weight:700;color:var(--crit)':''}">${c.budget?nf.format(Math.round(x.uso*100))+'%':'—'}</td>
+          <td>${x.roas7?nf1.format(x.roas7):'—'} <span class="gr">(${c.troas?nf1.format(c.troas):'—'})</span></td>
+          <td>${x.isRef?nf.format(Math.round(x.isRef*100))+'%→'+nf.format(Math.round(x.is7v*100))+'%':'—'}</td>
+          <td style="text-align:left;font-size:12px">${x.acao.join(' · ')}</td></tr>`; }).join('');
+        const t=grpTot[gk]||{}; const roasG=t.c7>0?t.v7/t.c7:0, alvoG=t.c7>0?t.alvoW/t.c7:0;
+        const atualD=(t.c7||0)/7, usoG=t.orc?atualD/t.orc:0, gapG=Math.max(0,(t.med||0)-atualD);
+        return linhasG+`<tr style="background:rgba(168,85,247,.09);font-weight:700;border-top:2px solid rgba(168,85,247,.35)">
+          <td></td><td style="text-align:left">Σ ${esc(gk)} <span class="gr" style="font-weight:400;font-size:11px">grupo inteiro</span></td><td></td>
+          <td style="white-space:nowrap">${rf.format(atualD)} → ${rf.format(t.med||0)} · <b>${rf.format(t.p90||0)}</b></td>
+          <td>${t.orc?nf.format(Math.round(usoG*100))+'%':'—'}</td>
+          <td>${roasG?nf1.format(roasG):'—'} <span class="gr" style="font-weight:400">(${alvoG?nf1.format(alvoG):'—'})</span></td>
+          <td></td>
+          <td style="text-align:left;font-size:12px">faltam <b>R$ ${nf.format(Math.round(gapG))}/dia</b> vs setembro</td></tr>`;
+      }).join('');
     out.innerHTML=`
       <div class="banner ${medidorOk?'':'ambar'}" style="${medidorOk?'background:var(--good-soft);color:var(--good)':'background:var(--crit-soft);color:var(--crit)'};font-weight:700">
         ${medidorOk?'🟢 medidor de conversão OK':'🔴 MEDIDOR DE CONVERSÃO QUEBRADO'} — ontem: ${nf.format(ga4o)} compras no GA4 × ${nf.format(fato)} un faturadas no site. ${medidorOk?'':'O purchase do GA4 não está disparando: Smart Bidding às cegas. Não solte orçamento antes de consertar.'}
@@ -1870,16 +1899,7 @@ async function renderAdsCentral(){
           <th>ROAS 7d (alvo)</th>
           <th title="share de impressão Search/Shopping: setembro → últimos 7d">IS set→7d</th>
           <th style="text-align:left">ação sugerida</th></tr></thead><tbody>
-          ${idx.map((x,i)=>{ const c=x.c, pts=Math.round(x.score/maxScore*100);
-            return `<tr>
-            <td style="font-weight:700">${i+1}</td>
-            <td style="text-align:left;max-width:250px;white-space:nowrap"><a href="${adsUrl(c.camp_id)}" target="_blank" rel="noopener" style="${LNK}">${esc(c.nome.slice(0,34))}</a> <button class="btn acExt" data-id="${c.camp_id}" style="padding:0 6px;font-size:11px">📊</button></td>
-            <td style="position:relative;min-width:84px"><span style="position:absolute;left:2px;top:20%;bottom:20%;width:${pts}%;background:#a855f72e;border-radius:3px"></span><span style="position:relative;font-weight:700">${pts}</span></td>
-            <td style="white-space:nowrap">${rf.format(x.dAtual)} → ${rf.format(x.rs.med)} · <b>${rf.format(x.rs.p90)}</b></td>
-            <td style="${x.uso>=0.8?'font-weight:700;color:var(--crit)':''}">${c.budget?nf.format(Math.round(x.uso*100))+'%':'—'}</td>
-            <td>${x.roas7?nf1.format(x.roas7):'—'} <span class="gr">(${c.troas?nf1.format(c.troas):'—'})</span></td>
-            <td>${x.isRef?nf.format(Math.round(x.isRef*100))+'%→'+nf.format(Math.round(x.is7v*100))+'%':'—'}</td>
-            <td style="text-align:left;font-size:12px">${x.acao.join(' · ')}</td></tr>`; }).join('')}
+          ${idxTbody}
         </tbody></table></div>
         <p class="gr" style="margin:6px 14px 10px;font-size:11px">Índice = (p90 de setembro − gasto/dia atual) × qualidade (ROAS÷alvo, teto 1,4) × (1 + share de impressão perdido). Ação "⬇ alvo" propõe ROAS atual × 0,85; "⬆ teto" propõe o p90 de setembro.</p>
       </div>`:''}
