@@ -1796,6 +1796,35 @@ async function renderAdsCentral(){
       {pts:serRef,cor:'var(--muted)',dash:'4 4',w:1.6,op:.8},
       {pts:serDia,cor:ROXO,w:2.4,fim:serDia.length?('R$'+nf.format(Math.round(serDia[serDia.length-1].y))):''}],
       {vlines:vls,xlabels:[0,7,14,21,27].map(i=>({x:i,t:(datas[i]||'').slice(8,10)+'/'+(datas[i]||'').slice(5,7)}))});
+    /* ---- 🎯 índice de abertura (ref = setembro pré-quebra) ---- */
+    const REF_INI='2026-09-01', REF_FIM='2026-09-27';
+    const refStats={};
+    { const pcd={};
+      diario.forEach(r=>{ if(r.data>=REF_INI&&r.data<=REF_FIM){ const o=pcd[r.camp_id]=pcd[r.camp_id]||{}; o[r.data]=(o[r.data]||0)+(+r.custo||0); } });
+      Object.entries(pcd).forEach(([k,dd])=>{ const v=Object.values(dd).sort((a,b)=>a-b);
+        refStats[k]={med:v.reduce((a,b)=>a+b,0)/27, p90:v[Math.max(0,Math.ceil(v.length*0.9)-1)]||0}; });
+    }
+    const idx=camps.map(c=>{
+      const rs=refStats[c.camp_id]||{med:0,p90:0};
+      const dAtual=c.m.c7/7, roas7=c.m.c7>0?c.m.v7/c.m.c7:0;
+      const uso=c.budget?dAtual/c.budget:0;
+      const head=Math.max(0,rs.p90-dAtual);
+      const qual=c.troas?Math.min(roas7/c.troas,1.4):1;
+      const isRef=+c.is_ref||0, is7v=+c.is7||0;
+      const isGap=(isRef&&is7v)?Math.max(0,isRef-is7v):0;
+      const score=head*qual*(1+isGap);
+      let acao=[];
+      const tetoSug=Math.max(c.budget||0,Math.round(rs.p90/10)*10);
+      if(c.troas&&roas7>0&&roas7<c.troas*0.8){ acao=['🔧 eficiência primeiro (ROAS '+nf1.format(roas7)+' ≪ alvo)']; }
+      else {
+        if(c.troas&&roas7>=c.troas*0.95&&uso<0.85) acao.push('⬇ alvo p/ '+nf1.format(Math.max(1,Math.round(roas7*0.85*10)/10)));
+        if(uso>=0.8) acao.push('⬆ teto p/ R$'+nf.format(tetoSug));
+        else if(c.budget&&c.budget<rs.p90*0.95) acao.push('teto preventivo R$'+nf.format(tetoSug));
+        if(!acao.length) acao=['manter'];
+      }
+      return {c,rs,dAtual,roas7,uso,isRef,is7v,score,acao};
+    }).filter(x=>x.score>30&&x.rs.med>50).sort((a,b)=>b.score-a.score).slice(0,12);
+    const maxScore=Math.max(1,...idx.map(x=>x.score));
     out.innerHTML=`
       <div class="banner ${medidorOk?'':'ambar'}" style="${medidorOk?'background:var(--good-soft);color:var(--good)':'background:var(--crit-soft);color:var(--crit)'};font-weight:700">
         ${medidorOk?'🟢 medidor de conversão OK':'🔴 MEDIDOR DE CONVERSÃO QUEBRADO'} — ontem: ${nf.format(ga4o)} compras no GA4 × ${nf.format(fato)} un faturadas no site. ${medidorOk?'':'O purchase do GA4 não está disparando: Smart Bidding às cegas. Não solte orçamento antes de consertar.'}
@@ -1832,6 +1861,28 @@ async function renderAdsCentral(){
         </div>
         <p class="gr" style="margin:6px 0 0;font-size:11px">Hora no fuso da conta (Brasília); o custo intradiário do Google Ads pode atrasar alguns minutos. O 🔄 pede uma foto nova — o executor busca no Ads em até 2 min.</p>
       </div>
+      ${idx.length?`<div class="tablecard" style="margin-bottom:12px">
+        <div style="padding:11px 14px 2px"><b>🎯 Índice de abertura</b> <span class="gr" style="font-size:11.5px">onde reinvestir primeiro — potencial de setembro × qualidade atual × share de impressão perdido · referência: 01-27/09 (pré-quebra)</span></div>
+        <div class="tscroll"><table><thead><tr>
+          <th>#</th><th style="text-align:left">Campanha</th><th>índice</th>
+          <th title="gasto por dia: últimos 7d → setembro (média · p90)">R$/dia agora → set (méd·p90)</th>
+          <th title="gasto/dia ÷ orçamento, últimos 7d">uso teto</th>
+          <th>ROAS 7d (alvo)</th>
+          <th title="share de impressão Search/Shopping: setembro → últimos 7d">IS set→7d</th>
+          <th style="text-align:left">ação sugerida</th></tr></thead><tbody>
+          ${idx.map((x,i)=>{ const c=x.c, pts=Math.round(x.score/maxScore*100);
+            return `<tr>
+            <td style="font-weight:700">${i+1}</td>
+            <td style="text-align:left;max-width:250px;white-space:nowrap"><a href="${adsUrl(c.camp_id)}" target="_blank" rel="noopener" style="${LNK}">${esc(c.nome.slice(0,34))}</a> <button class="btn acExt" data-id="${c.camp_id}" style="padding:0 6px;font-size:11px">📊</button></td>
+            <td style="position:relative;min-width:84px"><span style="position:absolute;left:2px;top:20%;bottom:20%;width:${pts}%;background:#a855f72e;border-radius:3px"></span><span style="position:relative;font-weight:700">${pts}</span></td>
+            <td style="white-space:nowrap">${rf.format(x.dAtual)} → ${rf.format(x.rs.med)} · <b>${rf.format(x.rs.p90)}</b></td>
+            <td style="${x.uso>=0.8?'font-weight:700;color:var(--crit)':''}">${c.budget?nf.format(Math.round(x.uso*100))+'%':'—'}</td>
+            <td>${x.roas7?nf1.format(x.roas7):'—'} <span class="gr">(${c.troas?nf1.format(c.troas):'—'})</span></td>
+            <td>${x.isRef?nf.format(Math.round(x.isRef*100))+'%→'+nf.format(Math.round(x.is7v*100))+'%':'—'}</td>
+            <td style="text-align:left;font-size:12px">${x.acao.join(' · ')}</td></tr>`; }).join('')}
+        </tbody></table></div>
+        <p class="gr" style="margin:6px 14px 10px;font-size:11px">Índice = (p90 de setembro − gasto/dia atual) × qualidade (ROAS÷alvo, teto 1,4) × (1 + share de impressão perdido). Ação "⬇ alvo" propõe ROAS atual × 0,85; "⬆ teto" propõe o p90 de setembro.</p>
+      </div>`:''}
       <div class="tablecard"><div class="tscroll"><table><thead><tr>
         <th style="text-align:left">Campanha</th><th>grupo</th><th>canal</th>
         <th title="tROAS vigente (campanha; grupos com alvo próprio viram sublinhas)">alvo</th>
