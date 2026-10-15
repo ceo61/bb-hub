@@ -1925,11 +1925,20 @@ async function renderAdsCentral(){
           <td style="${m.c30>0?corRmcFix(m.v30/m.c30):''}">${m.c30>0?nf1.format(m.v30/m.c30):'—'}</td>
           <td style="white-space:nowrap"><input type="number" step="0.1" placeholder="tROAS" data-tr="${c.camp_id}" style="width:56px;font-size:11px;padding:2px 4px"><input type="number" step="10" placeholder="R$/d" data-bg="${c.camp_id}" style="width:62px;font-size:11px;padding:2px 4px;margin-left:3px"><button class="btn acProp" data-id="${c.camp_id}" data-nivel="campanha" data-nome="${esc(c.nome.slice(0,60))}" style="padding:2px 9px;font-size:11px;margin-left:3px">→</button></td>
         </tr>`;
-          const subs=grupos.map(g2=>`<tr style="opacity:.85">
+          const subs=grupos.map(g2=>{ const gc=+g2.c7||0, gk=+g2.k7||0, gn=+g2.n7||0, gv=+g2.v7||0;
+          return `<tr style="opacity:.88">
           <td style="text-align:left;padding-left:26px"><span class="gr">└ grupo:</span> <a href="${adsUrl(c.camp_id,g2.id)}" target="_blank" rel="noopener" title="abrir o grupo no Google Ads" style="${LNK}">${esc(g2.nome.slice(0,36))} <span style="font-size:10px;opacity:.55">↗</span></a></td>
-          <td></td><td></td><td style="font-weight:700;color:var(--accent)">${nf1.format(g2.troas)}</td><td colspan="7" class="gr" style="text-align:left;font-size:11px">alvo próprio do grupo (sobrepõe a campanha)</td>
+          <td></td><td></td>
+          <td style="${g2.troas?'font-weight:700;color:var(--accent)':''}">${g2.troas?nf1.format(g2.troas):`<span class="gr" title="sem alvo próprio — herda o da campanha">${c.troas?nf1.format(c.troas)+'↑':'—'}</span>`}</td>
+          <td></td>
+          <td>${gc?rf.format(gc):'<span class="gr">—</span>'}</td>
+          <td>${gk?rf2.format(gc/gk):''}</td>
+          <td>${gn?nf.format(Math.round(gn)):''}</td>
+          <td>${gv?rf.format(gv):''}</td>
+          <td style="${gc>0?corRmcFix(gv/gc):''}">${gc>0?nf1.format(gv/gc):''}</td>
+          <td></td>
           <td style="white-space:nowrap"><input type="number" step="0.1" placeholder="tROAS" data-tr="${g2.id}" style="width:56px;font-size:11px;padding:2px 4px"><button class="btn acProp" data-id="${g2.id}" data-nivel="grupo" data-nome="${esc((c.nome+' › '+g2.nome).slice(0,60))}" style="padding:2px 9px;font-size:11px;margin-left:3px">→</button></td>
-        </tr>`).join('');
+        </tr>`; }).join('');
           return linha+subs; }).join('')}
       </tbody></table></div></div>
       <p class="gr" style="margin:8px 2px 0">ROAS aqui é o do GOOGLE (valor de conversão ÷ custo) — com o medidor quebrado ele fica cego junto; a régua de verdade segue sendo o ROAS MC dos relógios. Dados diários via ETL (D-1); foto de alvos/orçamentos de ${esc(cfg[0]?.atualizado||'—')}.</p>`;
