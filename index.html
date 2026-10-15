@@ -1750,6 +1750,7 @@ async function renderAdsCentral(){
     const afCasa=g=>afG==='TODOS'||g===afG||(afG==='OUTROS'&&g==='—');
     const camps=cfg.map(c=>({...c, m:M[c.camp_id]||{c7:0,k7:0,v7:0,n7:0,cP:0,kP:0,vP:0,c30:0,v30:0}, grp:grpDe(c.nome)}))
       .filter(c=>c.m.c30>0 || c.m.c7>0).filter(c=>afCasa(c.grp)).sort((a,b)=>b.m.c7-a.m.c7);
+    st.adsCamps=camps;
     const T7=camps.reduce((s,c)=>({c:s.c+c.m.c7,k:s.k+c.m.k7,v:s.v+c.m.v7}),{c:0,k:0,v:0});
     const TP=camps.reduce((s,c)=>({c:s.c+c.m.cP,k:s.k+c.m.kP,v:s.v+c.m.vP}),{c:0,k:0,v:0});
     const medidorOk=ga4o>0&&fato>0&&(ga4o/Math.max(1,fato))>=0.5;
@@ -1842,7 +1843,7 @@ async function renderAdsCentral(){
         ${camps.map(c=>{ const m=c.m, cpc=m.k7?m.c7/m.k7:null, cpcP=m.kP?m.cP/m.kP:null;
           const grupos=(typeof c.grupos==='string'?JSON.parse(c.grupos||'[]'):(c.grupos||[]));
           const linha=`<tr>
-          <td style="text-align:left;max-width:280px"><a href="${adsUrl(c.camp_id)}" target="_blank" rel="noopener" title="${esc(c.nome)} — abrir no Google Ads" style="${LNK}">${esc(c.nome.slice(0,42))}${c.nome.length>42?'…':''} <span style="font-size:10px;opacity:.55">↗</span></a></td>
+          <td style="text-align:left;max-width:280px"><a href="${adsUrl(c.camp_id)}" target="_blank" rel="noopener" title="${esc(c.nome)} — abrir no Google Ads" style="${LNK}">${esc(c.nome.slice(0,42))}${c.nome.length>42?'…':''} <span style="font-size:10px;opacity:.55">↗</span></a> <button class="btn acExt" data-id="${c.camp_id}" title="extrato 15 semanas" style="padding:0 7px;font-size:11px;margin-left:2px">📊</button></td>
           <td><span class="gr">${c.grp}</span></td><td><span class="gr" style="font-size:10.5px">${esc((c.canal||'').replace('PERFORMANCE_MAX','P.MAX'))}</span></td>
           <td style="font-weight:700">${c.troas?nf1.format(c.troas):'—'}</td>
           <td>${c.budget?rf.format(c.budget):'—'}</td>
@@ -1880,6 +1881,7 @@ async function renderAdsCentral(){
     document.querySelectorAll('.acDesc').forEach(b=>b.onclick=async()=>{
       b.disabled=true; await sb.from('ads_alvos').update({status:'descartado'}).eq('id',b.dataset.id); renderAdsCentral();
     });
+    document.querySelectorAll('.acExt').forEach(b=>b.onclick=()=>abreExtratoCamp(b.dataset.id));
     const afGs=document.getElementById('afGrp');
     if(afGs) afGs.onchange=()=>{ localStorage.setItem('bbhub-afgrp',afGs.value); renderAdsCentral(); };
     const afBH=document.getElementById('afDiaH'), afBO=document.getElementById('afDiaO');
@@ -1905,6 +1907,62 @@ async function renderAdsCentral(){
       setTimeout(tick,7000);
     };
   }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
+}
+
+async function abreExtratoCamp(cid){
+  // 📊 extrato de 15 semanas da CAMPANHA (pedido do CEO 16/10): decidir se mexe no ORÇAMENTO.
+  const c=(st.adsCamps||[]).find(x=>String(x.camp_id)===String(cid)); if(!c) return;
+  let ov=document.getElementById('mcModal');
+  if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
+  ov.className='aclov';
+  ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
+  if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
+  ov.innerHTML='<div class="aclcard" style="width:min(920px,96vw)"><div class="carregando">Montando extrato da campanha…</div></div>';
+  const dIni=new Date(); dIni.setDate(dIni.getDate()-115);
+  const rows=await tudo('fato_ads_campanha',{mod:q=>q.eq('camp_id',String(cid)).gte('data',dIni.toLocaleDateString('sv-SE')).order('data',{ascending:true})});
+  const wk=s=>{ const dt=new Date(s+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); return dt.toLocaleDateString('sv-SE'); };
+  const wAtual=wk(new Date().toLocaleDateString('sv-SE'));
+  const W={};
+  rows.forEach(r=>{ const w=wk(r.data); const o=W[w]=W[w]||{c:0,k:0,n:0,v:0,dias:0};
+    o.c+=+r.custo||0; o.k+=+r.cliques||0; o.n+=+r.conv||0; o.v+=+r.valor_conv||0; o.dias++; });
+  const semanas=Object.keys(W).sort().slice(-16);
+  const maxC=Math.max(1,...semanas.map(w=>W[w].c));
+  const fech=semanas.filter(w=>w!==wAtual).slice(-4);
+  const utiM=(c.budget&&fech.length)?fech.reduce((a,w)=>a+W[w].c/((W[w].dias||7)*c.budget),0)/fech.length:0;
+  let c4=0,v4=0; fech.forEach(w=>{ c4+=W[w].c; v4+=W[w].v; });
+  const roas4=c4>0?v4/c4:0;
+  let verd,vcor;
+  if(c.budget&&utiM>=0.85&&(!c.troas||roas4>=c.troas)){ verd='🟢 BATE NO TETO ('+Math.round(utiM*100)+'% do orçamento, ROAS 4 sem. '+nf1.format(roas4)+' ≥ alvo) — SUBIR ORÇAMENTO destrava volume'; vcor='var(--good)'; }
+  else if(c.budget&&utiM>=0.85){ verd='🔴 bate no teto ('+Math.round(utiM*100)+'%) mas ROAS 4 sem. '+nf1.format(roas4)+' abaixo do alvo — NÃO subir orçamento; resolver eficiência primeiro'; vcor='var(--crit)'; }
+  else if(utiM<0.5){ verd='🟡 usa só '+Math.round(utiM*100)+'% do teto — orçamento NÃO é o gargalo (a alavanca aqui é o alvo de tROAS)'; vcor='#b45309'; }
+  else { verd='⚪ orçamento confortável ('+Math.round(utiM*100)+'% usado nas últimas 4 semanas) — sem mudança necessária'; vcor='var(--muted)'; }
+  const linhas=semanas.map(w=>{
+    const o=W[w], parc=w===wAtual, cpc=o.k?o.c/o.k:0, roas=o.c?o.v/o.c:0;
+    const pct=c.budget?o.c/((o.dias||7)*c.budget)*100:null;
+    const rc=!c.troas||!o.c?'':roas>=c.troas?'color:var(--good);font-weight:700':roas>=c.troas*0.8?'color:#b45309;font-weight:700':'color:var(--crit);font-weight:700';
+    return `<tr style="${parc?'opacity:.55':''}">
+      <td style="text-align:left;white-space:nowrap">${w.slice(8,10)}/${w.slice(5,7)}${parc?' *':''}</td>
+      <td style="position:relative;min-width:110px"><span style="position:absolute;left:2px;top:18%;bottom:18%;width:${Math.max(2,o.c/maxC*96).toFixed(0)}%;background:#a855f72b;border-radius:3px"></span><span style="position:relative">${rf.format(o.c)}</span></td>
+      <td style="${pct!=null&&pct>=85?'font-weight:700':''}">${pct!=null?nf.format(Math.round(pct))+'%':'—'}</td>
+      <td>${nf.format(o.k)}</td><td>${cpc?rf2.format(cpc):'—'}</td>
+      <td>${nf.format(Math.round(o.n))}</td><td>${rf.format(o.v)}</td>
+      <td style="${rc}">${o.c?nf1.format(roas):'—'}</td></tr>`;
+  }).reverse().join('');
+  ov.firstElementChild.innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <b style="font-size:16px">${esc(c.nome)}</b>
+      <a href="${adsUrl(c.camp_id)}" target="_blank" rel="noopener" title="abrir no Google Ads" style="text-decoration:none">↗</a>
+      <span class="gr" style="font-size:11px">${esc((c.canal||'').replace('PERFORMANCE_MAX','P.MAX'))}</span>
+      <span class="kpi" style="padding:3px 10px;font-size:12px">alvo tROAS: <b>${c.troas?nf1.format(c.troas):'—'}</b></span>
+      <span class="kpi" style="padding:3px 10px;font-size:12px">orçamento: <b>${c.budget?rf.format(c.budget)+'/dia':'—'}</b></span>
+      <button class="btn" style="margin-left:auto;padding:2px 10px" onclick="document.getElementById('mcModal').remove()">✖</button>
+    </div>
+    <p style="margin:10px 0 12px;font-weight:600;color:${vcor}">${verd}</p>
+    <div class="tscroll"><table><thead><tr>
+      <th style="text-align:left">Semana</th><th>Custo</th><th title="gasto médio/dia ÷ orçamento atual">% orç</th>
+      <th>Cliques</th><th>CPC</th><th>Conv</th><th>Valor conv</th><th>ROAS</th></tr></thead>
+      <tbody>${linhas}</tbody></table></div>
+    <p class="gr" style="margin:8px 0 0;font-size:11px">% orç usa o orçamento ATUAL (semanas antigas podem ter tido outro teto). ROAS = valor conv ÷ custo, lado Google; verde ≥ alvo, laranja ≥ 80% do alvo. * = semana em curso.</p>`;
 }
 
 /* ---------- RESPONSÁVEIS — quem cuida do quê ---------- */
