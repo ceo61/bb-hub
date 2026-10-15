@@ -1724,13 +1724,14 @@ async function renderAdsCentral(){
   try{
     const d63=(()=>{const d=new Date(); d.setDate(d.getDate()-63); return d.toLocaleDateString('sv-SE');})();
     const ontem=(()=>{const d=new Date(); d.setDate(d.getDate()-1); return d.toLocaleDateString('sv-SE');})();
-    const [cfg,diario,alvos,ga4o,fato,fx]=await Promise.all([
+    const [cfg,diario,alvos,ga4o,fato,fx,fxm]=await Promise.all([
       tudo('ads_campanha_cfg',{eq:[]}),
       tudo('fato_ads_campanha',{mod:q=>q.gte('data',d63).order('data',{ascending:true}).order('camp_id',{ascending:true})}),
       tudo('ads_alvos',{mod:q=>q.in('status',['proposto','autorizado','erro']).order('id',{ascending:false})}),
       sb.from('fato_conversao').select('compras').eq('data',ontem).then(r=>(r.data||[]).reduce((s,x)=>s+(+x.compras||0),0)),
       sb.from('fato_vendas_diaria').select('qtd_b2c').eq('data',ontem).then(r=>(r.data||[]).reduce((s,x)=>s+(+x.qtd_b2c||0),0)),
-      tudo('ads_fluxo_hora',{mod:q=>q.order('data',{ascending:true}).order('hora',{ascending:true})})]);
+      tudo('ads_fluxo_hora',{mod:q=>q.order('data',{ascending:true}).order('hora',{ascending:true})}),
+      tudo('ads_fluxo_media',{mod:q=>q.order('hora',{ascending:true}).order('camp_id',{ascending:true})})]);
     const hoje=new Date().toLocaleDateString('sv-SE');
     const d7=(()=>{const d=new Date(); d.setDate(d.getDate()-7); return d.toLocaleDateString('sv-SE');})();
     const d14=(()=>{const d=new Date(); d.setDate(d.getDate()-14); return d.toLocaleDateString('sv-SE');})();
@@ -1764,13 +1765,13 @@ async function renderAdsCentral(){
     const fxAtuIso=(fx||[]).reduce((m,r)=>r.atualizado_em>m?r.atualizado_em:m,'');
     const fxAtu=fxAtuIso?new Date(fxAtuIso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
     const diaVis=afD==='ontem'?ontem:hoje;
-    const diasPrev=Object.keys(porDia).filter(d=>d<diaVis).sort().slice(-14);
     const horasHoje=porDia[diaVis]||{};
     const hMax=Object.keys(horasHoje).length?Math.max(...Object.keys(horasHoje).map(Number)):-1;
     let accH=0; const serHoje=[];
     for(let h=0;h<=hMax;h++){ accH+=horasHoje[h]||0; serHoje.push({x:h,y:accH,lbl:h+'h — R$ '+nf.format(Math.round(accH))+' acumulado '+(afD==='ontem'?'ontem':'hoje')}); }
+    const mH={}; (fxm||[]).forEach(r=>{ if(afCasa(grpDe(r.nome))) mH[r.hora]=(mH[r.hora]||0)+(+r.custo_medio||0); });
     let accM=0; const serMed=[];
-    for(let h=0;h<24;h++){ let s=0,n=0; diasPrev.forEach(d=>{ if(porDia[d][h]!=null){ s+=porDia[d][h]; n++; } }); if(n)accM+=s/n; serMed.push({x:h,y:accM,lbl:h+'h — média 14d: R$ '+nf.format(Math.round(accM))}); }
+    for(let h=0;h<24;h++){ accM+=mH[h]||0; serMed.push({x:h,y:accM,lbl:h+'h — média 90d: R$ '+nf.format(Math.round(accM))}); }
     const medAgora=hMax>=0?(serMed[Math.min(hMax,23)]||{}).y||0:0;
     const pctH=(hMax>=0&&medAgora>0)?(accH/medAgora-1)*100:null;
     const chipHoje=pctH==null?'':` — <b style="color:${pctH>=-10?'var(--good)':'var(--crit)'}">${pctH>=0?'+':''}${nf.format(Math.round(pctH))}%</b> vs média na mesma hora`;
@@ -1823,7 +1824,7 @@ async function renderAdsCentral(){
           <span class="gr" id="afMsg" style="font-size:11.5px"></span>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px">
-          <div><div class="gr" style="font-size:11.5px;margin-bottom:2px"><b>${afD==='ontem'?'ONTEM':'HOJE'}${afG!=='TODOS'?' · '+afG:''}, hora a hora</b> (acumulado, roxo) × média 14d (tracejado)${chipHoje}</div>${svgA}</div>
+          <div><div class="gr" style="font-size:11.5px;margin-bottom:2px"><b>${afD==='ontem'?'ONTEM':'HOJE'}${afG!=='TODOS'?' · '+afG:''}, hora a hora</b> (acumulado, roxo) × média 90d (tracejado)${chipHoje}</div>${svgA}</div>
           <div><div class="gr" style="font-size:11.5px;margin-bottom:2px"><b>DIA A DIA${afG!=='TODOS'?' · '+afG:''}, 4 semanas</b> (roxo) × média do mesmo dia-da-semana nas 4 semanas anteriores (tracejado)</div>${svgB}</div>
         </div>
         <p class="gr" style="margin:6px 0 0;font-size:11px">Hora no fuso da conta (Brasília); o custo intradiário do Google Ads pode atrasar alguns minutos. O 🔄 pede uma foto nova — o executor busca no Ads em até 2 min.</p>
