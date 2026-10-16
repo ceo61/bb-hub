@@ -1831,6 +1831,30 @@ async function renderAdsCentral(){
     camps.forEach(c=>{ const rs=refStats[c.camp_id]||{med:0,p90:0};
       const t=grpTot[c.grp]=grpTot[c.grp]||{c7:0,v7:0,orc:0,med:0,p90:0,alvoW:0};
       t.c7+=c.m.c7; t.v7+=c.m.v7; t.orc+=c.budget||0; t.med+=rs.med; t.p90+=rs.p90; t.alvoW+=(c.troas||0)*c.m.c7; });
+    /* ---- 🚨 radar de disparo diário (pedido do CEO 16/10: reavaliar TODO DIA quem disparou e se o tROAS volta pra cima) ---- */
+    const dowOntem=(()=>{const d=new Date(ontem+'T12:00:00').getDay(); return d===0?7:d;})();
+    const medOntem={}; (fxm||[]).forEach(r=>{ if(r.dow===dowOntem) medOntem[r.camp_id]=(medOntem[r.camp_id]||0)+(+r.custo_medio||0); });
+    const ontemCamp={}; diario.forEach(r=>{ if(r.data===ontem){ const o=ontemCamp[r.camp_id]=ontemCamp[r.camp_id]||{c:0,v:0}; o.c+=+r.custo||0; o.v+=+r.valor_conv||0; } });
+    const disparos=[];
+    camps.forEach(c=>{
+      const o=ontemCamp[c.camp_id]; if(!o) return;
+      const med=medOntem[c.camp_id]||0;
+      const estourou=c.budget && o.c>=c.budget*0.92;
+      const disparou=o.c>=150 && med>0 && o.c>=med*1.6;
+      if(!disparou && !estourou) return;
+      const roasO=o.c>0?o.v/o.c:0, roas7=c.m.c7>0?c.m.v7/c.m.c7:0;
+      let verd,cor;
+      if(c.troas && roasO<c.troas*0.9){ verd=`ROAS ontem ${nf1.format(roasO)} < alvo ${nf1.format(c.troas)} — considerar SUBIR alvo p/ ${nf1.format(Math.round(Math.max(roas7,roasO)*0.95*10)/10)}`; cor='var(--crit)'; }
+      else if(!c.troas && roasO<2){ verd=`sem alvo e ROAS ontem ${nf1.format(roasO)} — conferir teto`; cor='var(--crit)'; }
+      else { verd=`ROAS ontem ${nf1.format(roasO)} ≥ alvo — disparo saudável, manter`; cor='var(--good)'; }
+      disparos.push({c,custo:o.c,med,estourou,verd,cor});
+    });
+    disparos.sort((a,b)=>b.custo-a.custo);
+    const radarHtml=disparos.length?`<div class="banner" style="background:var(--accent-soft, rgba(168,85,247,.08));display:grid;gap:4px;font-weight:400">
+      <div><b>🚨 Radar de disparo — ontem (${ontem.slice(8,10)}/${ontem.slice(5,7)})</b> <span class="gr" style="font-size:11.5px">checagem diária: quem gastou ≥1,6× a média do dia-da-semana ou ≥92% do teto</span></div>
+      ${disparos.slice(0,8).map(d=>`<div style="font-size:12.5px">• <a href="${adsUrl(d.c.camp_id)}" target="_blank" rel="noopener" style="${LNK}">${esc(d.c.nome.slice(0,38))}</a> <button class="btn acExt" data-id="${d.c.camp_id}" style="padding:0 6px;font-size:10.5px">📊</button>
+        gastou <b>R$ ${nf.format(Math.round(d.custo))}</b>${d.med?` (${nf1.format(d.custo/d.med)}× a média)`:''}${d.estourou?' · <b style="color:var(--crit)">NO TETO</b>':''} — <span style="color:${d.cor};font-weight:600">${d.verd}</span></div>`).join('')}
+    </div>`:'';
     const idxTbody=Object.keys(porGrpIdx)
       .sort((a,b)=>porGrpIdx[b].reduce((s,x)=>s+x.score,0)-porGrpIdx[a].reduce((s,x)=>s+x.score,0))
       .map(gk=>{
@@ -1874,6 +1898,7 @@ async function renderAdsCentral(){
       <div class="banner ${medidorOk?'':'ambar'}" style="${medidorOk?'background:var(--good-soft);color:var(--good)':'background:var(--crit-soft);color:var(--crit)'};font-weight:700">
         ${medidorOk?'🟢 medidor de conversão OK':'🔴 MEDIDOR DE CONVERSÃO QUEBRADO'} — ontem: ${nf.format(ga4o)} compras no GA4 × ${nf.format(fato)} un faturadas no site. ${medidorOk?'':'O purchase do GA4 não está disparando: Smart Bidding às cegas. Não solte orçamento antes de consertar.'}
       </div>
+      ${radarHtml}
       <p style="margin:8px 0 10px;color:var(--muted);font-size:12.5px"><b>Plano da religação</b>: consertar o purchase → no MESMO dia subir os alvos de tROAS (trava o patamar enxuto) → orçamento como teto → soltar aos poucos pela régua do ROAS MC. Proponha alvo/orçamento na linha (analista propõe, admin ✔ autoriza, executor aplica no Google Ads em ≤2 min). tROAS em múltiplo (3.5 = 350%).</p>
       <div class="toolbar">
         <span class="kpi" style="padding:7px 14px">Custo 7d: <b>${rf.format(T7.c)}</b>${delta(T7.c,TP.c)}</span>
