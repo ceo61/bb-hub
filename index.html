@@ -1856,6 +1856,11 @@ async function renderAdsCentral(){
       custo_ontem:Math.round(d.custo), media_dia_semana:Math.round(d.med||0),
       roas_7d:d.c.m.c7>0?Math.round(d.c.m.v7/d.c.m.c7*100)/100:null,
       sugestao_formula:d.verd,
+      grupo_produto:d.c.grp,
+      vizinhas_do_grupo:camps.filter(x=>x.grp===d.c.grp&&x.camp_id!==d.c.camp_id&&x.m.c7>50).slice(0,8).map(x=>{
+        const vo=ontemCamp[x.camp_id]||{c:0,v:0};
+        return {nome:x.nome, alvo:x.troas||null, custo_ontem:Math.round(vo.c), roas_ontem:vo.c>0?Math.round(vo.v/vo.c*100)/100:null,
+                media_dia_semana:Math.round(medOntem[x.camp_id]||0), roas_7d:x.m.c7>0?Math.round(x.m.v7/x.m.c7*100)/100:null};}),
       serie_28d:diario.filter(r=>r.camp_id===d.c.camp_id&&r.data>=d28).map(r=>({d:r.data.slice(5)+' '+['dom','seg','ter','qua','qui','sex','sáb'][new Date(r.data+'T12:00:00').getDay()],c:Math.round(+r.custo||0),v:Math.round(+r.valor_conv||0),k:Math.round(+r.cliques||0)})),
       hoje_parcial:{ate_hora:Math.max(-1,...(fx||[]).filter(r=>r.data===hoje&&String(r.camp_id)===String(d.c.camp_id)).map(r=>r.hora)),
         custo:Math.round((fx||[]).filter(r=>r.data===hoje&&String(r.camp_id)===String(d.c.camp_id)).reduce((s,r)=>s+(+r.custo||0),0))}
