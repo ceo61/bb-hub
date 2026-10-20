@@ -1844,7 +1844,7 @@ async function renderAdsCentral(){
       if(!disparou && !estourou) return;
       const roasO=o.c>0?o.v/o.c:0, roas7=c.m.c7>0?c.m.v7/c.m.c7:0;
       let verd,cor;
-      if(c.troas && roasO<c.troas*0.9){ verd=`ROAS ontem ${nf1.format(roasO)} < alvo ${nf1.format(c.troas)} — considerar SUBIR alvo p/ ${nf1.format(Math.round(Math.max(roas7,roasO)*0.95*10)/10)}`; cor='var(--crit)'; }
+      if(c.troas && roasO<c.troas*0.9){ const sug=Math.round(Math.max(c.troas*1.2, roas7*1.2)*10)/10; verd=`ROAS ontem ${nf1.format(roasO)} < alvo ${nf1.format(c.troas)} — gastando sem pagar: REAPERTAR alvo p/ ${nf1.format(sug)} (ou cortar o teto)`; cor='var(--crit)'; }
       else if(!c.troas && roasO<2){ verd=`sem alvo e ROAS ontem ${nf1.format(roasO)} — conferir teto`; cor='var(--crit)'; }
       else { verd=`ROAS ontem ${nf1.format(roasO)} ≥ alvo — disparo saudável, manter`; cor='var(--good)'; }
       disparos.push({c,custo:o.c,med,estourou,verd,cor});
