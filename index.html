@@ -1856,7 +1856,7 @@ async function renderAdsCentral(){
       custo_ontem:Math.round(d.custo), media_dia_semana:Math.round(d.med||0),
       roas_7d:d.c.m.c7>0?Math.round(d.c.m.v7/d.c.m.c7*100)/100:null,
       sugestao_formula:d.verd,
-      serie_28d:diario.filter(r=>r.camp_id===d.c.camp_id&&r.data>=d28).map(r=>({d:r.data.slice(5),c:Math.round(+r.custo||0),v:Math.round(+r.valor_conv||0),k:Math.round(+r.cliques||0)})),
+      serie_28d:diario.filter(r=>r.camp_id===d.c.camp_id&&r.data>=d28).map(r=>({d:r.data.slice(5)+' '+['dom','seg','ter','qua','qui','sex','sáb'][new Date(r.data+'T12:00:00').getDay()],c:Math.round(+r.custo||0),v:Math.round(+r.valor_conv||0),k:Math.round(+r.cliques||0)})),
       hoje_parcial:{ate_hora:Math.max(-1,...(fx||[]).filter(r=>r.data===hoje&&String(r.camp_id)===String(d.c.camp_id)).map(r=>r.hora)),
         custo:Math.round((fx||[]).filter(r=>r.data===hoje&&String(r.camp_id)===String(d.c.camp_id)).reduce((s,r)=>s+(+r.custo||0),0))}
     }));
