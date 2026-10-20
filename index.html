@@ -1850,10 +1850,20 @@ async function renderAdsCentral(){
       disparos.push({c,custo:o.c,med,estourou,verd,cor});
     });
     disparos.sort((a,b)=>b.custo-a.custo);
+    const d28=(()=>{const d=new Date(); d.setDate(d.getDate()-28); return d.toLocaleDateString('sv-SE');})();
+    st.radarItens=disparos.slice(0,8).map(d=>({
+      camp_id:String(d.c.camp_id), nome:d.c.nome, canal:d.c.canal, alvo:d.c.troas||null, teto:d.c.budget||null,
+      custo_ontem:Math.round(d.custo), media_dia_semana:Math.round(d.med||0),
+      roas_7d:d.c.m.c7>0?Math.round(d.c.m.v7/d.c.m.c7*100)/100:null,
+      sugestao_formula:d.verd,
+      serie_28d:diario.filter(r=>r.camp_id===d.c.camp_id&&r.data>=d28).map(r=>({d:r.data.slice(5),c:Math.round(+r.custo||0),v:Math.round(+r.valor_conv||0)}))
+    }));
     const radarHtml=disparos.length?`<div class="banner" style="background:var(--accent-soft, rgba(168,85,247,.08));display:grid;gap:4px;font-weight:400">
-      <div><b>🚨 Radar de disparo — ontem (${ontem.slice(8,10)}/${ontem.slice(5,7)})</b> <span class="gr" style="font-size:11.5px">checagem diária: quem gastou ≥1,6× a média do dia-da-semana ou ≥92% do teto</span></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>🚨 Radar de disparo — ontem (${ontem.slice(8,10)}/${ontem.slice(5,7)})</b> <span class="gr" style="font-size:11.5px">quem gastou ≥1,6× a média do dia-da-semana ou ≥92% do teto · sugestões abaixo são FÓRMULA — valide antes de aplicar</span>
+        <button class="btn" id="radarIA" style="margin-left:auto;font-weight:700;padding:5px 14px;background:var(--accent);color:#fff">🧠 Antes de aplicar, valide com a IA</button></div>
       ${disparos.slice(0,8).map(d=>`<div style="font-size:12.5px">• <a href="${adsUrl(d.c.camp_id)}" target="_blank" rel="noopener" style="${LNK}">${esc(d.c.nome.slice(0,38))}</a> <button class="btn acExt" data-id="${d.c.camp_id}" style="padding:0 6px;font-size:10.5px">📊</button>
         gastou <b>R$ ${nf.format(Math.round(d.custo))}</b>${d.med?` (${nf1.format(d.custo/d.med)}× a média)`:''}${d.estourou?' · <b style="color:var(--crit)">NO TETO</b>':''} — <span style="color:${d.cor};font-weight:600">${d.verd}</span></div>`).join('')}
+      <div id="radarIAout"></div>
     </div>`:'';
     const idxTbody=Object.keys(porGrpIdx)
       .sort((a,b)=>porGrpIdx[b].reduce((s,x)=>s+x.score,0)-porGrpIdx[a].reduce((s,x)=>s+x.score,0))
@@ -2003,6 +2013,29 @@ async function renderAdsCentral(){
       b.disabled=true; await sb.from('ads_alvos').update({status:'descartado'}).eq('id',b.dataset.id); renderAdsCentral();
     });
     document.querySelectorAll('.acExt').forEach(b=>b.onclick=()=>abreExtratoCamp(b.dataset.id));
+    const rIA=document.getElementById('radarIA');
+    if(rIA) rIA.onclick=async()=>{
+      const out2=document.getElementById('radarIAout');
+      rIA.disabled=true; rIA.textContent='🧠 analisando a série de cada campanha…';
+      try{
+        const ids=(st.radarItens||[]).map(x=>x.camp_id);
+        const {data:mud}=await sb.from('ads_alvos').select('alvo_id,nome,troas_novo,budget_novo,autorizado_em')
+          .in('alvo_id',ids).eq('status','aplicado').order('autorizado_em',{ascending:false}).limit(30);
+        const itens=(st.radarItens||[]).map(x=>({...x,
+          mudancas_recentes:(mud||[]).filter(m=>m.alvo_id===x.camp_id).slice(0,5)
+            .map(m=>({quando:(m.autorizado_em||'').slice(0,10),oque:m.nome.split('·').slice(1).join('·').trim()||m.nome}))}));
+        const {data,error}=await sb.functions.invoke('valida-ads',{body:{itens}});
+        if(error) throw new Error(error.message||'falha na função');
+        if(data?.erro) throw new Error(data.erro);
+        const COR={concordo:'var(--good)',ajusto:'#b45309',discordo:'var(--crit)'};
+        out2.innerHTML=`<div style="border-top:1px dashed var(--muted);margin-top:6px;padding-top:7px;display:grid;gap:6px">
+          <div><b>🧠 Parecer da IA</b> <span class="gr" style="font-size:11px">análise da série real de 28 dias + mudanças recentes — use ESTA ação, não a da fórmula</span></div>
+          ${(data.analises||[]).map(a=>`<div style="font-size:12.5px">• <b>${esc(a.nome.slice(0,38))}</b> — <span style="color:${COR[a.veredito]||'var(--ink)'};font-weight:700">${a.veredito.toUpperCase()}</span> com a fórmula · <b>AÇÃO: ${esc(a.acao)}</b><br><span class="gr">${esc(a.racional)}</span></div>`).join('')}
+        </div>`;
+        rIA.textContent='🧠 validado — reanalisar';
+      }catch(e){ out2.innerHTML=`<div style="color:var(--crit);font-size:12px">IA indisponível: ${esc(e.message||e)} — se for crédito da API Anthropic, recarregar em console.anthropic.com</div>`; rIA.textContent='🧠 tentar de novo'; }
+      rIA.disabled=false;
+    };
     const afGs=document.getElementById('afGrp');
     if(afGs) afGs.onchange=()=>{ localStorage.setItem('bbhub-afgrp',afGs.value); renderAdsCentral(); };
     const afBH=document.getElementById('afDiaH'), afBO=document.getElementById('afDiaO');
