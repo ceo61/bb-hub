@@ -2940,8 +2940,10 @@ async function renderPressao(){
   };
   if(st.przPar) emAcomp = emAcomp.filter(a=>parecer(a).k===st.przPar);
   const emAcomp0 = Object.values(ativos);
-  const cartOpts=[...new Set(emAcomp0.map(a=>chaveDe(a)).filter(ch=>agDe(ch)))];
-  let emAcomp = st.przCart ? emAcomp0.filter(a=>chaveDe(a)===st.przCart) : emAcomp0;
+  const FAMNOME={BB11:'\ud83d\udd0b BATERIAS',BB20:'\ud83d\udd0c FONTES',KB:'\u2328\ufe0f TECLADOS',LCD:'\ud83d\udda5\ufe0f TELAS',BB32:'\ud83d\udcf7 C\u00c2MERAS'};
+  const famDeChave=ch=>(ch||'').split(':')[0];
+  const famOpts=[...new Set(emAcomp0.map(a=>famDeChave(chaveDe(a))).filter(Boolean))].sort();
+  let emAcomp = st.przCart ? emAcomp0.filter(a=>famDeChave(chaveDe(a))===st.przCart) : emAcomp0;
   let pausados=[]; try{ pausados=await tudo('ads_pausados',{mod:q=>q.neq('status','devolvido').order('id',{ascending:false})}); }catch(e){}
   const _pv=new Set(); pausados=pausados.filter(x=>{ if(_pv.has(x.cod)) return false; _pv.add(x.cod); return true; });
   const pauSet=new Set(pausados.map(x=>x.cod));
@@ -2983,7 +2985,7 @@ async function renderPressao(){
   emAcomp.sort((a,b)=>a.status===b.status?((P[b.cod]?.ads_custo_30d||0)-(P[a.cod]?.ads_custo_30d||0)):(a.status==='montado'?-1:1));
   const blocoAcomp = emAcomp.length ? `
     <details open style="margin:0 0 14px"><summary style="cursor:pointer;font-weight:600">\ud83d\ude80 Apostas em acompanhamento (${emAcomp.length}${st.przCart?' de '+emAcomp0.length:''}) \u2014 a campanha est\u00e1 pagando?</summary>
-    <div style="margin:8px 0 2px;display:flex;gap:8px;flex-wrap:wrap"><select id="przCart" style="font-size:12px;padding:4px 8px"><option value="">todas as carteiras (${emAcomp0.length})</option>${cartOpts.map(ch=>{const g=agDe(ch);const n=emAcomp0.filter(a=>chaveDe(a)===ch).length;return `<option value="${esc(ch)}" ${st.przCart===ch?'selected':''}>${esc(g.rotulo)} \u00b7 ${g.familia} (${n})</option>`;}).join('')}</select>
+    <div style="margin:8px 0 2px;display:flex;gap:8px;flex-wrap:wrap"><select id="przCart" style="font-size:12px;padding:4px 8px"><option value="">todos os grupos (${emAcomp0.length})</option>${famOpts.map(f=>{const n=emAcomp0.filter(a=>famDeChave(chaveDe(a))===f).length;return `<option value="${esc(f)}" ${st.przCart===f?'selected':''}>${FAMNOME[f]||f} (${n})</option>`;}).join('')}</select>
     <select id="przPar" title="filtra pelo meu parecer" style="font-size:12px;padding:4px 8px">${(()=>{const CNT={};emAcomp0.forEach(a=>{const k=parecer(a).k;CNT[k]=(CNT[k]||0)+1;});
       const OPT=[['','todos os pareceres'],['p_hero','✖ sugiro 🟡 só hero'],['p_aberto','✖ sugiro 🟢 aberto'],['desm','🧹 sugiro desmonte'],['ok','✓ concordo'],['obs','~ observar'],['sem','sem dados']];
       return OPT.map(([k,lb])=>(k===''||CNT[k])?`<option value="${k}" ${st.przPar===k?'selected':''}>${lb}${k?' ('+(CNT[k]||0)+')':''}</option>`:'').join('');})()}</select></div>
@@ -3037,7 +3039,7 @@ async function renderPressao(){
   if(!st.przGrupo || !grupos.includes(st.przGrupo)) st.przGrupo=grupos[0];
   st.przSort=st.przSort||'_idx'; st.przDir=st.przDir??true;
 
-  const dt = painel[0]?.atualizado_em ? new Date(painel[0].atualizado_em+'T12:00:00').toLocaleDateString('pt-BR') : '\u2014';
+  const dt = painel[0]?.atualizado_em ? new Date(String(painel[0].atualizado_em).slice(0,10)+'T12:00:00').toLocaleDateString('pt-BR') : '\u2014';
   $('#conteudo').innerHTML=`
     <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">80/20 <b>dentro de cada um dos 6 maiores grupos</b> (receita B2C 28d \u00b7 atualizado ${dt}); o bot\u00e3o <b style="color:var(--lar)">95/05</b> abre a cauda at\u00e9 95% da receita do grupo.
     <b>ROAS fat</b> = faturamento site (Protheus) \u00f7 investimento Ads \u00b7 <b>ROAS MC</b> = margem de contribui\u00e7\u00e3o 002 (BASE BBDI) \u00f7 Ads \u00b7 <b>ROAS Ads</b> = valor de convers\u00e3o \u00f7 custo (todas as campanhas do produto, 30d).
