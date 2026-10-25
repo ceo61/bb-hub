@@ -2147,7 +2147,14 @@ async function renderImportUrg(){
       <td>${+r.transito?nf.format(+r.transito):'<span style="color:var(--crit);font-weight:700">0</span>'}</td>
       <td>${nf.format(Math.round(+r.cobertura_dias||0))}d <span class="gr" style="font-size:10px">${rompe.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span></td>
       <td>${chip(+r.folga_lead)}</td></tr>`; };
-    const tabela=(lista,titulo,cor)=>lista.length?`
+    const ORDEM_BLOCO=['BATERIAS NOTEBOOK','BATERIAS RARAS','TELAS · TECLADOS · FONTES','SSD · MEMÓRIA','BAT. CÂMERA/FILMADORA','SMARTPHONE','OUTROS'];
+    const ICONE={'BATERIAS NOTEBOOK':'🔋','BATERIAS RARAS':'🧪','TELAS · TECLADOS · FONTES':'🖥️','SSD · MEMÓRIA':'💾','BAT. CÂMERA/FILMADORA':'📷','SMARTPHONE':'📱','OUTROS':'📦'};
+    const tabela=(lista,titulo,cor)=>{ if(!lista.length) return '';
+      const porBloco={}; lista.forEach(r=>{ (porBloco[r.bloco||'OUTROS']=porBloco[r.bloco||'OUTROS']||[]).push(r); });
+      const corpo=ORDEM_BLOCO.filter(b=>porBloco[b]).map(b=>
+        `<tr><td colspan="10" style="text-align:left;background:rgba(20,85,123,.08);font-weight:700;padding:7px 12px">${ICONE[b]||''} ${esc(b)} <span class="gr" style="font-weight:400">(${porBloco[b].length})</span>${b==='BATERIAS RARAS'?' <span class="gr" style="font-weight:400;font-size:10.5px">— nunca vieram por Greenway/Bosing (ex.: só Twister)</span>':''}</td></tr>`
+        +porBloco[b].map(linha).join('')).join('');
+      return `
       <div class="tablecard" style="margin-bottom:14px"><div style="padding:11px 14px 2px"><b style="color:${cor}">${titulo} (${lista.length})</b></div>
       <div class="tscroll"><table><thead><tr>
         <th style="text-align:left">Produto</th><th style="text-align:left">Descrição</th><th>Grupo</th><th>Fase</th>
@@ -2155,7 +2162,7 @@ async function renderImportUrg(){
         <th>Estoque</th><th title="qtd pendente em POs abertos">Trânsito</th>
         <th title="(estoque+trânsito) ÷ vel — e a data em que acaba">Cobertura</th>
         <th title="cobertura − lead de importação (110d)">Folga vs lead</th></tr></thead>
-      <tbody>${lista.map(linha).join('')}</tbody></table></div></div>`:'';
+      <tbody>${corpo}</tbody></table></div></div>`; };
     out.innerHTML=`
       <div class="banner ${urg.length?'ambar':''}" style="${urg.length?'background:var(--crit-soft);color:var(--crit)':'background:var(--good-soft);color:var(--good)'};font-weight:700">
         ${urg.length?`🚨 ${urg.length} produtos do 80/20 ROMPEM antes do lead de importação (110 dias) — mesmo contando o que está em trânsito. Precisam entrar no próximo pedido.`:'✓ nenhum produto do 80/20 com folga negativa hoje.'}
