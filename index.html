@@ -258,7 +258,7 @@ tr.emcurso td{opacity:.55}
     <a href="#produtos" data-pg="produtos">📦 Produtos</a>
     <a href="#compras" data-pg="compras">🚢 Compras &amp; Trânsito</a>
     <a href="#pedido" data-pg="pedido">🧮 Pedido de Compra</a>
-    <a href="#importacoes" data-pg="importacoes">🛬 Importações <span class="soon">breve</span></a>
+    <a href="#importacoes" data-pg="importacoes">🚨 Importações urgentes</a>
     <a href="#anuncios" data-pg="anuncios">📈 Anúncios &amp; Conversão <span class="soon">breve</span></a>
     <a href="#decisoes" data-pg="decisoes">💬 Decisões — Chat IA <span class="soon">breve</span></a>
     <div class="spacer"></div>
@@ -538,7 +538,7 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações urgentes — 80/20 rompendo antes do lead', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -565,6 +565,7 @@ function navega(pg){
   else if(pg==='concorrencia') renderConcorrencia();
   else if(pg==='equipe') renderEquipe();
   else if(pg==='adscentral') renderAdsCentral();
+  else if(pg==='importacoes') renderImportUrg();
   else if(pg==='pedido') renderPedido();
   else if(pg==='pressao') renderPressao();
   else if(pg==='config') renderConfig();
@@ -2124,6 +2125,46 @@ async function abreExtratoCamp(cid){
       <th>Cliques</th><th>CPC</th><th>Conv</th><th>Valor conv</th><th>ROAS</th></tr></thead>
       <tbody>${linhas}</tbody></table></div>
     <p class="gr" style="margin:8px 0 0;font-size:11px">% orç usa o orçamento ATUAL (semanas antigas podem ter tido outro teto). ROAS = valor conv ÷ custo, lado Google; verde ≥ alvo, laranja ≥ 80% do alvo. * = semana em curso.</p>`;
+}
+
+async function renderImportUrg(){
+  // 🚨 Importações urgentes (pedido do CEO 25/10/26): produtos do 80/20 cuja COBERTURA
+  // (estoque útil + trânsito ÷ venda/dia) acaba antes do LEAD de importação (110d) — folga negativa = comprar JÁ.
+  const out=$('#conteudo'); out.innerHTML='<div class="carregando">Calculando urgências…</div>';
+  try{
+    const rows=await tudo('ads_pressao_painel',{mod:q=>q.not('folga_lead','is',null).lt('folga_lead',45).order('folga_lead',{ascending:true})});
+    const urg=rows.filter(r=>+r.folga_lead<0), aten=rows.filter(r=>+r.folga_lead>=0);
+    const chip=f=>f<0?`<b style="color:var(--crit)">${nf.format(Math.round(f))}d</b>`:`<b style="color:#b45309">+${nf.format(Math.round(f))}d</b>`;
+    const linha=r=>{ const rompe=new Date(); rompe.setDate(rompe.getDate()+Math.max(0,Math.round(+r.cobertura_dias||0)));
+      return `<tr>
+      <td style="text-align:left;white-space:nowrap"><a href="#painel/${esc(r.cod)}" style="font-weight:700">${esc(r.cod)}</a></td>
+      <td style="text-align:left;max-width:300px"><span class="gr">${esc((r.descricao||'').slice(0,46))}</span></td>
+      <td>${esc(r.grupo||'')}</td>
+      <td>${esc(r.fase||'')}</td>
+      <td>${rf.format(+r.receita_b2c_28d||0)}</td>
+      <td>${nf1.format(+r.vel_dia||0)}</td>
+      <td>${nf.format(+r.estoque||0)}</td>
+      <td>${+r.transito?nf.format(+r.transito):'<span style="color:var(--crit);font-weight:700">0</span>'}</td>
+      <td>${nf.format(Math.round(+r.cobertura_dias||0))}d <span class="gr" style="font-size:10px">${rompe.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span></td>
+      <td>${chip(+r.folga_lead)}</td></tr>`; };
+    const tabela=(lista,titulo,cor)=>lista.length?`
+      <div class="tablecard" style="margin-bottom:14px"><div style="padding:11px 14px 2px"><b style="color:${cor}">${titulo} (${lista.length})</b></div>
+      <div class="tscroll"><table><thead><tr>
+        <th style="text-align:left">Produto</th><th style="text-align:left">Descrição</th><th>Grupo</th><th>Fase</th>
+        <th title="receita B2C 28 dias">Receita 28d</th><th title="venda média por dia (maior entre 28d e 90d)">Vel/dia</th>
+        <th>Estoque</th><th title="qtd pendente em POs abertos">Trânsito</th>
+        <th title="(estoque+trânsito) ÷ vel — e a data em que acaba">Cobertura</th>
+        <th title="cobertura − lead de importação (110d)">Folga vs lead</th></tr></thead>
+      <tbody>${lista.map(linha).join('')}</tbody></table></div></div>`:'';
+    out.innerHTML=`
+      <div class="banner ${urg.length?'ambar':''}" style="${urg.length?'background:var(--crit-soft);color:var(--crit)':'background:var(--good-soft);color:var(--good)'};font-weight:700">
+        ${urg.length?`🚨 ${urg.length} produtos do 80/20 ROMPEM antes do lead de importação (110 dias) — mesmo contando o que está em trânsito. Precisam entrar no próximo pedido.`:'✓ nenhum produto do 80/20 com folga negativa hoje.'}
+      </div>
+      <p class="gr" style="margin:6px 0 12px;font-size:12px">Universo = pareto 95% dos 6 maiores grupos (painel da Pressão, atualizado diariamente). Cobertura = (estoque útil + trânsito) ÷ venda/dia. Folga = cobertura − 110d de lead. Clique no código abre o Painel do produto; o Pedido de Compra continua sendo a conta fina (MOQ, perfil, segurança).</p>
+      ${tabela(urg,'🚨 FOLGA NEGATIVA — comprar JÁ','var(--crit)')}
+      ${tabela(aten,'🟠 Margem apertada (rompe até 45d depois do lead)','#b45309')}
+      <p style="margin:4px 2px"><a href="#pedido" class="btn" style="padding:6px 14px">🧮 abrir o Pedido de Compra</a></p>`;
+  }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
 }
 
 /* ---------- RESPONSÁVEIS — quem cuida do quê ---------- */
