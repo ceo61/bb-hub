@@ -2128,39 +2128,46 @@ async function abreExtratoCamp(cid){
 }
 
 async function renderImportUrg(){
-  // 🚨 Importações urgentes v3 (CEO 25/10, régua ÚNICA): FOLGA = (estoque útil + trânsito) ÷ venda MENSAL, em meses.
-  // folga < 0,5 mês = EMERGÊNCIA de compra; do contrário, tranquilo. (O lead/MOQ ficam no Pedido de Compra.)
-  const out=$('#conteudo'); out.innerHTML='<div class="carregando">Calculando emergências…</div>';
+  // 🚨 Importações urgentes v4 (CEO 25/10): LEAD REAL POR BLOCO (telas 75d · baterias 90 · fontes 100 ·
+  // teclados 110 · ssd/mem 45 · dsc/dv 120). Emergência = cobertura (estoque+trânsito, em dias) < lead do bloco
+  // (rompe antes da reposição chegar). Medidor 📉 = 90/10 com cobertura < METADE do lead do bloco.
+  const out=$('#conteudo'); out.innerHTML='<div class="carregando">Calculando urgências…</div>';
   try{
     const todos=await tudo('ads_pressao_painel',{mod:q=>q.order('cod',{ascending:true})});
-    const LIMIAR=0.5, PARETO_RISCO=0.90, DIAS_MES=30.44;
-    const folgaM=r=>r.cobertura_dias!=null?+r.cobertura_dias/DIAS_MES:null;
+    const LEADS={'BATERIAS NOTEBOOK':90,'BATERIAS RARAS':90,'TELAS':75,'TECLADOS':110,'FONTES':100,
+                 'SSD · MEMÓRIA':45,'BAT. CÂMERA/FILMADORA':120,'SMARTPHONE':90,'OUTROS':90};
+    const PARETO_RISCO=0.90, DIAS_MES=30.44;
     const ORDEM=['BATERIAS NOTEBOOK','BATERIAS RARAS','TELAS','TECLADOS','FONTES','SSD · MEMÓRIA','BAT. CÂMERA/FILMADORA','SMARTPHONE','OUTROS'];
     const ICONE={'BATERIAS NOTEBOOK':'🔋','BATERIAS RARAS':'🧪','TELAS':'🖥️','TECLADOS':'⌨️','FONTES':'🔌','SSD · MEMÓRIA':'💾','BAT. CÂMERA/FILMADORA':'📷','SMARTPHONE':'📱','OUTROS':'📦'};
+    const leadDe=r=>LEADS[r.bloco||'OUTROS']||90;
     const risco={};
-    todos.forEach(r=>{ const b=r.bloco||'OUTROS', fm=folgaM(r);
+    todos.forEach(r=>{ const b=r.bloco||'OUTROS';
       const t=risco[b]=risco[b]||{tot:0,ris:0,n:0};
       if(+r.pareto_grupo<=PARETO_RISCO){ t.tot+=+r.receita_b2c_28d||0;
-        if(fm!=null&&fm<LIMIAR){ t.ris+=+r.receita_b2c_28d||0; t.n++; } } });
-    const emg=todos.filter(r=>{ const fm=folgaM(r); return fm!=null&&fm<LIMIAR; });
-    const linha=r=>{ const fm=folgaM(r); const rompe=new Date(); rompe.setDate(rompe.getDate()+Math.max(0,Math.round(+r.cobertura_dias||0)));
-      return `<tr>
-      <td style="text-align:left;white-space:nowrap"><a href="#painel/${esc(r.cod)}" style="font-weight:700">${esc(r.cod)}</a></td>
-      <td style="text-align:left;max-width:300px"><span class="gr">${esc((r.descricao||'').slice(0,46))}</span></td>
+        if(r.cobertura_dias!=null && +r.cobertura_dias < leadDe(r)/2){ t.ris+=+r.receita_b2c_28d||0; t.n++; } } });
+    const emg=todos.filter(r=>r.cobertura_dias!=null && +r.cobertura_dias < leadDe(r));
+    const linha=r=>{ const cob=+r.cobertura_dias, lead=leadDe(r), gap=Math.round(cob-lead), fm=cob/DIAS_MES;
+      const agudo=cob<lead/2;
+      const rompe=new Date(); rompe.setDate(rompe.getDate()+Math.max(0,Math.round(cob)));
+      return `<tr style="${agudo?'background:rgba(179,55,46,.06)':''}">
+      <td style="text-align:left;white-space:nowrap">${agudo?'🔥 ':''}<a href="#painel/${esc(r.cod)}" style="font-weight:700">${esc(r.cod)}</a></td>
+      <td style="text-align:left;max-width:290px"><span class="gr">${esc((r.descricao||'').slice(0,44))}</span></td>
       <td>${esc(r.grupo||'')}</td>
       <td>${esc(r.fase||'')}</td>
       <td>${rf.format(+r.receita_b2c_28d||0)}</td>
       <td>${nf1.format(+r.vel_dia||0)}</td>
       <td>${nf.format(+r.estoque||0)}</td>
       <td>${+r.transito?nf.format(+r.transito):'<span style="color:var(--crit);font-weight:700">0</span>'}</td>
-      <td style="font-weight:700;color:var(--crit)">${fm!=null?nf1.format(fm)+' mês':'—'} <span class="gr" style="font-weight:400;font-size:10px">acaba ${rompe.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span></td></tr>`; };
+      <td>${nf.format(Math.round(cob))}d <span class="gr" style="font-size:10px">(${nf1.format(fm)} mês) · acaba ${rompe.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span></td>
+      <td style="font-weight:700;color:var(--crit)">${nf.format(gap)}d</td></tr>`; };
     const blocos=ORDEM.filter(b=>emg.some(r=>(r.bloco||'OUTROS')===b)).map(b=>{
       const ls=emg.filter(r=>(r.bloco||'OUTROS')===b).sort((a,c)=>(+a.cobertura_dias)-(+c.cobertura_dias));
       const rk=risco[b], pct=rk&&rk.tot>0?rk.ris/rk.tot*100:0;
       return `<div class="tablecard" style="margin-bottom:14px">
         <div style="padding:11px 14px 2px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
           <b style="font-size:14px">${ICONE[b]||''} ${esc(b)}</b>
-          <span style="color:var(--crit);font-weight:700">🚨 ${ls.length} em emergência</span>
+          <span class="gr" style="font-size:11.5px">reposição: ${LEADS[b]||90}d</span>
+          <span style="color:var(--crit);font-weight:700">🚨 ${ls.length} rompem antes da reposição</span>
           ${pct>0?`<span class="kpi" style="padding:3px 10px;font-size:12px">faturamento em risco: <b style="color:var(--crit)">${nf1.format(pct)}%</b></span>`:''}
           ${b==='BATERIAS RARAS'?'<span class="gr" style="font-size:10.5px">nunca vieram pela Greenway/Bosing</span>':''}
         </div>
@@ -2168,21 +2175,22 @@ async function renderImportUrg(){
           <th style="text-align:left">Produto</th><th style="text-align:left">Descrição</th><th>Grupo</th><th>Fase</th>
           <th title="receita B2C 28 dias">Receita 28d</th><th title="venda média/dia (maior entre 28d e 90d)">Vel/dia</th>
           <th>Estoque</th><th title="qtd pendente em POs abertos">Trânsito</th>
-          <th title="(estoque útil + trânsito) ÷ venda mensal">FOLGA</th></tr></thead>
+          <th title="(estoque útil + trânsito) ÷ venda/dia">Cobertura</th>
+          <th title="cobertura − reposição do bloco (dias faltando)">Déficit</th></tr></thead>
         <tbody>${ls.map(linha).join('')}</tbody></table></div></div>`; }).join('');
     const riscoTop=ORDEM.filter(b=>risco[b]&&risco[b].tot>0&&risco[b].ris>0)
       .map(b=>({b,pct:risco[b].ris/risco[b].tot*100,n:risco[b].n})).sort((a,c)=>c.pct-a.pct);
     out.innerHTML=`
       <div class="banner ${emg.length?'ambar':''}" style="${emg.length?'background:var(--crit-soft);color:var(--crit)':'background:var(--good-soft);color:var(--good)'};font-weight:700">
-        ${emg.length?`🚨 ${emg.length} produtos do 80/20 em EMERGÊNCIA DE COMPRA — folga abaixo de ${nf1.format(LIMIAR)} mês, já contando o que está em trânsito.`:'✓ nenhum produto do 80/20 com folga abaixo de 0,5 mês.'}
+        ${emg.length?`🚨 ${emg.length} produtos do 80/20 rompem ANTES da reposição do seu bloco chegar (mesmo pedindo hoje, com trânsito contado).`:'✓ nenhum produto do 80/20 rompe antes da reposição do bloco.'}
       </div>
       ${riscoTop.length?`<div class="tablecard" style="padding:12px 16px;margin-bottom:12px">
         <b>📉 Faturamento em risco enquanto o pedido não sai</b>
-        <span class="gr" style="font-size:11.5px"> — fatia da receita B2C 28d de cada bloco que está nos produtos do 90/10 com folga &lt; ${nf1.format(LIMIAR)} mês</span>
+        <span class="gr" style="font-size:11.5px"> — fatia da receita B2C 28d do bloco nos produtos do 90/10 com cobertura abaixo de METADE da reposição (os 🔥 da lista)</span>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
           ${riscoTop.map(x=>`<span class="kpi" style="padding:7px 14px">${ICONE[x.b]||''} ${esc(x.b)}: <b style="color:var(--crit);font-size:17px">${nf1.format(x.pct)}%</b> <span class="gr" style="font-size:11px">(${x.n} prod.)</span></span>`).join('')}
         </div></div>`:''}
-      <p class="gr" style="margin:6px 0 12px;font-size:12px">Universo = pareto 95% dos 6 maiores grupos (painel da Pressão, atualizado diariamente). FOLGA = (estoque útil + trânsito) ÷ venda mensal. Emergência = folga &lt; 0,5 mês. Código → Painel do produto; MOQ/lead/segurança são conta do Pedido de Compra.</p>
+      <p class="gr" style="margin:6px 0 12px;font-size:12px">Reposição por bloco (CEO 25/10): telas 75d · baterias 90d · fontes 100d · teclados 110d · ssd/mem 45d · dsc/dv 120d. Cobertura = (estoque útil + trânsito) ÷ venda/dia. Déficit = dias de ruptura até a reposição chegar. 🔥 = cobertura abaixo de metade da reposição. Universo = pareto 95% dos 6 maiores grupos, diário.</p>
       ${blocos}
       <p style="margin:4px 2px"><a href="#pedido" class="btn" style="padding:6px 14px">🧮 abrir o Pedido de Compra</a></p>`;
   }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
