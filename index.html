@@ -2128,24 +2128,22 @@ async function abreExtratoCamp(cid){
 }
 
 async function renderImportUrg(){
-  // 🚨 Importações urgentes (CEO 25/10): 80/20 com folga vs lead(110d) negativa = comprar JÁ.
-  // v2 (25/10): blocos por fornecedor SEPARADOS (telas/teclados/fontes individuais), 🟠 logo após 🚨
-  // dentro de cada bloco, e medidor de FATURAMENTO EM RISCO no topo (90/10 com cobertura < lead/2).
-  const out=$('#conteudo'); out.innerHTML='<div class="carregando">Calculando urgências…</div>';
+  // 🚨 Importações urgentes v3 (CEO 25/10, régua ÚNICA): FOLGA = (estoque útil + trânsito) ÷ venda MENSAL, em meses.
+  // folga < 0,5 mês = EMERGÊNCIA de compra; do contrário, tranquilo. (O lead/MOQ ficam no Pedido de Compra.)
+  const out=$('#conteudo'); out.innerHTML='<div class="carregando">Calculando emergências…</div>';
   try{
     const todos=await tudo('ads_pressao_painel',{mod:q=>q.order('cod',{ascending:true})});
-    const LEAD=110, CORTE_ATEN=45, PARETO_RISCO=0.90;
+    const LIMIAR=0.5, PARETO_RISCO=0.90, DIAS_MES=30.44;
+    const folgaM=r=>r.cobertura_dias!=null?+r.cobertura_dias/DIAS_MES:null;
     const ORDEM=['BATERIAS NOTEBOOK','BATERIAS RARAS','TELAS','TECLADOS','FONTES','SSD · MEMÓRIA','BAT. CÂMERA/FILMADORA','SMARTPHONE','OUTROS'];
     const ICONE={'BATERIAS NOTEBOOK':'🔋','BATERIAS RARAS':'🧪','TELAS':'🖥️','TECLADOS':'⌨️','FONTES':'🔌','SSD · MEMÓRIA':'💾','BAT. CÂMERA/FILMADORA':'📷','SMARTPHONE':'📱','OUTROS':'📦'};
     const risco={};
-    todos.forEach(r=>{ const b=r.bloco||'OUTROS';
+    todos.forEach(r=>{ const b=r.bloco||'OUTROS', fm=folgaM(r);
       const t=risco[b]=risco[b]||{tot:0,ris:0,n:0};
       if(+r.pareto_grupo<=PARETO_RISCO){ t.tot+=+r.receita_b2c_28d||0;
-        if(r.cobertura_dias!=null && +r.cobertura_dias < LEAD/2){ t.ris+=+r.receita_b2c_28d||0; t.n++; } } });
-    const lista=todos.filter(r=>r.folga_lead!=null && +r.folga_lead<CORTE_ATEN);
-    const urgN=lista.filter(r=>+r.folga_lead<0).length;
-    const chip=f=>f<0?`<b style="color:var(--crit)">${nf.format(Math.round(f))}d</b>`:`<b style="color:#b45309">+${nf.format(Math.round(f))}d</b>`;
-    const linha=r=>{ const rompe=new Date(); rompe.setDate(rompe.getDate()+Math.max(0,Math.round(+r.cobertura_dias||0)));
+        if(fm!=null&&fm<LIMIAR){ t.ris+=+r.receita_b2c_28d||0; t.n++; } } });
+    const emg=todos.filter(r=>{ const fm=folgaM(r); return fm!=null&&fm<LIMIAR; });
+    const linha=r=>{ const fm=folgaM(r); const rompe=new Date(); rompe.setDate(rompe.getDate()+Math.max(0,Math.round(+r.cobertura_dias||0)));
       return `<tr>
       <td style="text-align:left;white-space:nowrap"><a href="#painel/${esc(r.cod)}" style="font-weight:700">${esc(r.cod)}</a></td>
       <td style="text-align:left;max-width:300px"><span class="gr">${esc((r.descricao||'').slice(0,46))}</span></td>
@@ -2155,43 +2153,36 @@ async function renderImportUrg(){
       <td>${nf1.format(+r.vel_dia||0)}</td>
       <td>${nf.format(+r.estoque||0)}</td>
       <td>${+r.transito?nf.format(+r.transito):'<span style="color:var(--crit);font-weight:700">0</span>'}</td>
-      <td>${nf.format(Math.round(+r.cobertura_dias||0))}d <span class="gr" style="font-size:10px">${rompe.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span></td>
-      <td>${chip(+r.folga_lead)}</td></tr>`; };
-    const THEAD=`<thead><tr>
-        <th style="text-align:left">Produto</th><th style="text-align:left">Descrição</th><th>Grupo</th><th>Fase</th>
-        <th title="receita B2C 28 dias">Receita 28d</th><th title="venda média por dia (maior entre 28d e 90d)">Vel/dia</th>
-        <th>Estoque</th><th title="qtd pendente em POs abertos">Trânsito</th>
-        <th title="(estoque+trânsito) ÷ vel — e a data em que acaba">Cobertura</th>
-        <th title="cobertura − lead de importação (110d)">Folga vs lead</th></tr></thead>`;
-    const blocos=ORDEM.filter(b=>lista.some(r=>(r.bloco||'OUTROS')===b)).map(b=>{
-      const ls=lista.filter(r=>(r.bloco||'OUTROS')===b).sort((a,c)=>+a.folga_lead-+c.folga_lead);
-      const urg=ls.filter(r=>+r.folga_lead<0), aten=ls.filter(r=>+r.folga_lead>=0);
+      <td style="font-weight:700;color:var(--crit)">${fm!=null?nf1.format(fm)+' mês':'—'} <span class="gr" style="font-weight:400;font-size:10px">acaba ${rompe.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span></td></tr>`; };
+    const blocos=ORDEM.filter(b=>emg.some(r=>(r.bloco||'OUTROS')===b)).map(b=>{
+      const ls=emg.filter(r=>(r.bloco||'OUTROS')===b).sort((a,c)=>(+a.cobertura_dias)-(+c.cobertura_dias));
       const rk=risco[b], pct=rk&&rk.tot>0?rk.ris/rk.tot*100:0;
-      const corpo=urg.map(linha).join('')
-        +(urg.length&&aten.length?`<tr><td colspan="10" style="background:rgba(180,83,9,.08);color:#b45309;font-size:11px;padding:4px 12px;text-align:left">── margem apertada: rompe até ${CORTE_ATEN}d depois do lead ──</td></tr>`:'')
-        +aten.map(linha).join('');
       return `<div class="tablecard" style="margin-bottom:14px">
         <div style="padding:11px 14px 2px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
           <b style="font-size:14px">${ICONE[b]||''} ${esc(b)}</b>
-          ${urg.length?`<span style="color:var(--crit);font-weight:700">🚨 ${urg.length} comprar JÁ</span>`:''}
-          ${aten.length?`<span style="color:#b45309;font-weight:700">🟠 ${aten.length} apertados</span>`:''}
+          <span style="color:var(--crit);font-weight:700">🚨 ${ls.length} em emergência</span>
           ${pct>0?`<span class="kpi" style="padding:3px 10px;font-size:12px">faturamento em risco: <b style="color:var(--crit)">${nf1.format(pct)}%</b></span>`:''}
           ${b==='BATERIAS RARAS'?'<span class="gr" style="font-size:10.5px">nunca vieram pela Greenway/Bosing</span>':''}
         </div>
-        <div class="tscroll"><table>${THEAD}<tbody>${corpo}</tbody></table></div></div>`; }).join('');
+        <div class="tscroll"><table><thead><tr>
+          <th style="text-align:left">Produto</th><th style="text-align:left">Descrição</th><th>Grupo</th><th>Fase</th>
+          <th title="receita B2C 28 dias">Receita 28d</th><th title="venda média/dia (maior entre 28d e 90d)">Vel/dia</th>
+          <th>Estoque</th><th title="qtd pendente em POs abertos">Trânsito</th>
+          <th title="(estoque útil + trânsito) ÷ venda mensal">FOLGA</th></tr></thead>
+        <tbody>${ls.map(linha).join('')}</tbody></table></div></div>`; }).join('');
     const riscoTop=ORDEM.filter(b=>risco[b]&&risco[b].tot>0&&risco[b].ris>0)
       .map(b=>({b,pct:risco[b].ris/risco[b].tot*100,n:risco[b].n})).sort((a,c)=>c.pct-a.pct);
     out.innerHTML=`
-      <div class="banner ${urgN?'ambar':''}" style="${urgN?'background:var(--crit-soft);color:var(--crit)':'background:var(--good-soft);color:var(--good)'};font-weight:700">
-        ${urgN?`🚨 ${urgN} produtos do 80/20 ROMPEM antes do lead de importação (${LEAD} dias) — mesmo contando o trânsito. Precisam entrar no próximo pedido.`:'✓ nenhum produto do 80/20 com folga negativa hoje.'}
+      <div class="banner ${emg.length?'ambar':''}" style="${emg.length?'background:var(--crit-soft);color:var(--crit)':'background:var(--good-soft);color:var(--good)'};font-weight:700">
+        ${emg.length?`🚨 ${emg.length} produtos do 80/20 em EMERGÊNCIA DE COMPRA — folga abaixo de ${nf1.format(LIMIAR)} mês, já contando o que está em trânsito.`:'✓ nenhum produto do 80/20 com folga abaixo de 0,5 mês.'}
       </div>
       ${riscoTop.length?`<div class="tablecard" style="padding:12px 16px;margin-bottom:12px">
         <b>📉 Faturamento em risco enquanto o pedido não sai</b>
-        <span class="gr" style="font-size:11.5px"> — produtos do 90/10 do bloco com cobertura abaixo de METADE do lead (&lt;${LEAD/2} dias): a % é a fatia deles na receita B2C 28d do bloco — é o quanto do faturamento fica descoberto por dia quando o estoque deles zerar</span>
+        <span class="gr" style="font-size:11.5px"> — fatia da receita B2C 28d de cada bloco que está nos produtos do 90/10 com folga &lt; ${nf1.format(LIMIAR)} mês</span>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
           ${riscoTop.map(x=>`<span class="kpi" style="padding:7px 14px">${ICONE[x.b]||''} ${esc(x.b)}: <b style="color:var(--crit);font-size:17px">${nf1.format(x.pct)}%</b> <span class="gr" style="font-size:11px">(${x.n} prod.)</span></span>`).join('')}
         </div></div>`:''}
-      <p class="gr" style="margin:6px 0 12px;font-size:12px">Universo = pareto 95% dos 6 maiores grupos (painel da Pressão, diário). Cobertura = (estoque útil + trânsito) ÷ venda/dia · folga = cobertura − ${LEAD}d de lead. Cada bloco: 🚨 folga negativa primeiro, depois 🟠 margem apertada. Código → Painel do produto; a conta fina (MOQ, perfil, segurança) é do Pedido de Compra.</p>
+      <p class="gr" style="margin:6px 0 12px;font-size:12px">Universo = pareto 95% dos 6 maiores grupos (painel da Pressão, atualizado diariamente). FOLGA = (estoque útil + trânsito) ÷ venda mensal. Emergência = folga &lt; 0,5 mês. Código → Painel do produto; MOQ/lead/segurança são conta do Pedido de Compra.</p>
       ${blocos}
       <p style="margin:4px 2px"><a href="#pedido" class="btn" style="padding:6px 14px">🧮 abrir o Pedido de Compra</a></p>`;
   }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
