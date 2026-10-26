@@ -259,6 +259,7 @@ tr.emcurso td{opacity:.55}
     <a href="#compras" data-pg="compras">🚢 Compras &amp; Trânsito</a>
     <a href="#pedido" data-pg="pedido">🧮 Pedido de Compra</a>
     <a href="#importacoes" data-pg="importacoes">🚨 Importações urgentes</a>
+    <a href="#logistica" data-pg="logistica">🗺️ Logística UF</a>
     <a href="#anuncios" data-pg="anuncios">📈 Anúncios &amp; Conversão <span class="soon">breve</span></a>
     <a href="#decisoes" data-pg="decisoes">💬 Decisões — Chat IA <span class="soon">breve</span></a>
     <div class="spacer"></div>
@@ -538,7 +539,7 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações urgentes — 80/20 rompendo antes do lead', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações urgentes — 80/20 rompendo antes do lead', logistica:'Logística UF — cobertura % por estado', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -566,6 +567,7 @@ function navega(pg){
   else if(pg==='equipe') renderEquipe();
   else if(pg==='adscentral') renderAdsCentral();
   else if(pg==='importacoes') renderImportUrg();
+  else if(pg==='logistica') renderLogisticaUf();
   else if(pg==='pedido') renderPedido();
   else if(pg==='pressao') renderPressao();
   else if(pg==='config') renderConfig();
@@ -2193,6 +2195,78 @@ async function renderImportUrg(){
       <p class="gr" style="margin:6px 0 12px;font-size:12px">Reposição por bloco (CEO 25/10): telas 75d · baterias 90d · fontes 100d · teclados 110d · ssd/mem 45d · dsc/dv 120d. Cobertura = (estoque útil + trânsito) ÷ venda/dia. Déficit = dias de ruptura até a reposição chegar. 🔥 = cobertura abaixo de metade da reposição. Universo = pareto 95% dos 6 maiores grupos, diário.</p>
       ${blocos}
       <p style="margin:4px 2px"><a href="#pedido" class="btn" style="padding:6px 14px">🧮 abrir o Pedido de Compra</a></p>`;
+  }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
+}
+
+async function renderLogisticaUf(){
+  // 🗺️ Logística UF (CEO 25/10/26): cobertura % por estado — anual 10 anos e mensal 13m
+  // (com grupo de produto), por unidade, SEM lotões (linha ≥50 = proxy de distribuidor).
+  const out=$('#conteudo'); out.innerHTML='<div class="carregando">Montando o mapa…</div>';
+  try{
+    const [anos,meses]=await Promise.all([
+      tudo('fato_uf_ano',{mod:q=>q.order('ano',{ascending:true}).order('uf',{ascending:true}).order('unidade',{ascending:true})}),
+      tudo('fato_uf_mes',{mod:q=>q.order('mes',{ascending:true}).order('uf',{ascending:true}).order('unidade',{ascending:true}).order('grupo',{ascending:true})})]);
+    const REG={'SP':'SUDESTE','RJ':'SUDESTE','MG':'SUDESTE','ES':'SUDESTE',
+      'PR':'SUL','SC':'SUL','RS':'SUL',
+      'BA':'NORDESTE','PE':'NORDESTE','CE':'NORDESTE','MA':'NORDESTE','PB':'NORDESTE','RN':'NORDESTE','AL':'NORDESTE','SE':'NORDESTE','PI':'NORDESTE',
+      'DF':'CENTRO-OESTE','GO':'CENTRO-OESTE','MT':'CENTRO-OESTE','MS':'CENTRO-OESTE',
+      'PA':'NORTE','AM':'NORTE','RO':'NORTE','TO':'NORTE','AC':'NORTE','AP':'NORTE','RR':'NORTE'};
+    const ORDEM_REG=['SUDESTE','SUL','NORDESTE','CENTRO-OESTE','NORTE'];
+    st.lufU=st.lufU||'TODAS'; st.lufG=st.lufG||'TODOS';
+    const uniOk=u=>st.lufU==='TODAS'||u===st.lufU;
+    const anosL=[...new Set(anos.map(r=>r.ano))].sort();
+    const mesesL=[...new Set(meses.map(r=>r.mes))].sort();
+    const gruposL=['TODOS','BNOT','FONT','LCD','TECL'];
+    const anoAtual=Math.max(...anosL);
+    // ---- séries de share ----
+    const shareTab=(regs,cols,valor)=>{ // valor(uf,col) -> receita ; devolve {linhas por região}
+      const totCol={}; cols.forEach(c=>{ totCol[c]=0; Object.keys(REG).forEach(uf=>{ totCol[c]+=valor(uf,c); }); });
+      return ORDEM_REG.map(rg=>{
+        const ufs=Object.keys(REG).filter(u=>REG[u]===rg);
+        const recUlt=u=>valor(u,cols[cols.length-1])+valor(u,cols[cols.length-2]||cols[cols.length-1]);
+        ufs.sort((a,b)=>recUlt(b)-recUlt(a));
+        const linhasUf=ufs.map(uf=>({tipo:'uf',nome:uf,vals:cols.map(c=>totCol[c]>0?valor(uf,c)/totCol[c]*100:0)}))
+                          .filter(l=>l.vals.some(v=>v>=0.05));
+        const regVals=cols.map((c,i)=>linhasUf.reduce((s,l)=>s+l.vals[i],0));
+        return {rg,regVals,linhasUf};
+      }).filter(b=>b.linhasUf.length);
+    };
+    const tend=vals=>{ const n=vals.length;
+      const a=vals.slice(0,Math.floor(n/2)), b=vals.slice(Math.floor(n/2));
+      const ma=a.reduce((s,v)=>s+v,0)/Math.max(1,a.length), mb=b.reduce((s,v)=>s+v,0)/Math.max(1,b.length);
+      return mb-ma; };
+    const fmt=v=>v>=10?nf1.format(v):(v>=0.1?nf1.format(v):(v>0?'·':''));
+    const corT=d=>d>0.15?'color:var(--good);font-weight:700':(d<-0.15?'color:var(--crit);font-weight:700':'color:var(--muted)');
+    const tabelaHtml=(blocos,cols,rot)=>`<div class="tablecard" style="margin-bottom:16px"><div class="tscroll"><table><thead><tr>
+        <th style="text-align:left">UF</th>${cols.map(c=>`<th>${rot(c)}</th>`).join('')}<th title="média da 2ª metade do período − média da 1ª (pontos percentuais)">tend.</th></tr></thead><tbody>
+      ${blocos.map(b=>`<tr style="background:rgba(20,85,123,.09);font-weight:700">
+          <td style="text-align:left">${esc(b.rg)}</td>${b.regVals.map(v=>`<td>${fmt(v)}</td>`).join('')}
+          <td style="${corT(tend(b.regVals))}">${tend(b.regVals)>=0?'+':''}${nf1.format(tend(b.regVals))}pp</td></tr>
+        ${b.linhasUf.map(l=>`<tr><td style="text-align:left;padding-left:18px">${esc(l.nome)}</td>
+          ${l.vals.map(v=>`<td>${fmt(v)}</td>`).join('')}
+          <td style="${corT(tend(l.vals))}">${tend(l.vals)>=0?'+':''}${nf1.format(tend(l.vals))}pp</td></tr>`).join('')}`).join('')}
+      </tbody></table></div></div>`;
+    // anual
+    const mapaAno={};
+    anos.forEach(r=>{ if(uniOk(r.unidade)) mapaAno[r.uf+'|'+r.ano]=(mapaAno[r.uf+'|'+r.ano]||0)+(+r.receita||0); });
+    const blocosAno=shareTab(REG,anosL,(uf,a)=>mapaAno[uf+'|'+a]||0);
+    // mensal
+    const mapaMes={};
+    meses.forEach(r=>{ if(uniOk(r.unidade)&&(st.lufG==='TODOS'||r.grupo===st.lufG)) mapaMes[r.uf+'|'+r.mes]=(mapaMes[r.uf+'|'+r.mes]||0)+(+r.receita||0); });
+    const blocosMes=shareTab(REG,mesesL,(uf,m)=>mapaMes[uf+'|'+m]||0);
+    out.innerHTML=`
+      <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Cobertura = participação % de cada UF na receita realizada da unidade selecionada, <b>sem lotões</b> (linha ≥50 un = distribuidor). Fonte: BASE BBDI, atualizado diariamente. Célula = % do período; <b>tend.</b> = 2ª metade − 1ª metade do período, em pontos percentuais.</p>
+      <div class="toolbar" style="margin-bottom:10px">
+        <select id="lufU" style="font-size:12.5px;padding:4px 8px">${['TODAS','001','002','005'].map(u=>`<option ${st.lufU===u?'selected':''}>${u}</option>`).join('')}</select>
+      </div>
+      <h3 style="margin:4px 0 8px">📅 Anual — últimos ${anosL.length} anos (${anoAtual}* parcial)</h3>
+      ${tabelaHtml(blocosAno,anosL,a=>String(a).slice(2)+(a===anoAtual?'*':''))}
+      <h3 style="margin:18px 0 8px">🗓️ Mensal — últimos ${mesesL.length} meses
+        <select id="lufG" style="font-size:12px;padding:3px 8px;margin-left:10px">${gruposL.map(g=>`<option ${st.lufG===g?'selected':''}>${g}</option>`).join('')}</select>
+      </h3>
+      ${tabelaHtml(blocosMes,mesesL,m=>m.slice(5,7)+'/'+m.slice(2,4))}`;
+    const sU=document.getElementById('lufU'); if(sU) sU.onchange=()=>{ st.lufU=sU.value; renderLogisticaUf(); };
+    const sG=document.getElementById('lufG'); if(sG) sG.onchange=()=>{ st.lufG=sG.value; renderLogisticaUf(); };
   }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
 }
 
