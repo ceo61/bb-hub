@@ -507,7 +507,7 @@ async function carregaTudo(){
 function estadoSemaforo(){
   const ult = st.etl[0];
   if(!ult) return {cor:'var(--muted)', txt:'sem registro de atualização', nivel:'ambar'};
-  const deHoje = ult.executado_em.slice(0,10) === hojeISO();
+  const deHoje = new Date(ult.executado_em).toDateString() === new Date().toDateString();  // comparar em hora LOCAL (timestamp vem em UTC; rodada após 21h BRT vira 27/10 em UTC)
   if(deHoje && ult.status==='ok')   return {cor:'var(--good)', txt:'Dados de hoje · '+new Date(ult.executado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}), nivel:'ok'};
   if(deHoje && ult.status==='falha')return {cor:'var(--crit)', txt:'Falha na atualização de hoje', nivel:'vermelho'};
   return {cor:'var(--warn)', txt:'Dados de '+new Date(ult.executado_em).toLocaleDateString('pt-BR')+' — desatualizados', nivel:'ambar'};
