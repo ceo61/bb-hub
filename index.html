@@ -241,6 +241,7 @@ tr.emcurso td{opacity:.55}
       <div class="name">BB HUB<small>BestBattery</small></div>
     </div>
     <div class="navsec">Análise</div>
+    <a href="#manha" data-pg="manha">🌅 Manhã</a>
     <a href="#painel" data-pg="painel">📈 Painel do produto</a>
     <a href="#skus" data-pg="skus">🧩 SKUs</a>
     <a href="#global" data-pg="global">🌐 Visão Global</a>
@@ -253,7 +254,6 @@ tr.emcurso td{opacity:.55}
     <a href="#aprovacoes" data-pg="aprovacoes">🔍 Aprovações</a>
     <a href="#revisoes" data-pg="revisoes">📮 Revisões</a>
     <a href="#precos" data-pg="precos">🏷️ Preços — Markup</a>
-    <a href="#radar" data-pg="radar">📡 Radar</a>
     <a href="#pressao" data-pg="pressao">🚀 Pressão Ads</a>
     <a href="#produtos" data-pg="produtos">📦 Produtos</a>
     <a href="#compras" data-pg="compras">🚢 Compras &amp; Trânsito</a>
@@ -496,7 +496,7 @@ async function carregaTudo(){
     st.etl = etl;
     for(const d of dim) st.dim[d.cod] = d;
     renderSemaforo();
-    navega(location.hash.replace('#','') || 'radar');
+    navega(location.hash.replace('#','') || 'manha');
   }catch(err){
     console.error(err);
     $('#conteudo').innerHTML = `<div class="carregando">Erro ao carregar dados: ${esc(err.message||err)}<br><br><button class="btn" onclick="location.reload()">Tentar de novo</button></div>`;
@@ -539,11 +539,11 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {radar:'Radar', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações urgentes — 80/20 rompendo antes do lead', logistica:'Logística UF — cobertura % por estado', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {manha:'Manhã — o dia do seu grupo', radar:'Radar (legado)', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações urgentes — 80/20 rompendo antes do lead', logistica:'Logística UF — cobertura % por estado', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
-  if(!TITULOS[pg]) pg='radar';
+  if(!TITULOS[pg]) pg='manha';
   if(st.acl && !st.acl.has(pg)) pg=[...st.acl][0]||'config';
   if(pg==='skus') st.skCod = param ? param.toUpperCase() : st.skCod;
   else if(pg==='sugestoes'&&param){ st.sgQ=param.toUpperCase(); st.sgAbrirExtrato=param.toUpperCase(); st.sgClasse=null; st.sgClasseAuto=true; st.sgOut=null; st.sgG=''; st.sgGer=''; st.sgVer='tudo'; }
@@ -553,7 +553,8 @@ function navega(pg){
   $('#tituloPagina').textContent = TITULOS[pg];
   document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('ativo', a.dataset.pg===pg));
   $('#nav').classList.remove('aberta');
-  if(pg==='radar'||pg==='produtos') renderRadar(pg==='produtos');
+  if(pg==='manha') renderManha();
+  else if(pg==='radar'||pg==='produtos') renderRadar(pg==='produtos');
   else if(pg==='compras') renderCompras();
   else if(pg==='precos') renderPrecos();
   else if(pg==='sugestoes') renderSugestoes();
@@ -629,6 +630,103 @@ function filtra(){
     }
   });
   return rows;
+}
+/* ---------- Manhã — o dia do grupo (landing do analista, 28/10/26) ----------
+   Pedido do CEO: a 1ª tela da manhã responde "como foi o MEU grupo ontem" (venda, conversão,
+   ads, estado do mês, exceções), no lugar das filas de estoque do antigo Radar (que eram
+   decisão de compras e já vivem em Importações urgentes / Pedido). */
+async function renderManha(){
+  $('#conteudo').innerHTML='<div class="carregando">Montando a manhã…</div>';
+  if(!st.mhDia){
+    [st.mhDia, st.mhMes] = await Promise.all([tudo('manha_grupo_dia',{eq:[]}), tudo('manha_grupo_mes',{eq:[]})]);
+  }
+  const isoL=d=>d.toLocaleDateString('sv-SE');
+  const hoje=hojeISO(), ontemD=new Date(Date.now()-864e5), ontem=isoL(ontemD);
+  const DSEM=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+  const DSEMP=['dos domingos','das segundas','das terças','das quartas','das quintas','das sextas','dos sábados'];
+  const porG={}; st.mhDia.forEach(r=>{ (porG[r.grupo]=porG[r.grupo]||{})[String(r.data).slice(0,10)]=r; });
+  const porGM={}; st.mhMes.forEach(r=>{ (porGM[r.grupo]=porGM[r.grupo]||{})[String(r.mes).slice(0,7)]=r; });
+  const d28=isoL(new Date(Date.now()-29*864e5));
+  const rec28={}; st.mhDia.forEach(r=>{ const d=String(r.data).slice(0,10); if(d>=d28&&d<=ontem) rec28[r.grupo]=(rec28[r.grupo]||0)+(+r.receita||0); });
+  const grupos=Object.keys(rec28).filter(g=>rec28[g]>1000).sort((a,b)=>rec28[b]-rec28[a]).slice(0,14);
+  if(!st.mhG){ try{ st.mhG=localStorage.getItem('bbhub-manha-g'); }catch(e){} }
+  if(!st.mhG||!grupos.includes(st.mhG)) st.mhG=grupos[0];
+  const metr=g=>{
+    const m=porG[g]||{};
+    const o=m[ontem]||{receita:0,qtd:0,lucro:0,views:0,compras_ga4:0,custo_ads:0};
+    const ref=[]; let d=new Date(ontemD);
+    for(let i=0;i<4;i++){ d=new Date(d); d.setDate(d.getDate()-7); const r=m[isoL(d)]; if(r) ref.push(r); }
+    const med=f=>ref.length?ref.reduce((s,x)=>s+(+x[f]||0),0)/ref.length:null;
+    const mesIni=ontem.slice(0,8)+'01';
+    let mtd=0,mtdQ=0,mtdL=0; for(const k in m){ if(k>=mesIni&&k<=ontem){ mtd+=+m[k].receita||0; mtdQ+=+m[k].qtd||0; mtdL+=+m[k].lucro||0; } }
+    const pmD=new Date(ontemD); pmD.setMonth(pmD.getMonth()-1);
+    const pmIni=isoL(pmD).slice(0,8)+'01', pmFim=isoL(pmD);
+    let mtdAnt=0; for(const k in m){ if(k>=pmIni&&k<=pmFim) mtdAnt+=+m[k].receita||0; }
+    const ym=ontem.slice(0,7), mm=porGM[g]||{};
+    const ymAnt=pmIni.slice(0,7), ymAno=(+ym.slice(0,4)-1)+ym.slice(4);
+    const diasNoMes=new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate(), diasDec=+ontem.slice(8,10);
+    const proj=diasDec?mtd/diasDec*diasNoMes:null;
+    const txO=(+o.views||0)>=30?(+o.compras_ga4||0)/(+o.views)*100:null;
+    const vwM=med('views'), cpM=med('compras_ga4');
+    const txM=(vwM||0)>=30?(cpM||0)/vwM*100:null;
+    return {o, medR:med('receita'), medL:med('lucro'), medA:med('custo_ads'), txO, txM,
+            mtd, mtdQ, mtdL, mtdAnt, mesAntCheio:mm[ymAnt]?.receita??null, mesAnoPas:mm[ymAno]?.receita??null,
+            proj, diasDec};
+  };
+  const dlt=(v,ref,inv)=>{ if(ref==null||ref<=0) return '<span class="gr">—</span>';
+    const p=((+v||0)/ref-1)*100, up=inv?p<=-8:p>=8, dn=inv?p>=8:p<=-8;
+    return `<span class="${up?'trend-up':dn?'trend-dn':'trend-eq'}">${p>=8?'▲':p<=-8?'▼':'•'} ${(p>=0?'+':'')}${nf.format(Math.round(p))}%</span>`; };
+  const M=metr(st.mhG);
+  const rupt=(st.radar||[]).filter(r=>r.grupo===st.mhG&&r.fila==='RUPTURA').sort((a,b)=>risco(b)-risco(a));
+  const ruptRS=rupt.reduce((s,r)=>s+risco(r),0);
+  const poAtr=(st.radar||[]).filter(r=>r.grupo===st.mhG&&r.po_atrasado>0);
+  const dow=new Date().getDay();
+  const TAREFA={1:'segunda — dia da <b>Curva A</b> na CTRL ONLINE',2:'terça — dia da <b>Curva B</b>',3:'quarta — dia da <b>Curva C</b>',
+                4:'quinta — <b>cauda D com anomalia</b> (priorize os vermelhos)',5:'sexta — <b>repescagem da semana</b> (zere A/B/C)'}[dow];
+  const card=(lab,val,sub)=>`<div class="kpi" style="cursor:default"><span class="lab">${lab}</span><span class="val" style="font-size:20px">${val}</span><span class="sub">${sub}</span></div>`;
+  $('#conteudo').innerHTML=`
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Ontem, <b>${DSEM[ontemD.getDay()]} ${ontemD.toLocaleDateString('pt-BR')}</b> — comparações contra a média ${DSEMP[ontemD.getDay()]} das 4 semanas anteriores. Escolha seu grupo:</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px">${grupos.map(g=>`<button class="btn mhg" data-g="${esc(g)}" style="padding:5px 12px;${g===st.mhG?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${esc(g)}</button>`).join('')}</div>
+    <div class="kpis">
+      ${card('💰 Venda ontem', rf.format(Math.round(+M.o.receita||0)), `${dlt(M.o.receita,M.medR)} vs média · ${nf.format(Math.round(+M.o.qtd||0))} un`)}
+      ${card('📈 Lucro bruto ontem', rf.format(Math.round(+M.o.lucro||0)), `${dlt(M.o.lucro,M.medL)} vs média`)}
+      ${card('🛒 Conversão ontem', M.txO!=null?nf1.format(M.txO)+'%':'—', M.txO!=null&&M.txM!=null?`média ${nf1.format(M.txM)}% · ${nf.format(Math.round(+M.o.views||0))} views`:`${nf.format(Math.round(+M.o.views||0))} views (GA4)`)}
+      ${card('📣 Ads ontem', rf.format(Math.round(+M.o.custo_ads||0)), `${dlt(M.o.custo_ads,M.medA)} vs média · detalhe na <a href="#adscentral">Central</a>`)}
+    </div>
+    ${TAREFA?`<div class="banner ambar" style="background:var(--accent-soft);color:var(--accent)">📅 Hoje é ${TAREFA} — <a href="#sugestoes" style="text-decoration:underline">abrir CTRL ONLINE</a> · depois confira o <a href="#adscentral" style="text-decoration:underline">🚨 radar de disparo</a></div>`:''}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px;margin:12px 0">
+      <div class="tablecard" style="padding:14px">
+        <b>📆 ${st.mhG} no mês (até ontem, ${M.diasDec} dias)</b>
+        <div style="margin-top:8px;font-size:13px;display:grid;gap:6px">
+          <div>Acumulado: <b>${rf.format(Math.round(M.mtd))}</b> · ${nf.format(Math.round(M.mtdQ))} un · lucro ${rf.format(Math.round(M.mtdL))}</div>
+          <div>vs mês passado (mesmos ${M.diasDec} dias): <b>${rf.format(Math.round(M.mtdAnt))}</b> ${dlt(M.mtd,M.mtdAnt)}</div>
+          <div>Projeção de fechamento: <b>${M.proj!=null?rf.format(Math.round(M.proj)):'—'}</b>${M.mesAntCheio?` vs ${rf.format(Math.round(M.mesAntCheio))} do mês passado ${dlt(M.proj,M.mesAntCheio)}`:''}</div>
+          <div>Mesmo mês do ano passado: ${M.mesAnoPas!=null?`<b>${rf.format(Math.round(M.mesAnoPas))}</b> ${dlt(M.proj,M.mesAnoPas)} na projeção`:'<span class="gr">sem histórico</span>'}</div>
+        </div>
+      </div>
+      <div class="tablecard" style="padding:14px">
+        <b>⚠ Exceções do grupo</b>
+        <div style="margin-top:8px;font-size:13px;display:grid;gap:6px">
+          <div>🕳 <b>${rupt.length}</b> produto(s) em ruptura — <b>${rf.format(Math.round(ruptRS))}/mês</b> em risco</div>
+          ${rupt.slice(0,4).map(r=>`<div style="padding-left:14px"><span class="cod">${esc(r.cod)}</span> · ${nf1.format(r.media_mes||0)}/mês · ${r.transito?nf.format(r.transito)+' a caminho':'<b style="color:var(--crit)">sem trânsito</b>'} · ${trendCell(r)}</div>`).join('')}
+          ${rupt.length>4?`<div class="gr" style="padding-left:14px">e mais ${rupt.length-4}…</div>`:''}
+          <div>🚢 <b>${poAtr.length}</b> produto(s) com PO atrasado${poAtr.length?` — <a href="#compras" style="text-decoration:underline">ver em Compras &amp; Trânsito</a>`:''}</div>
+          <div class="gr">Compra/urgência é decisão de compras: sinalize em <a href="#importacoes" style="text-decoration:underline">🚨 Importações urgentes</a>.</div>
+        </div>
+      </div>
+    </div>
+    <div class="tablecard"><div class="tscroll"><table>
+      <thead><tr><th>Grupo</th><th>Venda ontem</th><th>vs média</th><th>Lucro ontem</th><th>Conv. ontem</th><th>Mês até ontem</th><th>vs mês ant.</th><th>Rupturas</th></tr></thead>
+      <tbody>${grupos.map(g=>{ const x=metr(g); const nr=(st.radar||[]).filter(r=>r.grupo===g&&r.fila==='RUPTURA').length;
+        return `<tr class="clicavel mhrow" data-g="${esc(g)}" ${g===st.mhG?'style="background:var(--accent-soft)"':''}>
+          <td><b>${esc(g)}</b></td><td style="text-align:right">${rf.format(Math.round(+x.o.receita||0))}</td><td>${dlt(x.o.receita,x.medR)}</td>
+          <td style="text-align:right">${rf.format(Math.round(+x.o.lucro||0))}</td>
+          <td style="text-align:right">${x.txO!=null?nf1.format(x.txO)+'%':'—'}</td>
+          <td style="text-align:right">${rf.format(Math.round(x.mtd))}</td><td>${dlt(x.mtd,x.mtdAnt)}</td>
+          <td style="text-align:right">${nr||'—'}</td></tr>`; }).join('')}</tbody>
+    </table></div></div>
+    <p class="gr" style="font-size:11.5px;margin-top:8px">Venda/lucro = faturado (BASE BBDI, todas as unidades) · conversão = GA4 do site · ads = custo Google por produto do grupo. Ontem parcial? Confira o semáforo no topo.</p>`;
+  document.querySelectorAll('.mhg,.mhrow').forEach(b=>b.onclick=()=>{ st.mhG=b.dataset.g; try{localStorage.setItem('bbhub-manha-g',st.mhG);}catch(e){} renderManha(); });
 }
 function renderRadar(modoProdutos){
   const k=kpis();
@@ -2201,6 +2299,15 @@ async function renderImportUrg(){
         </div></div>`:''}
       <p class="gr" style="margin:6px 0 12px;font-size:12px">Reposição por bloco (CEO 25/10): telas 75d · baterias 90d · fontes 100d · teclados 110d · ssd/mem 45d · dsc/dv 120d. Cobertura = (estoque útil + trânsito) ÷ venda/dia. Déficit = dias de ruptura até a reposição chegar. 🔥 = cobertura abaixo de metade da reposição. Universo = pareto 95% dos 6 maiores grupos, diário.</p>
       ${blocos}
+      ${(()=>{ // 🚢 POs atrasados (migrado do antigo Radar, 28/10/26): chegada prevista vencida = cobrar a importadora
+        const atr=(st.transito||[]).filter(t=>+t.atrasado>0).sort((a,b)=>String(a.chegada_prevista).localeCompare(String(b.chegada_prevista)));
+        if(!atr.length) return '';
+        const fd=s=>{const x=String(s||'');return x.length===8?`${x.slice(6,8)}/${x.slice(4,6)}/${x.slice(0,4)}`:x;};
+        return `<div class="tablecard" style="padding:12px 16px;margin-top:12px"><b>🚢 ${atr.length} linha(s) de PO com chegada prevista VENCIDA</b>
+          <span class="gr" style="font-size:11.5px"> — cobrar follow-up da importadora</span>
+          <div class="tscroll" style="margin-top:8px"><table><thead><tr><th>Produto</th><th>PO</th><th>Fornecedor</th><th>Pendente</th><th>Prevista</th></tr></thead>
+          <tbody>${atr.slice(0,12).map(t=>`<tr><td><span class="cod">${esc(t.cod)}</span></td><td>${esc(t.po)}</td><td>${esc(t.fornecedor||'')}</td><td style="text-align:right">${nf.format(t.qtd_pendente||0)}</td><td style="color:var(--crit);font-weight:700">${fd(t.chegada_prevista)}</td></tr>`).join('')}</tbody></table></div>
+          ${atr.length>12?`<div class="gr" style="font-size:11.5px;margin-top:4px">e mais ${atr.length-12} — detalhe em <a href="#compras" style="text-decoration:underline">Compras &amp; Trânsito</a></div>`:''}</div>`; })()}
       <p style="margin:4px 2px"><a href="#pedido" class="btn" style="padding:6px 14px">🧮 abrir o Pedido de Compra</a></p>`;
   }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
 }
