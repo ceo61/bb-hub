@@ -587,10 +587,17 @@ function kpis(){
   return {c, fat, po:atras.size};
 }
 function trendCell(r){
+  // Geração do ciclo de vida (dim_fase, régua 11/08/26) no lugar do 30v90 — o 30v90 lia
+  // ruptura como "caindo" (caso BB11-AS413 28/10/26: estoque 0 + 250 a caminho = rampa, não queda).
+  const F={rampa:['🌱 rampa','trend-up'],crescendo:['▲ crescendo','trend-up'],
+           'no pico':['⛰ no pico','trend-eq'],'declínio':['▼ declínio','trend-dn'],
+           cauda:['cauda','trend-eq'],'novo parado':['novo parado','trend-eq'],morto:['morto','trend-eq']};
+  const semEstq=(r.estoque_util||0)<=0&&(r.media_90||0)>0?' <span class="gr" title="venda recente censurada pela falta de estoque — não leia a queda como demanda">· sem estoque</span>':'';
+  if(r.fase&&F[r.fase]) return `<span class="${F[r.fase][1]}">${F[r.fase][0]}</span>${semEstq}`;
   const a=r.media_30||0, c=r.media_90||0;
-  if(a>c*1.25) return '<span class="trend-up">▲ subindo</span>';
-  if(a<c*0.75) return '<span class="trend-dn">▼ caindo</span>';
-  return '<span class="trend-eq">— estável</span>';
+  if(a>c*1.25) return '<span class="trend-up">▲ subindo</span>'+semEstq;
+  if(a<c*0.75) return '<span class="trend-dn">▼ caindo</span>'+semEstq;
+  return '<span class="trend-eq">— estável</span>'+semEstq;
 }
 function cobCell(r){
   const c=r.cobertura; if(c==null) return '—';
@@ -650,7 +657,7 @@ function renderRadar(modoProdutos){
       <span class="count" id="fcount"></span>
     </div>
     <div class="tablecard"><div class="tscroll"><table>
-      <thead><tr><th>Produto</th><th>Descrição</th><th>Média/mês</th><th>Tend.</th><th>Estoque útil</th><th>A caminho</th><th>Cobertura</th><th>Fila</th></tr></thead>
+      <thead><tr><th>Produto</th><th>Descrição</th><th>Média/mês</th><th>Geração</th><th>Estoque útil</th><th>A caminho</th><th>Cobertura</th><th>Fila</th></tr></thead>
       <tbody id="rows"></tbody>
     </table></div><button class="more hide" id="more"></button></div>`;
   document.querySelectorAll('.kpi').forEach(b=>b.onclick=()=>{ st.fila = st.fila===b.dataset.k?null:b.dataset.k; st.shown=120; renderRadar(false); });
