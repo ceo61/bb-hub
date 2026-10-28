@@ -638,7 +638,10 @@ function filtra(){
 async function renderManha(){
   $('#conteudo').innerHTML='<div class="carregando">Montando a manhã…</div>';
   if(!st.mhDia){
-    [st.mhDia, st.mhMes] = await Promise.all([tudo('manha_grupo_dia',{eq:[]}), tudo('manha_grupo_mes',{eq:[]})]);
+    // ordem estável obrigatória: view sem PK pagina embaralhado e PULA linhas (sumiu out/2025 no 1º teste)
+    [st.mhDia, st.mhMes] = await Promise.all([
+      tudo('manha_grupo_dia',{eq:[],mod:q=>q.order('grupo').order('data')}),
+      tudo('manha_grupo_mes',{eq:[],mod:q=>q.order('grupo').order('mes')})]);
   }
   const isoL=d=>d.toLocaleDateString('sv-SE');
   const hoje=hojeISO(), ontemD=new Date(Date.now()-864e5), ontem=isoL(ontemD);
@@ -690,7 +693,7 @@ async function renderManha(){
     <div class="kpis">
       ${card('💰 Venda ontem', rf.format(Math.round(+M.o.receita||0)), `${dlt(M.o.receita,M.medR)} vs média · ${nf.format(Math.round(+M.o.qtd||0))} un`)}
       ${card('📈 Lucro bruto ontem', rf.format(Math.round(+M.o.lucro||0)), `${dlt(M.o.lucro,M.medL)} vs média`)}
-      ${card('🛒 Conversão ontem', M.txO!=null?nf1.format(M.txO)+'%':'—', M.txO!=null&&M.txM!=null?`média ${nf1.format(M.txM)}% · ${nf.format(Math.round(+M.o.views||0))} views`:`${nf.format(Math.round(+M.o.views||0))} views (GA4)`)}
+      ${card('🛒 Conversão ontem', M.txO!=null?nf1.format(M.txO)+'%':'—', M.txO!=null&&M.txM!=null?`vs média ${nf1.format(M.txM)}% · ${nf.format(Math.round(+M.o.views||0))} views`:`${nf.format(Math.round(+M.o.views||0))} views (GA4)`)}
       ${card('📣 Ads ontem', rf.format(Math.round(+M.o.custo_ads||0)), `${dlt(M.o.custo_ads,M.medA)} vs média · detalhe na <a href="#adscentral">Central</a>`)}
     </div>
     ${TAREFA?`<div class="banner ambar" style="background:var(--accent-soft);color:var(--accent)">📅 Hoje é ${TAREFA} — <a href="#sugestoes" style="text-decoration:underline">abrir CTRL ONLINE</a> · depois confira o <a href="#adscentral" style="text-decoration:underline">🚨 radar de disparo</a></div>`:''}
