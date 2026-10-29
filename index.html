@@ -260,6 +260,7 @@ tr.emcurso td{opacity:.55}
     <a href="#pedido" data-pg="pedido">🧮 Pedido de Compra</a>
     <a href="#importacoes" data-pg="importacoes">🚨 Importações urgentes</a>
     <a href="#logistica" data-pg="logistica">🗺️ Logística UF</a>
+    <a href="#serial" data-pg="serial">🔎 Serial</a>
     <a href="#anuncios" data-pg="anuncios">📈 Anúncios &amp; Conversão <span class="soon">breve</span></a>
     <a href="#decisoes" data-pg="decisoes">💬 Decisões — Chat IA <span class="soon">breve</span></a>
     <div class="spacer"></div>
@@ -539,7 +540,7 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {manha:'Manhã — o dia do seu grupo', radar:'Radar (legado)', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações urgentes — 80/20 rompendo antes do lead', logistica:'Logística UF — cobertura % por estado', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {manha:'Manhã — o dia do seu grupo', radar:'Radar (legado)', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações urgentes — 80/20 rompendo antes do lead', logistica:'Logística UF — cobertura % por estado', serial:'Serial — histórico da peça (vendas e devoluções)', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -548,6 +549,7 @@ function navega(pg){
   if(pg==='skus') st.skCod = param ? param.toUpperCase() : st.skCod;
   else if(pg==='sugestoes'&&param){ st.sgQ=param.toUpperCase(); st.sgAbrirExtrato=param.toUpperCase(); st.sgClasse=null; st.sgClasseAuto=true; st.sgOut=null; st.sgG=''; st.sgGer=''; st.sgVer='tudo'; }
   else if(pg==='diario'&&param){ st.diAbrir=param.toUpperCase(); }
+  else if(pg==='serial'){ if(param) st.srQ=param.toUpperCase(); }
   else st.pnCod = param || st.pnCod;
   st.pg=pg; st.shown=120;
   $('#tituloPagina').textContent = TITULOS[pg];
@@ -569,6 +571,7 @@ function navega(pg){
   else if(pg==='adscentral') renderAdsCentral();
   else if(pg==='importacoes') renderImportUrg();
   else if(pg==='logistica') renderLogisticaUf();
+  else if(pg==='serial') renderSerial();
   else if(pg==='pedido') renderPedido();
   else if(pg==='pressao') renderPressao();
   else if(pg==='config') renderConfig();
@@ -2455,6 +2458,64 @@ async function renderEquipe(){
       if(await salva(k,a)) renderEquipe();
     };
   }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
+}
+
+/* ---------- SERIAL — histórico da peça (29/10/26) ----------
+   Pergunta do CEO: "chegou um produto com serial X: em qual nota foi vendido, quantas vezes, e já teve devolução?"
+   Fonte: tabelas serial_venda (ZC9060 + SC6/SC5/SA1) e nf_devolucao (SD1060 com NF de origem), carregadas por etl/serial_hub.py.
+   RPC serial_historico(serial, produto?) → {vendas:[...], resumo:{...}}; serial_busca(prefixo) quando o exato não existe. */
+const fmtDia = d => d ? String(d).slice(0,10).split('-').reverse().join('/') : '—';
+async function renderSerial(){
+  const out=$('#conteudo'); const q=st.srQ||'', prod=st.srProd||'';
+  out.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <input type="text" id="srQ" value="${esc(q)}" placeholder="serial lido na etiqueta" style="width:230px;font-size:15px" autocomplete="off">
+      <input type="text" id="srP" value="${esc(prod)}" placeholder="produto (opcional)" style="width:180px" autocomplete="off">
+      <button class="btn" id="srGo" style="background:var(--accent);font-weight:700;padding:7px 18px">🔎 Buscar</button>
+      <span class="gr" id="srMsg"></span></div>
+    <p class="gr" style="font-size:12.5px;margin:0 0 12px;max-width:900px">Cada linha é uma vez que o WMS liberou essa peça para um pedido, com a nota de venda, o cliente e, se houver, a devolução do produto naquela nota. A devolução é ligada por <b>nota + produto + cliente</b>: a entrada no Protheus não registra o serial, então "teve devolução" vale para a nota, não garante que foi esta peça. Transferências entre empresas do grupo aparecem como <b>internas</b> e não contam como venda a cliente. Filiais que não registram serial no WMS (ex.: 1030) não aparecem.</p>
+    <div id="srOut"></div>`;
+  const go=()=>{
+    st.srQ=$('#srQ').value.trim().toUpperCase(); st.srProd=$('#srP').value.trim().toUpperCase();
+    const h='#serial'+(st.srQ?'/'+encodeURIComponent(st.srQ):'');
+    if(location.hash!==h) location.hash=h; else buscaSerial();
+  };
+  $('#srGo').onclick=go; $('#srQ').onkeydown=e=>{ if(e.key==='Enter') go(); }; $('#srP').onkeydown=e=>{ if(e.key==='Enter') go(); };
+  if(q) buscaSerial(); else $('#srQ').focus();
+}
+async function buscaSerial(){
+  const box=$('#srOut'); const q=st.srQ; if(!box) return; if(!q){ box.innerHTML=''; return; }
+  box.innerHTML='<div class="carregando">Procurando '+esc(q)+'…</div>';
+  const {data,error}=await sb.rpc('serial_historico',{p_serial:q, p_produto:st.srProd||null});
+  if(error){ box.innerHTML='<p class="gr">Erro: '+esc(error.message)+'</p>'; return; }
+  const vendas=(data&&data.vendas)||[], r=(data&&data.resumo)||{};
+  if(!vendas.length){
+    const {data:sug}=await sb.rpc('serial_busca',{p_prefixo:q});
+    box.innerHTML=`<p style="margin:0 0 8px"><b>Serial ${esc(q)} não encontrado</b> nas liberações do WMS${st.srProd?' para o produto '+esc(st.srProd):''}.</p>`+
+      ((sug&&sug.length)?`<p class="gr" style="margin:0 0 6px">Seriais que começam com ${esc(q)}:</p><div class="tablecard"><div class="tscroll"><table style="max-width:720px"><thead><tr><th style="text-align:left;padding:7px 10px">Serial</th><th style="text-align:left;padding:7px 10px">Produto</th><th style="padding:7px 10px">Registros</th><th style="padding:7px 10px">Última venda</th></tr></thead><tbody>${sug.map(s=>`<tr><td style="padding:6px 10px"><a href="#serial/${encodeURIComponent(s.serial)}">${esc(s.serial)}</a></td><td style="padding:6px 10px">${esc(s.produto)}</td><td style="text-align:right;padding:6px 10px">${s.registros}</td><td style="text-align:center;padding:6px 10px">${fmtDia(s.ultima_venda)}</td></tr>`).join('')}</tbody></table></div></div>`
+      :'<p class="gr">Confira se o número está completo (a busca por começo precisa de 4 caracteres ou mais).</p>');
+    return;
+  }
+  const card=(n,l,cor)=>`<div class="kpi"><div class="lab">${l}</div><div class="val" ${cor?`style="color:${cor}"`:''}>${n}</div></div>`;
+  const prods=(r.produtos||[]).filter(Boolean);
+  const alerta=(r.notas_cliente_final||0)>1 && !(r.notas_com_devolucao||0) ? `<p style="margin:8px 0 0;color:var(--warn,#9a6700);font-size:12.5px">⚠ Vendido mais de uma vez a cliente final sem devolução registrada no meio: ou a devolução não foi lançada, ou o número de serial foi reaproveitado${prods.length>1?' (aparece em '+prods.length+' produtos diferentes)':''}.</p>`:'';
+  box.innerHTML=`<div class="kpis">
+      ${card(r.notas_cliente_final||0,'vendas a cliente final')}${card(r.notas_internas||0,'notas internas (transferência)')}${card(r.sem_nota||0,'liberações sem nota')}
+      ${card(fmtDia(r.ultima_venda),'última venda a cliente')}${card(r.notas_com_devolucao||0,'notas com devolução', (r.notas_com_devolucao||0)?'var(--crit)':'')}${card(prods.length?prods.map(esc).join(', '):'—','produto'+(prods.length>1?'s':''))}
+    </div>${alerta}
+    <div class="tablecard" style="margin-top:12px"><div class="tscroll"><table style="width:100%">
+      <thead><tr><th style="text-align:left;padding:8px 10px">Venda</th><th style="text-align:left;padding:8px 10px">Nota</th><th style="text-align:left;padding:8px 10px">Produto</th><th style="text-align:left;padding:8px 10px">Cliente</th><th style="text-align:left;padding:8px 10px">Pedido</th><th style="text-align:left;padding:8px 10px">Canal</th><th style="text-align:left;padding:8px 10px">Liberação WMS</th><th style="text-align:left;padding:8px 10px">Devolução do produto nesta nota</th></tr></thead>
+      <tbody>${vendas.map(v=>{
+        const devs=(v.devolucoes||[]);
+        return `<tr${v.interno?' style="opacity:.75"':''}>
+          <td style="padding:7px 10px;white-space:nowrap">${v.nf?fmtDia(v.data_fat):'<span class="gr">sem nota</span>'}</td>
+          <td style="padding:7px 10px;white-space:nowrap">${v.nf?esc(v.filial)+' / '+esc(v.nf)+(v.serie?'-'+esc(v.serie):''):'—'}</td>
+          <td style="padding:7px 10px;font-weight:700">${esc(v.produto)}</td>
+          <td style="padding:7px 10px">${esc(v.cliente_nome||v.cliente||'—')}${v.interno?' <span class="gr" title="empresa do grupo — transferência, não conta como venda">· interna</span>':''}</td>
+          <td style="padding:7px 10px;white-space:nowrap">${esc(v.pedido)}${v.c6_item?'/'+esc(v.c6_item):''}</td>
+          <td style="padding:7px 10px;font-size:12px">${esc(v.ordmkt||v.numsite||'')}</td>
+          <td style="padding:7px 10px;white-space:nowrap;font-size:12px">${fmtDia(v.data_lib)}${v.hora_lib?' '+esc(v.hora_lib):''}${v.local?' · '+esc(v.local):''}</td>
+          <td style="padding:7px 10px;font-size:12.5px">${devs.length?devs.map(d=>`<div><b style="color:var(--crit)">⟲ ${esc(d.filial)}/${esc(d.doc)}</b> em ${fmtDia(d.data)} · tipo ${esc(d.tipo||'')} · ${Number(d.qtd||0)} un${d.cfop?' · CFOP '+esc(d.cfop):''}</div>`).join(''):'<span class="gr">—</span>'}</td>
+        </tr>`; }).join('')}</tbody></table></div></div>`;
 }
 
 /* ---------- CONCORRÊNCIA — BGT ---------- */
