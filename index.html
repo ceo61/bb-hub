@@ -2361,16 +2361,31 @@ async function renderLotoes(){
     const mediaV=+r.media_mes||0, disp=(+r.estoque_util||0)+(+r.transito||0);
     const unV=Math.min(+r.estoque_util||0, mediaV*PROT);
     const mesesV=mediaV>0?unV/mediaV:null;          // ≤ PROT; abaixo = nem o varejo está coberto
-    // chegadas por mês: atrasado/vencido = 1º mês (está vindo, chega "já"); sem data = 3º (conservador)
+    // chegadas por mês COM +15 DIAS de atraso previsto (regra da planilha, 30/10);
+    // vencida = conta de hoje (+15d); sem data = 3º mês (conservador)
     const cheg=[0,0,0];
     (traMap[cod]||[]).forEach(t=>{ const q=+t.qtd_pendente||0; if(q<=0) return;
       const d=String(t.chegada_prevista||'').replace(/-/g,'');
       if(!/^\d{8}$/.test(d)){ cheg[2]+=q; return; }
-      if(d<=fimM[0]) cheg[0]+=q; else if(d<=fimM[1]) cheg[1]+=q; else if(d<=fimM[2]) cheg[2]+=q; });
-    // sobra p/ distribuição: HOJE (só estoque) e fim de cada mês (estoque + chegadas − varejo acumulado − proteção)
-    const sobraHoje=Math.max(0, (+r.estoque_util||0) - mediaV*PROT);
-    const sobraM=[0,1,2].map(k=>{ const chegAc=cheg.slice(0,k+1).reduce((a,b)=>a+b,0);
-      return Math.max(0, (+r.estoque_util||0) + chegAc - mediaV*(k+1) - mediaV*PROT); });
+      let dt=new Date(+d.slice(0,4), +d.slice(4,6)-1, +d.slice(6,8));
+      if(isNaN(dt)||dt<new Date()) dt=new Date();
+      dt=new Date(dt.getTime()+15*864e5);
+      const ym=dt.toLocaleDateString('sv-SE').slice(0,7).replace('-','')+'31';
+      if(ym<=fimM[0]) cheg[0]+=q; else if(ym<=fimM[1]) cheg[1]+=q; else if(ym<=fimM[2]) cheg[2]+=q; });
+    // LIVRO-RAZÃO mensal (lógica de planilha, CEO 30/10): saldo += entradas(+15d) − saída varejo
+    // (média oficial) − saída lotões (média de lotões, SÓ se a folga do varejo ficar ≥ trava).
+    // A célula do mês mostra o POTENCIAL de lote = saldo pós-varejo − trava; o carry desconta
+    // apenas a saída planejada (média de lotões).
+    const travaUn=mediaV*PROT;
+    const sobraHoje=Math.max(0, (+r.estoque_util||0) - travaUn);
+    let sal=(+r.estoque_util||0); const sobraM=[];
+    for(let k=0;k<3;k++){
+      sal+=cheg[k];
+      sal-=Math.min(mediaV, sal);
+      const pot=Math.max(0, sal-travaUn);
+      sobraM.push(pot);
+      sal-=Math.min(reserva, pot);
+    }
     itens.push({cod, desc:r.descricao||'', grupo:r.grupo||'—', sLot, sEnt, bal:sEnt-sLot, reserva,
       media:mediaV, saldo:+r.estoque_util||0, tra:+r.transito||0, disp, mesesV, unV, unD:sobraHoje, sobraM, cheg,
       cob:r.cobertura!=null?+r.cobertura:null, fase:r.fase||null, media90:+r.media_90||0, eu:r.estoque_util,
