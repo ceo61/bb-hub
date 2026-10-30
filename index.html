@@ -2341,6 +2341,8 @@ async function renderLotoes(){
   st.ltLm.forEach(r=>{(lot[r.cod]=lot[r.cod]||{})[mesK(r.mes)]=+r.lotao||0;});
   st.ltEn.forEach(r=>{(ent[r.cod]=ent[r.cod]||{})[mesK(r.mes)]=(+r.qtd_imp||0)+(+r.qtd_prod||0);});
   const rad={}; (st.radar||[]).forEach(r=>rad[r.cod]=r);
+  if(st.ltProt==null){ try{ st.ltProt=+localStorage.getItem('bbhub-lot-prot')||3; }catch(e){ st.ltProt=3; } }
+  const PROT=st.ltProt;
   const itens=[];
   for(const cod in lot){
     const sLot=meses.reduce((s,m)=>s+(lot[cod][m]||0),0);
@@ -2351,12 +2353,14 @@ async function renderLotoes(){
     const reserva=m12.reduce((s,m)=>s+(lot[cod][m]||0),0)/12;
     // repartição do disponível (CEO 30/10): a média oficial (media_mes) JÁ exclui lotões →
     // demanda total = varejo + reserva; o disponível se divide na proporção das duas.
-    const mediaV=+r.media_mes||0, disp=(+r.estoque_util||0)+(+r.transito||0), dem=mediaV+reserva;
-    const dura=dem>0?disp/dem:null;                 // com lotões na média (acaba junto p/ os dois)
-    const duraV=mediaV>0?disp/mediaV:null;          // só varejo — se NENHUM lote sair
-    const unV=dem>0?disp*mediaV/dem:disp, unD=dem>0?disp*reserva/dem:0;
+    // CASCATA (CEO 30/10): 1º garante PROT meses do varejo; a SOBRA é dos distribuidores.
+    const mediaV=+r.media_mes||0, disp=(+r.estoque_util||0)+(+r.transito||0);
+    const unV=Math.min(disp, mediaV*PROT);
+    const unD=Math.max(0, disp-unV);
+    const mesesV=mediaV>0?unV/mediaV:null;          // ≤ PROT; abaixo = nem o varejo está coberto
+    const mesesD=reserva>0?unD/reserva:null;
     itens.push({cod, desc:r.descricao||'', grupo:r.grupo||'—', sLot, sEnt, bal:sEnt-sLot, reserva,
-      media:mediaV, saldo:+r.estoque_util||0, tra:+r.transito||0, disp, dura, duraV, unV, unD,
+      media:mediaV, saldo:+r.estoque_util||0, tra:+r.transito||0, disp, mesesV, mesesD, unV, unD,
       cob:r.cobertura!=null?+r.cobertura:null, fase:r.fase||null, media90:+r.media_90||0, eu:r.estoque_util,
       seco: lot60>0 && r.cobertura!=null && +r.cobertura<2});
   }
@@ -2370,16 +2374,18 @@ async function renderLotoes(){
     <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Lotão = <b>nota de distribuidor ≥ 50 un</b> (+ fracionamento do dia, regra da doutrina). <b>Reserva/mês</b> = média simples dos lotões nos últimos 12 meses fechados — é o que o Pedido de Compra reserva de base para distribuidor. Em cada mês: o vendido em lote e, entre parênteses, <b>o resultado contra a reserva</b> (<span style="color:var(--crit)">+acima</span> = o comercial vendeu além do reservado · <span style="color:var(--good)">−abaixo</span> = coube na reserva). <b>Varejo/mês</b> = média oficial SEM lotões. <b>Disponível</b> = estoque útil + a caminho (o trânsito abastece todos os canais). A repartição divide o disponível na proporção varejo × reserva: <b>é quanto de fato está "guardado" para cada um</b> se os dois consumirem no ritmo previsto — <b>🛒 Disponível p/ venda</b> = a parte das vendas normais, com quantos meses ela dura no ritmo do varejo; <b>🏭 Disponível p/ distrib.</b> = a parte reservada aos lotões, com quantos meses ela dura no ritmo da reserva. 🔴 = lote nos últimos 2 meses E cobertura do varejo &lt; 2m — <b>o lotão secou o setor</b>. * = mês parcial. Mouse no mês = entrada (importação+produção) daquele mês.</p>
     <div class="kpis">
       <div class="kpi" style="cursor:default"><span class="lab">Produtos com lotão (12m)</span><span class="val">${nf.format(lista.length)}</span><span class="sub">Σ ${nf.format(Math.round(lista.reduce((s,i)=>s+i.sLot,0)))} un em lotes (9m)</span></div>
-      <div class="kpi" style="cursor:default"><span class="lab">Do disponível hoje</span><span class="val">${nf.format(Math.round(lista.reduce((s,i)=>s+i.unV,0)))} · ${nf.format(Math.round(lista.reduce((s,i)=>s+i.unD,0)))}</span><span class="sub">varejo · distribuidor (un)</span></div>
+      <div class="kpi" style="cursor:default"><span class="lab">Do disponível hoje</span><span class="val">${nf.format(Math.round(lista.reduce((s,i)=>s+i.unV,0)))} · ${nf.format(Math.round(lista.reduce((s,i)=>s+i.unD,0)))}</span><span class="sub">varejo (protegido) · sobra p/ distrib. · <b style="color:var(--crit)">${nf.format(lista.filter(i=>i.unD<=0).length)} sem sobra</b></span></div>
       <div class="kpi" style="cursor:default"><span class="lab"><span class="dot" style="background:var(--crit)"></span>Secaram o setor</span><span class="val">${nf.format(nSeco)}</span><span class="sub">lote recente + cobertura &lt; 2m</span></div>
     </div>
     <div class="toolbar">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)">proteger o varejo por
+        <input type="number" id="ltProt" value="${PROT}" min="0.5" step="0.5" style="width:58px;padding:4px 6px;border:1px solid var(--hair);border-radius:6px;background:var(--surface);color:var(--ink)"> meses</label>
       <select id="ltG"><option value="">Todos os grupos</option>${Object.keys(grupos).sort((a,b)=>grupos[b]-grupos[a]).map(g=>`<option ${st.ltG===g?'selected':''} value="${esc(g)}">${esc(g)} (${grupos[g]})</option>`).join('')}</select>
       <span class="count">${nf.format(lista.length)} produtos</span>
     </div>
     <div class="tablecard"><div class="tscroll"><table>
       <thead><tr><th>Produto</th><th title="média simples dos lotões em 12 meses fechados — o que o Pedido reserva p/ distribuidor">Reserva/mês</th>${meses.map(m=>`<th title="lotões no mês (mouse = entrada do mês); entre parênteses, vendido − reserva">${mLbl(m)}</th>`).join('')}
-        <th title="média oficial SEM lotões (60d÷2)">Varejo/mês</th><th title="estoque útil + a caminho">Disponível</th><th title="parte do disponível prevista p/ as vendas normais (proporção das médias) e quantos meses ela dura no ritmo do varejo">🛒 Disponível p/ venda</th><th title="parte do disponível reservada p/ distribuidor e quantos meses ela dura no ritmo da reserva">🏭 Disponível p/ distrib.</th><th>Geração</th></tr></thead>
+        <th title="média oficial SEM lotões (60d÷2)">Varejo/mês</th><th title="estoque útil + a caminho">Disponível</th><th title="1º da fila: média do varejo × meses de proteção (⚠ = nem isso o disponível cobre)">🛒 Reservado p/ venda</th><th title="o que SOBRA depois de proteger o varejo — dividido pela média dos lotões dá os meses de distribuição">🏭 Sobra p/ distrib.</th><th>Geração</th></tr></thead>
       <tbody>${lista.map(i=>`<tr ${i.seco?'style="background:color-mix(in srgb, var(--crit) 7%, transparent)"':''}>
         <td><span class="cod">${esc(i.cod)}</span>${i.seco?' 🔴':''}<br><span class="gr" style="font-size:11px">${esc(i.desc.slice(0,32))}</span></td>
         <td style="text-align:right"><b>${nf1.format(i.reserva)}</b><br><span class="gr" style="font-size:10.5px">un/mês</span></td>
@@ -2389,12 +2395,13 @@ async function renderLotoes(){
           return `<td style="text-align:right;${v>0?'font-weight:700':'color:var(--muted)'}" title="entrada no mês: ${nf.format(Math.round(e))} un">${v>0?nf.format(Math.round(v)):'·'}${res}</td>`;}).join('')}
         <td style="text-align:right">${nf1.format(i.media)}</td>
         <td style="text-align:right"><b>${nf.format(Math.round(i.disp))}</b>${i.tra?`<br><span class="gr" style="font-size:10.5px">${nf.format(Math.round(i.saldo))} + ${nf.format(Math.round(i.tra))} a caminho</span>`:''}</td>
-        <td style="text-align:right">${i.media>0?`<b>${nf.format(Math.round(i.unV))} un</b><br><span style="font-size:11.5px;${mesCor(i.unV/i.media)}">${nf1.format(i.unV/i.media)} m</span>`:'<span class="gr">—</span>'}</td>
-        <td style="text-align:right">${i.reserva>0?`<b style="color:var(--accent)">${nf.format(Math.round(i.unD))} un</b><br><span style="font-size:11.5px;${mesCor(i.unD/i.reserva)}">${nf1.format(i.unD/i.reserva)} m</span>`:'<span class="gr">—</span>'}</td>
+        <td style="text-align:right">${i.media>0?`<b>${nf.format(Math.round(i.unV))} un</b><br><span style="font-size:11.5px;${i.mesesV<PROT-0.05?'color:var(--crit);font-weight:700':'color:var(--good)'}">${nf1.format(i.mesesV)} m${i.mesesV<PROT-0.05?' ⚠':''}</span>`:'<span class="gr">—</span>'}</td>
+        <td style="text-align:right">${i.unD<=0?`<b style="color:var(--crit)">0 un</b><br><span style="font-size:11.5px;color:var(--crit);font-weight:700">não vender lote</span>`:`<b style="color:var(--accent)">${nf.format(Math.round(i.unD))} un</b><br><span style="font-size:11.5px;${i.mesesD!=null?mesCor(i.mesesD):''}">${i.mesesD!=null?nf1.format(i.mesesD)+' m':'sem média'}</span>`}</td>
         <td>${trendCell({fase:i.fase, estoque_util:i.eu, media_30:0, media_90:i.media90})}</td>
       </tr>`).join('')}</tbody>
     </table></div></div>`;
   $('#ltG').onchange=e=>{ st.ltG=e.target.value; renderLotoes(); };
+  $('#ltProt').onchange=e=>{ st.ltProt=Math.max(0.5,+e.target.value||3); try{localStorage.setItem('bbhub-lot-prot',st.ltProt);}catch(x){} renderLotoes(); };
 }
 async function renderLogisticaUf(){
   // 🗺️ Logística UF v2 (CEO 25/10): modos % share · R$ · índice (1º período = 100) —
