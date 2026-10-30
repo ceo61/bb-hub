@@ -259,6 +259,7 @@ tr.emcurso td{opacity:.55}
     <a href="#compras" data-pg="compras">🚢 Compras &amp; Trânsito</a>
     <a href="#pedido" data-pg="pedido">🧮 Pedido de Compra</a>
     <a href="#importacoes" data-pg="importacoes">🚨 Importações urgentes</a>
+    <a href="#lotoes" data-pg="lotoes">🏭 Distribuidores</a>
     <a href="#logistica" data-pg="logistica">🗺️ Logística UF</a>
     <a href="#serial" data-pg="serial">🔎 Serial</a>
     <a href="#anuncios" data-pg="anuncios">📈 Anúncios &amp; Conversão <span class="soon">breve</span></a>
@@ -540,7 +541,7 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {manha:'Manhã — o dia do seu grupo', radar:'Radar (legado)', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações urgentes — 80/20 rompendo antes do lead', logistica:'Logística UF — cobertura % por estado', serial:'Serial — histórico da peça (vendas e devoluções)', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {manha:'Manhã — o dia do seu grupo', radar:'Radar (legado)', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', importacoes:'Importações urgentes — 80/20 rompendo antes do lead', lotoes:'Distribuidores — lotões × estoque', logistica:'Logística UF — cobertura % por estado', serial:'Serial — histórico da peça (vendas e devoluções)', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -570,6 +571,7 @@ function navega(pg){
   else if(pg==='equipe') renderEquipe();
   else if(pg==='adscentral') renderAdsCentral();
   else if(pg==='importacoes') renderImportUrg();
+  else if(pg==='lotoes') renderLotoes();
   else if(pg==='logistica') renderLogisticaUf();
   else if(pg==='serial') renderSerial();
   else if(pg==='pedido') renderPedido();
@@ -2318,6 +2320,73 @@ async function renderImportUrg(){
   }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
 }
 
+/* ---------- Distribuidores — lotões × estoque (CEO 30/10/26) ----------
+   Dor antiga: o comercial vende lotão e falta estoque para os outros setores. A tabela mostra,
+   por produto: lotões mês a mês (8m), quanto ENTROU no período (importação 3102 + produção 999),
+   o balanço, e a situação de HOJE (média, estoque útil, trânsito, cobertura). */
+async function renderLotoes(){
+  $('#conteudo').innerHTML='<div class="carregando">Cruzando lotões × entradas × estoque…</div>';
+  const corte=(()=>{const d=new Date();d.setMonth(d.getMonth()-8);d.setDate(1);return d.toLocaleDateString('sv-SE');})();
+  if(!st.ltLm){
+    [st.ltLm, st.ltEn] = await Promise.all([
+      tudo('lotao_mensal',{eq:[],mod:q=>q.gte('mes',corte).order('cod').order('mes')}),
+      tudo('fato_entradas_mensal',{eq:[],mod:q=>q.gte('mes',corte).order('cod').order('mes')})]);
+  }
+  const mesK=s=>String(s).slice(0,7);
+  const hojeM=hojeISO().slice(0,7);
+  const meses=[]; {const d=new Date(); d.setDate(1); for(let i=8;i>=0;i--){const x=new Date(d); x.setMonth(x.getMonth()-i); meses.push(x.toLocaleDateString('sv-SE').slice(0,7));}}
+  const lot={}, ent={};
+  st.ltLm.forEach(r=>{(lot[r.cod]=lot[r.cod]||{})[mesK(r.mes)]=+r.lotao||0;});
+  st.ltEn.forEach(r=>{(ent[r.cod]=ent[r.cod]||{})[mesK(r.mes)]=(+r.qtd_imp||0)+(+r.qtd_prod||0);});
+  const rad={}; (st.radar||[]).forEach(r=>rad[r.cod]=r);
+  const itens=[];
+  for(const cod in lot){
+    const sLot=meses.reduce((s,m)=>s+(lot[cod][m]||0),0);
+    if(sLot<=0) continue;
+    const sEnt=meses.reduce((s,m)=>s+((ent[cod]||{})[m]||0),0);
+    const r=rad[cod]||{};
+    const lot60=meses.slice(-2).reduce((s,m)=>s+(lot[cod][m]||0),0);
+    itens.push({cod, desc:r.descricao||'', grupo:r.grupo||'—', sLot, sEnt, bal:sEnt-sLot,
+      media:+r.media_mes||0, saldo:+r.estoque_util||0, tra:+r.transito||0,
+      cob:r.cobertura!=null?+r.cobertura:null, fase:r.fase||null, media90:+r.media_90||0, eu:r.estoque_util,
+      seco: lot60>0 && r.cobertura!=null && +r.cobertura<2});
+  }
+  itens.sort((a,b)=>b.sLot-a.sLot);
+  const grupos={}; itens.forEach(i=>grupos[i.grupo]=(grupos[i.grupo]||0)+1);
+  st.ltG=st.ltG??'';
+  const lista=itens.filter(i=>!st.ltG||i.grupo===st.ltG);
+  const nSeco=lista.filter(i=>i.seco).length;
+  const mLbl=m=>m.slice(5,7)+'/'+m.slice(2,4)+(m===hojeM?'*':'');
+  $('#conteudo').innerHTML=`
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Lotão = <b>nota de distribuidor ≥ 50 un</b> (+ fracionamento do dia, regra da doutrina). <b>Entradas</b> = importação (CFOP 3102, data de digitação) + produção interna. <b>Balanço = entradas − lotões no período</b>: negativo = vendemos para distribuidor mais do que repusemos, e quem paga é o varejo. Cobertura = estoque útil ÷ média/mês de hoje. 🔴 = lote nos últimos 2 meses E cobertura &lt; 2m — <b>o lotão secou o setor</b>. * = mês corrente parcial. Passe o mouse num mês para ver a entrada daquele mês.</p>
+    <div class="kpis">
+      <div class="kpi" style="cursor:default"><span class="lab">Produtos com lotão (${meses.length}m)</span><span class="val">${nf.format(lista.length)}</span><span class="sub">Σ ${nf.format(Math.round(lista.reduce((s,i)=>s+i.sLot,0)))} un em lotes</span></div>
+      <div class="kpi" style="cursor:default"><span class="lab">Entradas no período</span><span class="val">${nf.format(Math.round(lista.reduce((s,i)=>s+i.sEnt,0)))}</span><span class="sub">importação + produção</span></div>
+      <div class="kpi" style="cursor:default"><span class="lab"><span class="dot" style="background:var(--crit)"></span>Secaram o setor</span><span class="val">${nf.format(nSeco)}</span><span class="sub">lote recente + cobertura &lt; 2m</span></div>
+    </div>
+    <div class="toolbar">
+      <select id="ltG"><option value="">Todos os grupos</option>${Object.keys(grupos).sort((a,b)=>grupos[b]-grupos[a]).map(g=>`<option ${st.ltG===g?'selected':''} value="${esc(g)}">${esc(g)} (${grupos[g]})</option>`).join('')}</select>
+      <span class="count">${nf.format(lista.length)} produtos</span>
+    </div>
+    <div class="tablecard"><div class="tscroll"><table>
+      <thead><tr><th>Produto</th>${meses.map(m=>`<th title="lotões no mês (passe o mouse nas células para a entrada)">${mLbl(m)}</th>`).join('')}
+        <th>Σ lote</th><th>Σ entradas</th><th>Balanço</th><th>Média/mês</th><th>Estoque útil</th><th>A caminho</th><th>Cobertura</th><th>Geração</th></tr></thead>
+      <tbody>${lista.map(i=>`<tr ${i.seco?'style="background:color-mix(in srgb, var(--crit) 7%, transparent)"':''}>
+        <td><span class="cod">${esc(i.cod)}</span>${i.seco?' 🔴':''}<br><span class="gr" style="font-size:11px">${esc(i.desc.slice(0,32))}</span></td>
+        ${meses.map(m=>{const v=lot[i.cod][m]||0, e=(ent[i.cod]||{})[m]||0;
+          return `<td style="text-align:right;${v>0?'font-weight:700':'color:var(--muted)'}" title="entrada no mês: ${nf.format(Math.round(e))} un">${v>0?nf.format(Math.round(v)):'·'}</td>`;}).join('')}
+        <td style="text-align:right"><b>${nf.format(Math.round(i.sLot))}</b></td>
+        <td style="text-align:right">${nf.format(Math.round(i.sEnt))}</td>
+        <td style="text-align:right;font-weight:700;color:${i.bal<0?'var(--crit)':'var(--good)'}">${i.bal>0?'+':''}${nf.format(Math.round(i.bal))}</td>
+        <td style="text-align:right">${nf1.format(i.media)}</td>
+        <td style="text-align:right">${nf.format(Math.round(i.saldo))}</td>
+        <td style="text-align:right">${i.tra?nf.format(Math.round(i.tra)):'—'}</td>
+        <td>${cobCell({cobertura:i.cob})}</td>
+        <td>${trendCell({fase:i.fase, estoque_util:i.eu, media_30:0, media_90:i.media90})}</td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>`;
+  $('#ltG').onchange=e=>{ st.ltG=e.target.value; renderLotoes(); };
+}
 async function renderLogisticaUf(){
   // 🗺️ Logística UF v2 (CEO 25/10): modos % share · R$ · índice (1º período = 100) —
   // o caso RS provou que share sozinho engana (RS ×2,4 absoluto parecia "queda").
