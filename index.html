@@ -2343,6 +2343,10 @@ async function renderLotoes(){
   const rad={}; (st.radar||[]).forEach(r=>rad[r.cod]=r);
   if(st.ltProt==null){ try{ st.ltProt=+localStorage.getItem('bbhub-lot-prot')||3; }catch(e){ st.ltProt=3; } }
   const PROT=st.ltProt;
+  // projeção: 3 próximos meses; chegada por PO (chegada_prevista); atrasado/sem data = regra abaixo
+  const prox3=[]; {const d=new Date(); d.setDate(1); for(let i=1;i<=3;i++){const x=new Date(d); x.setMonth(x.getMonth()+i); prox3.push(x.toLocaleDateString('sv-SE').slice(0,7));}}
+  const fimM=prox3.map(m=>m.replace('-','')+'31');
+  const traMap={}; (st.transito||[]).forEach(t=>{(traMap[t.cod]=traMap[t.cod]||[]).push(t);});
   const itens=[];
   for(const cod in lot){
     const sLot=meses.reduce((s,m)=>s+(lot[cod][m]||0),0);
@@ -2355,12 +2359,20 @@ async function renderLotoes(){
     // demanda total = varejo + reserva; o disponível se divide na proporção das duas.
     // CASCATA (CEO 30/10): 1º garante PROT meses do varejo; a SOBRA é dos distribuidores.
     const mediaV=+r.media_mes||0, disp=(+r.estoque_util||0)+(+r.transito||0);
-    const unV=Math.min(disp, mediaV*PROT);
-    const unD=Math.max(0, disp-unV);
+    const unV=Math.min(+r.estoque_util||0, mediaV*PROT);
     const mesesV=mediaV>0?unV/mediaV:null;          // ≤ PROT; abaixo = nem o varejo está coberto
-    const mesesD=reserva>0?unD/reserva:null;
+    // chegadas por mês: atrasado/vencido = 1º mês (está vindo, chega "já"); sem data = 3º (conservador)
+    const cheg=[0,0,0];
+    (traMap[cod]||[]).forEach(t=>{ const q=+t.qtd_pendente||0; if(q<=0) return;
+      const d=String(t.chegada_prevista||'').replace(/-/g,'');
+      if(!/^\d{8}$/.test(d)){ cheg[2]+=q; return; }
+      if(d<=fimM[0]) cheg[0]+=q; else if(d<=fimM[1]) cheg[1]+=q; else if(d<=fimM[2]) cheg[2]+=q; });
+    // sobra p/ distribuição: HOJE (só estoque) e fim de cada mês (estoque + chegadas − varejo acumulado − proteção)
+    const sobraHoje=Math.max(0, (+r.estoque_util||0) - mediaV*PROT);
+    const sobraM=[0,1,2].map(k=>{ const chegAc=cheg.slice(0,k+1).reduce((a,b)=>a+b,0);
+      return Math.max(0, (+r.estoque_util||0) + chegAc - mediaV*(k+1) - mediaV*PROT); });
     itens.push({cod, desc:r.descricao||'', grupo:r.grupo||'—', sLot, sEnt, bal:sEnt-sLot, reserva,
-      media:mediaV, saldo:+r.estoque_util||0, tra:+r.transito||0, disp, mesesV, mesesD, unV, unD,
+      media:mediaV, saldo:+r.estoque_util||0, tra:+r.transito||0, disp, mesesV, unV, unD:sobraHoje, sobraM, cheg,
       cob:r.cobertura!=null?+r.cobertura:null, fase:r.fase||null, media90:+r.media_90||0, eu:r.estoque_util,
       seco: lot60>0 && r.cobertura!=null && +r.cobertura<2});
   }
@@ -2385,7 +2397,7 @@ async function renderLotoes(){
     </div>
     <div class="tablecard"><div class="tscroll"><table>
       <thead><tr><th>Produto</th><th title="média simples dos lotões em 12 meses fechados — o que o Pedido reserva p/ distribuidor">Reserva/mês</th>${meses.map(m=>`<th title="lotões no mês (mouse = entrada do mês); entre parênteses, vendido − reserva">${mLbl(m)}</th>`).join('')}
-        <th title="média oficial SEM lotões (60d÷2)">Varejo/mês</th><th title="estoque útil + a caminho">Disponível</th><th title="1º da fila: média do varejo × meses de proteção (⚠ = nem isso o disponível cobre)">🛒 Reservado p/ venda</th><th title="o que SOBRA depois de proteger o varejo — dividido pela média dos lotões dá os meses de distribuição">🏭 Sobra p/ distrib.</th><th>Geração</th></tr></thead>
+        <th title="média oficial SEM lotões (60d÷2)">Varejo/mês</th><th title="estoque útil + a caminho">Disponível</th><th title="1º da fila: média do varejo × meses de proteção (⚠ = nem isso o disponível cobre)">🛒 Reservado p/ venda</th><th title="sobra HOJE, contando SÓ o estoque (sem trânsito), já descontada a proteção do varejo">🏭 p/ distrib. HOJE</th>${prox3.map((m,k)=>`<th title="fim de ${m}: estoque + chegadas previstas até lá − consumo do varejo − proteção; embaixo, os meses de lotão que isso representa">🏭 ${['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][+m.slice(5,7)-1]}/${m.slice(2,4)}</th>`).join('')}<th>Geração</th></tr></thead>
       <tbody>${lista.map(i=>`<tr ${i.seco?'style="background:color-mix(in srgb, var(--crit) 7%, transparent)"':''}>
         <td><span class="cod">${esc(i.cod)}</span>${i.seco?' 🔴':''}<br><span class="gr" style="font-size:11px">${esc(i.desc.slice(0,32))}</span></td>
         <td style="text-align:right"><b>${nf1.format(i.reserva)}</b><br><span class="gr" style="font-size:10.5px">un/mês</span></td>
@@ -2396,7 +2408,8 @@ async function renderLotoes(){
         <td style="text-align:right">${nf1.format(i.media)}</td>
         <td style="text-align:right"><b>${nf.format(Math.round(i.disp))}</b>${i.tra?`<br><span class="gr" style="font-size:10.5px">${nf.format(Math.round(i.saldo))} + ${nf.format(Math.round(i.tra))} a caminho</span>`:''}</td>
         <td style="text-align:right">${i.media>0?`<b>${nf.format(Math.round(i.unV))} un</b><br><span style="font-size:11.5px;${i.mesesV<PROT-0.05?'color:var(--crit);font-weight:700':'color:var(--good)'}">${nf1.format(i.mesesV)} m${i.mesesV<PROT-0.05?' ⚠':''}</span>`:'<span class="gr">—</span>'}</td>
-        <td style="text-align:right">${i.unD<=0?`<b style="color:var(--crit)">0 un</b><br><span style="font-size:11.5px;color:var(--crit);font-weight:700">não vender lote</span>`:`<b style="color:var(--accent)">${nf.format(Math.round(i.unD))} un</b><br><span style="font-size:11.5px;${i.mesesD!=null?mesCor(i.mesesD):''}">${i.mesesD!=null?nf1.format(i.mesesD)+' m':'sem média'}</span>`}</td>
+        <td style="text-align:right">${i.unD<=0?`<b style="color:var(--crit)">0 un</b><br><span style="font-size:11px;color:var(--crit);font-weight:700">não vender lote</span>`:`<b style="color:var(--accent)">${nf.format(Math.round(i.unD))} un</b><br><span style="font-size:11px;${i.reserva>0?mesCor(i.unD/i.reserva):''}">${i.reserva>0?nf1.format(i.unD/i.reserva)+' m de lote':''}</span>`}</td>
+        ${i.sobraM.map((s,k)=>`<td style="text-align:right" title="chegadas no mês: ${nf.format(Math.round(i.cheg[k]))} un">${s<=0?`<span style="color:var(--crit);font-weight:700">0</span>`:`<b>${nf.format(Math.round(s))}</b><br><span style="font-size:11px;${i.reserva>0?mesCor(s/i.reserva):''}">${i.reserva>0?nf1.format(s/i.reserva)+' m':''}</span>`}</td>`).join('')}
         <td>${trendCell({fase:i.fase, estoque_util:i.eu, media_30:0, media_90:i.media90})}</td>
       </tr>`).join('')}</tbody>
     </table></div></div>`;
