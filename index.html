@@ -2803,7 +2803,7 @@ async function abreDiario(cod, desc){
 }
 
 /* ---------- Pedido de Compra (importação) — método homologado 04/09/26 ---------- */
-const PED_DEF={ciclo:2, lead:160, moq:10, moqCaro:5, caroDe:250, ssEst:1, ssCre:1.5, ssPic:2, ssLot:0.5, rupMult:1.5};
+const PED_DEF={ciclo:2, lead:160, moq:10, moqCaro:5, caroDe:250, ssEst:1, ssCre:1.5, ssPic:2, ssLot:0.5, rupMult:1.5, tripVol:30, tripTrava:8};
 function pedParams(){
   // por GRUPO (pedido_params na nuvem, carregado em renderPedido); localStorage = ponte p/ grupo sem registro
   const doGrupo=st.pedParamsAll?.[st.pedG];
@@ -2845,6 +2845,8 @@ async function renderPedido(){
         ${num('pedSsPic','seg. VOLÁTIL (m)',P.ssPic,0.25,52)}
         ${num('pedSsLot','seg. LOTÃO (m)',P.ssLot,0.25,52,'colchão SÓ da parte de lotões (distribuidor negocia prazo — a segurança do perfil protege apenas o varejo)')}
         ${num('pedRupMult','ruptura <2a: pico ×',P.rupMult??1.5,0.1,52,'produto NOVO (<2 anos) que zerou por ruptura: a base vira o pico recente × este fator — o pico em si já foi censurado pelo racionamento (AS515: faturou 17 no mês de 34 compras GA4)')}
+        ${num('pedTripVol','×3 até (un)',P.tripVol??30,1,52,'anti-resquício (29/10/26): produto ESTÁVEL que vende todo mês (6/6, cv≤0,6) com sugestão ATÉ este volume compra 3× de uma vez — some dos próximos pedidos. 0 desliga.')}
+        ${num('pedTripTrava','×3 trava (m)',P.tripTrava??8,0.5,52,'teto da regra ×3: a compra triplicada nunca passa deste nº de meses de venda')}
         <button class="btn" id="pedRodar" style="padding:8px 26px;font-weight:700;font-size:13.5px">▶ RODAR</button>
       </div>
     </div>
@@ -2858,7 +2860,8 @@ async function rodaPedido(){
   const P={ciclo:+$('#pedCiclo').value||2, lead:+$('#pedLead').value||160,
     moq:+$('#pedMoq').value||10, moqCaro:+$('#pedMoqCaro').value||5, caroDe:+$('#pedCaroDe').value||250,
     ssEst:+$('#pedSsEst').value||1, ssCre:+$('#pedSsCre').value||1.5, ssPic:+$('#pedSsPic').value||2, ssLot:+$('#pedSsLot').value||0,
-    rupMult:+$('#pedRupMult').value||1.5};
+    rupMult:+$('#pedRupMult').value||1.5,
+    tripVol:+$('#pedTripVol').value||0, tripTrava:+$('#pedTripTrava').value||8};
   try{ localStorage.setItem('bbhub-pedido', JSON.stringify(P)); }catch(e){}
   // memória POR GRUPO: cada RODAR grava os parâmetros do grupo p/ o próximo dia (qualquer navegador)
   (st.pedParamsAll=st.pedParamsAll||{})[st.pedG]={...P};
@@ -3053,9 +3056,25 @@ async function rodaPedido(){
         }
         mesesCompra=(base>0&&sug>0)?sug/base:null;
       }
+      // 📦 ×3 ANTI-RESQUÍCIO (CEO 29/10/26): ESTÁVEL que vende TODO mês (6/6, cv≤0,6) com sugestão
+      // pequena (≤ tripVol) compra 3× de uma vez — senão pede o resquício e volta no próximo pedido.
+      // Trava: nunca passar de tripTrava meses de compra, nem reduzir a sugestão vigente.
+      let tripTxt=null;
+      if(perfil==='ESTÁVEL'&&sug>0&&base>0&&(P.tripVol||0)>0&&sug<=P.tripVol){
+        const s6=serie.slice(-6);
+        if(s6.length===6&&s6.every(v=>v>0)){
+          const m6=s6.reduce((a,b)=>a+b,0)/6, cv6=Math.sqrt(s6.reduce((a,b)=>a+(b-m6)*(b-m6),0)/6)/m6;
+          if(cv6<=0.6){
+            const alvo3=Math.ceil(sug*3/moqEf)*moqEf;
+            const teto=Math.floor((P.tripTrava||8)*base/moqEf)*moqEf;
+            const novo=Math.max(sug, Math.min(alvo3, teto));
+            if(novo>sug){ tripTxt=`📦 ×3 anti-resquício: ${nf.format(sug)}→${nf.format(novo)} un (estável 6/6, cv ${nf1.format(cv6)}) — some dos próximos pedidos`; sug=novo; mesesCompra=sug/base; }
+          }
+        }
+      }
       const folgaHoje=base>0?saldo/base:(saldo>0?Infinity:0);
       const folgaCheg=base>0?(saldo+traTot+sug-base*horiz)/base:null;
-      const flags=[]; if(bkl>0) flags.push(`🧾 ${nf.format(Math.round(bkl))} un VENDIDAS aguardando estoque — peds: ${bk.peds}`); if(exM>0) flags.push(`🚀 lançamento: +${exM}m no alvo (${exI.por})`); if(censura) flags.push(censura); if(reclasTxt) flags.push(reclasTxt); if(contraTxt) flags.push(contraTxt); if(ajusteTxt) flags.push(ajusteTxt); if(lotTxt) flags.push(lotTxt);
+      const flags=[]; if(bkl>0) flags.push(`🧾 ${nf.format(Math.round(bkl))} un VENDIDAS aguardando estoque — peds: ${bk.peds}`); if(exM>0) flags.push(`🚀 lançamento: +${exM}m no alvo (${exI.por})`); if(censura) flags.push(censura); if(reclasTxt) flags.push(reclasTxt); if(contraTxt) flags.push(contraTxt); if(ajusteTxt) flags.push(ajusteTxt); if(lotTxt) flags.push(lotTxt); if(tripTxt) flags.push(tripTxt);
       if(base>0&&(saldo+trs.filter(t=>{const dd=dMs(t.d);return dd!=null&&dd<=hojeMs+P.lead*864e5;}).reduce((s,t)=>s+t.q,0))<base*(P.lead/30.44)) flags.push('🔴 rompe antes do lead');
       if(novoRamp) flags.push('🟡 novo — validar manual');
       if(base>0&&folgaHoje>8&&sug===0) flags.push('⚪ excesso');
