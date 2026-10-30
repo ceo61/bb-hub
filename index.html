@@ -2361,15 +2361,14 @@ async function renderLotoes(){
     const mediaV=+r.media_mes||0, disp=(+r.estoque_util||0)+(+r.transito||0);
     const unV=Math.min(+r.estoque_util||0, mediaV*PROT);
     const mesesV=mediaV>0?unV/mediaV:null;          // ≤ PROT; abaixo = nem o varejo está coberto
-    // chegadas por mês COM +15 DIAS de atraso previsto (regra da planilha, 30/10);
-    // vencida = conta de hoje (+15d); sem data = 3º mês (conservador)
+    // chegadas por mês pela data prevista de cada PO (atraso extra de 15d REMOVIDO a pedido
+    // do CEO 30/10); vencida = conta de hoje; sem data = 3º mês (conservador)
     const cheg=[0,0,0];
     (traMap[cod]||[]).forEach(t=>{ const q=+t.qtd_pendente||0; if(q<=0) return;
       const d=String(t.chegada_prevista||'').replace(/-/g,'');
       if(!/^\d{8}$/.test(d)){ cheg[2]+=q; return; }
       let dt=new Date(+d.slice(0,4), +d.slice(4,6)-1, +d.slice(6,8));
       if(isNaN(dt)||dt<new Date()) dt=new Date();
-      dt=new Date(dt.getTime()+15*864e5);
       const ym=dt.toLocaleDateString('sv-SE').slice(0,7).replace('-','')+'31';
       if(ym<=fimM[0]) cheg[0]+=q; else if(ym<=fimM[1]) cheg[1]+=q; else if(ym<=fimM[2]) cheg[2]+=q; });
     // LIVRO-RAZÃO mensal (lógica de planilha, CEO 30/10): saldo += entradas(+15d) − saída varejo
@@ -2398,7 +2397,7 @@ async function renderLotoes(){
   const nSeco=lista.filter(i=>i.seco).length;
   const mLbl=m=>m.slice(5,7)+'/'+m.slice(2,4)+(m===hojeM?'*':'');
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Lotão = <b>nota de distribuidor ≥ 50 un</b> (+ fracionamento do dia, regra da doutrina). <b>Reserva/mês</b> = média simples dos lotões nos últimos 12 meses fechados — é o que o Pedido de Compra reserva de base para distribuidor. Em cada mês: o vendido em lote e, entre parênteses, <b>o resultado contra a reserva</b> (<span style="color:var(--crit)">+acima</span> = o comercial vendeu além do reservado · <span style="color:var(--good)">−abaixo</span> = coube na reserva). <b>Varejo/mês</b> = média oficial SEM lotões. <b>Disponível</b> = estoque útil + a caminho (contexto). O motor das colunas de mês é um <b>livro-razão de planilha</b>: saldo + entradas (chegada de cada PO <b>+15 dias de atraso previsto</b>; sem data = 3º mês) − saída do varejo (média oficial) − saída de lotões (média de lotões, <b>só quando a folga do varejo fica ≥ a trava</b>, campo acima — abaixo dela, lotão do mês = ZERO). <b>HOJE</b> = só estoque − trava. A célula de cada mês mostra <b>quanto PODE ser vendido em lote</b> mantendo a trava; embaixo, os meses de lotão que isso representa. ⚠ = nem a trava coberta; <b style="color:var(--crit)">não vender lote</b> = zero. 🔴 = lote nos últimos 2 meses E cobertura do varejo &lt; 2m — <b>o lotão secou o setor</b>. * = mês parcial. Mouse no mês = entrada (importação+produção) daquele mês.</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Lotão = <b>nota de distribuidor ≥ 50 un</b> (+ fracionamento do dia, regra da doutrina). <b>Reserva/mês</b> = média simples dos lotões nos últimos 12 meses fechados — é o que o Pedido de Compra reserva de base para distribuidor. Em cada mês: o vendido em lote e, entre parênteses, <b>o resultado contra a reserva</b> (<span style="color:var(--crit)">+acima</span> = o comercial vendeu além do reservado · <span style="color:var(--good)">−abaixo</span> = coube na reserva). <b>Varejo/mês</b> = média oficial SEM lotões. <b>Disponível</b> = estoque útil + a caminho (contexto). O motor das colunas de mês é um <b>livro-razão de planilha</b>: saldo + entradas (pela <b>data prevista de cada PO</b>; sem data = 3º mês) − saída do varejo (média oficial) − saída de lotões (média de lotões, <b>só quando a folga do varejo fica ≥ a trava</b>, campo acima — abaixo dela, lotão do mês = ZERO). <b>HOJE</b> = só estoque − trava. A célula de cada mês mostra <b>quanto PODE ser vendido em lote</b> mantendo a trava; embaixo, os meses de lotão que isso representa. ⚠ = nem a trava coberta; <b style="color:var(--crit)">não vender lote</b> = zero. 🔴 = lote nos últimos 2 meses E cobertura do varejo &lt; 2m — <b>o lotão secou o setor</b>. * = mês parcial. Mouse no mês = entrada (importação+produção) daquele mês.</p>
     <div class="kpis">
       <div class="kpi" style="cursor:default"><span class="lab">Produtos com lotão (12m)</span><span class="val">${nf.format(lista.length)}</span><span class="sub">Σ ${nf.format(Math.round(lista.reduce((s,i)=>s+i.sLot,0)))} un em lotes (9m)</span></div>
       <div class="kpi" style="cursor:default"><span class="lab">Do disponível hoje</span><span class="val">${nf.format(Math.round(lista.reduce((s,i)=>s+i.unV,0)))} · ${nf.format(Math.round(lista.reduce((s,i)=>s+i.unD,0)))}</span><span class="sub">varejo (protegido) · sobra p/ distrib. · <b style="color:var(--crit)">${nf.format(lista.filter(i=>i.unD<=0).length)} sem sobra</b></span></div>
