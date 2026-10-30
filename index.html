@@ -2348,8 +2348,13 @@ async function renderLotoes(){
     const r=rad[cod]||{};
     const lot60=meses.slice(-2).reduce((s,m)=>s+(lot[cod][m]||0),0);
     const reserva=m12.reduce((s,m)=>s+(lot[cod][m]||0),0)/12;
+    // repartição do disponível (CEO 30/10): a média oficial (media_mes) JÁ exclui lotões →
+    // demanda total = varejo + reserva; o disponível se divide na proporção das duas.
+    const mediaV=+r.media_mes||0, disp=(+r.estoque_util||0)+(+r.transito||0), dem=mediaV+reserva;
+    const dura=dem>0?disp/dem:null;
+    const unV=dem>0?disp*mediaV/dem:disp, unD=dem>0?disp*reserva/dem:0;
     itens.push({cod, desc:r.descricao||'', grupo:r.grupo||'—', sLot, sEnt, bal:sEnt-sLot, reserva,
-      media:+r.media_mes||0, saldo:+r.estoque_util||0, tra:+r.transito||0,
+      media:mediaV, saldo:+r.estoque_util||0, tra:+r.transito||0, disp, dura, unV, unD,
       cob:r.cobertura!=null?+r.cobertura:null, fase:r.fase||null, media90:+r.media_90||0, eu:r.estoque_util,
       seco: lot60>0 && r.cobertura!=null && +r.cobertura<2});
   }
@@ -2360,10 +2365,10 @@ async function renderLotoes(){
   const nSeco=lista.filter(i=>i.seco).length;
   const mLbl=m=>m.slice(5,7)+'/'+m.slice(2,4)+(m===hojeM?'*':'');
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Lotão = <b>nota de distribuidor ≥ 50 un</b> (+ fracionamento do dia, regra da doutrina). <b>Reserva/mês</b> = média simples dos lotões nos últimos 12 meses fechados — é o que o Pedido de Compra reserva de base para distribuidor. Em cada mês: o vendido em lote e, entre parênteses, <b>o resultado contra a reserva</b> (<span style="color:var(--crit)">+acima</span> = o comercial vendeu além do reservado · <span style="color:var(--good)">−abaixo</span> = coube na reserva). <b>Entradas</b> = importação (CFOP 3102) + produção interna — abastecem TODOS os canais, não só lotão; o mesmo vale para <b>A caminho (total)</b>. Cobertura = estoque útil ÷ média/mês de hoje. 🔴 = lote nos últimos 2 meses E cobertura &lt; 2m — <b>o lotão secou o setor</b>. * = mês parcial. Mouse no mês = entrada daquele mês.</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Lotão = <b>nota de distribuidor ≥ 50 un</b> (+ fracionamento do dia, regra da doutrina). <b>Reserva/mês</b> = média simples dos lotões nos últimos 12 meses fechados — é o que o Pedido de Compra reserva de base para distribuidor. Em cada mês: o vendido em lote e, entre parênteses, <b>o resultado contra a reserva</b> (<span style="color:var(--crit)">+acima</span> = o comercial vendeu além do reservado · <span style="color:var(--good)">−abaixo</span> = coube na reserva). <b>Varejo/mês</b> = média oficial SEM lotões. <b>Disponível</b> = estoque útil + a caminho (o trânsito abastece todos os canais). A repartição divide o disponível na proporção varejo × reserva: <b>é quanto de fato está "guardado" para cada um</b> se os dois consumirem no ritmo previsto — e <b>dura</b> diz quando acaba para ambos. 🔴 = lote nos últimos 2 meses E cobertura do varejo &lt; 2m — <b>o lotão secou o setor</b>. * = mês parcial. Mouse no mês = entrada (importação+produção) daquele mês.</p>
     <div class="kpis">
-      <div class="kpi" style="cursor:default"><span class="lab">Produtos com lotão (${meses.length}m)</span><span class="val">${nf.format(lista.length)}</span><span class="sub">Σ ${nf.format(Math.round(lista.reduce((s,i)=>s+i.sLot,0)))} un em lotes</span></div>
-      <div class="kpi" style="cursor:default"><span class="lab">Entradas no período</span><span class="val">${nf.format(Math.round(lista.reduce((s,i)=>s+i.sEnt,0)))}</span><span class="sub">importação + produção</span></div>
+      <div class="kpi" style="cursor:default"><span class="lab">Produtos com lotão (12m)</span><span class="val">${nf.format(lista.length)}</span><span class="sub">Σ ${nf.format(Math.round(lista.reduce((s,i)=>s+i.sLot,0)))} un em lotes (9m)</span></div>
+      <div class="kpi" style="cursor:default"><span class="lab">Do disponível hoje</span><span class="val">${nf.format(Math.round(lista.reduce((s,i)=>s+i.unV,0)))} · ${nf.format(Math.round(lista.reduce((s,i)=>s+i.unD,0)))}</span><span class="sub">varejo · distribuidor (un)</span></div>
       <div class="kpi" style="cursor:default"><span class="lab"><span class="dot" style="background:var(--crit)"></span>Secaram o setor</span><span class="val">${nf.format(nSeco)}</span><span class="sub">lote recente + cobertura &lt; 2m</span></div>
     </div>
     <div class="toolbar">
@@ -2372,7 +2377,7 @@ async function renderLotoes(){
     </div>
     <div class="tablecard"><div class="tscroll"><table>
       <thead><tr><th>Produto</th><th title="média simples dos lotões em 12 meses fechados — o que o Pedido reserva p/ distribuidor">Reserva/mês</th>${meses.map(m=>`<th title="lotões no mês (mouse = entrada do mês); entre parênteses, vendido − reserva">${mLbl(m)}</th>`).join('')}
-        <th>Σ lote</th><th>Σ entradas</th><th>Balanço</th><th>Média/mês</th><th>Estoque útil</th><th>A caminho (total)</th><th>Cobertura</th><th>Geração</th></tr></thead>
+        <th title="média oficial SEM lotões (60d÷2)">Varejo/mês</th><th title="estoque útil + a caminho">Disponível</th><th title="repartição do disponível na proporção varejo × reserva">→ varejo · distrib.</th><th title="disponível ÷ (varejo + reserva) — quando acaba p/ os dois">Dura</th><th>Geração</th></tr></thead>
       <tbody>${lista.map(i=>`<tr ${i.seco?'style="background:color-mix(in srgb, var(--crit) 7%, transparent)"':''}>
         <td><span class="cod">${esc(i.cod)}</span>${i.seco?' 🔴':''}<br><span class="gr" style="font-size:11px">${esc(i.desc.slice(0,32))}</span></td>
         <td style="text-align:right"><b>${nf1.format(i.reserva)}</b><br><span class="gr" style="font-size:10.5px">un/mês</span></td>
@@ -2380,13 +2385,10 @@ async function renderLotoes(){
           const dif=v-i.reserva;
           const res=parc?'':`<br><small style="font-size:10px;${dif>0?'color:var(--crit);font-weight:700':dif<0&&v>0?'color:var(--good)':'color:var(--muted)'}">(${dif>0?'+':''}${nf.format(Math.round(dif))})</small>`;
           return `<td style="text-align:right;${v>0?'font-weight:700':'color:var(--muted)'}" title="entrada no mês: ${nf.format(Math.round(e))} un">${v>0?nf.format(Math.round(v)):'·'}${res}</td>`;}).join('')}
-        <td style="text-align:right"><b>${nf.format(Math.round(i.sLot))}</b></td>
-        <td style="text-align:right">${nf.format(Math.round(i.sEnt))}</td>
-        <td style="text-align:right;font-weight:700;color:${i.bal<0?'var(--crit)':'var(--good)'}">${i.bal>0?'+':''}${nf.format(Math.round(i.bal))}</td>
         <td style="text-align:right">${nf1.format(i.media)}</td>
-        <td style="text-align:right">${nf.format(Math.round(i.saldo))}</td>
-        <td style="text-align:right">${i.tra?nf.format(Math.round(i.tra)):'—'}</td>
-        <td>${cobCell({cobertura:i.cob})}</td>
+        <td style="text-align:right"><b>${nf.format(Math.round(i.disp))}</b>${i.tra?`<br><span class="gr" style="font-size:10.5px">${nf.format(Math.round(i.saldo))} + ${nf.format(Math.round(i.tra))} a caminho</span>`:''}</td>
+        <td style="text-align:right;white-space:nowrap"><b>${nf.format(Math.round(i.unV))}</b> · <b style="color:var(--accent)">${nf.format(Math.round(i.unD))}</b></td>
+        <td>${cobCell({cobertura:i.dura!=null?+i.dura.toFixed(1):null})}</td>
         <td>${trendCell({fase:i.fase, estoque_util:i.eu, media_30:0, media_90:i.media90})}</td>
       </tr>`).join('')}</tbody>
     </table></div></div>`;
