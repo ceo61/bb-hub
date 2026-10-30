@@ -5188,6 +5188,7 @@ async function renderConfig(){
   $('#cfgTema').onclick=()=>aplicaTema(document.documentElement.dataset.tema==='escuro'?'claro':'escuro');
   $('#cfgSair').onclick=()=>$('#btnSair').click();
 }
+window.st=st; // gancho de depuração/simulação (módulo esconde o escopo; leitura via console/DevTools)
 </script>
 </body>
 </html>
