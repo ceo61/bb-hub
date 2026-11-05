@@ -2342,6 +2342,10 @@ async function renderLotoes(){
     const codsLt=[...new Set(st.ltLm.map(r=>r.cod))];
     st.ltEs = codsLt.length ? await tudo('estoque_fim_mes',{eq:[],mod:q=>q.in('cod',codsLt).order('cod').order('mes')}) : [];
   }
+  // 📌 reserva manual (CEO 04/11/26): caixinha na coluna Reserva/mês — preenchida, substitui a
+  // média em TUDO (esta página e o Pedido de Compra); em branco, vale a média 12m. Tabela pequena,
+  // recarrega a cada render para pegar edição de outra sessão.
+  st.ltOv={}; try{ (await tudo('lotao_reserva',{eq:[]})).forEach(r=>st.ltOv[r.cod]=+r.reserva); }catch(e){}
   const mesK=s=>String(s).slice(0,7);
   const hojeM=hojeISO().slice(0,7);
   const meses=[]; {const d=new Date(); d.setDate(1); for(let i=8;i>=0;i--){const x=new Date(d); x.setMonth(x.getMonth()-i); meses.push(x.toLocaleDateString('sv-SE').slice(0,7));}}
@@ -2350,7 +2354,9 @@ async function renderLotoes(){
   const lot={}, ent={}, estF={};
   st.ltLm.forEach(r=>{(lot[r.cod]=lot[r.cod]||{})[mesK(r.mes)]=+r.lotao||0;});
   st.ltEn.forEach(r=>{(ent[r.cod]=ent[r.cod]||{})[mesK(r.mes)]=(+r.qtd_imp||0)+(+r.qtd_prod||0);});
-  (st.ltEs||[]).forEach(r=>{(estF[r.cod]=estF[r.cod]||{})[mesK(r.mes)]={s:+r.saldo||0,p:+r.provisorio||0};});
+  // s = saldo SÓ EQUIPATECH (0101 arm. 01+98 · 0104/0105 arm. 01 — CEO 04/11/26: as lojas BB
+  // inflavam o 📦 e escondiam mês sem estoque p/ o atacado) · t = total útil (contexto no mouse)
+  (st.ltEs||[]).forEach(r=>{(estF[r.cod]=estF[r.cod]||{})[mesK(r.mes)]={s:+r.saldo_eqt||0,t:+r.saldo||0,p:+r.provisorio||0};});
   const rad={}; (st.radar||[]).forEach(r=>rad[r.cod]=r);
   if(st.ltProt==null){ try{ st.ltProt=+localStorage.getItem('bbhub-lot-prot')||2; }catch(e){ st.ltProt=2; } }
   const PROT=st.ltProt;
@@ -2370,7 +2376,9 @@ async function renderLotoes(){
     // (≥2 meses com lote, ≥10 un/mês) — mesma régua que o Pedido de Compra usa p/ comprar mais
     const lot6=m12.slice(-6).reduce((s,m)=>s+(lot[cod][m]||0),0)/6;
     const nL6=m12.slice(-6).filter(m=>(lot[cod][m]||0)>0).length;
-    const acel=reserva>0 && nL6>=2 && lot6>=10 && lot6>=1.3*reserva;
+    const ovr=st.ltOv[cod]!=null?+st.ltOv[cod]:null;   // 📌 reserva fixada manualmente
+    const resEf=ovr!=null?ovr:reserva;                 // reserva EFETIVA usada em toda a página
+    const acel=ovr==null && reserva>0 && nL6>=2 && lot6>=10 && lot6>=1.3*reserva;
     // repartição do disponível (CEO 30/10): a média oficial (media_mes) JÁ exclui lotões →
     // demanda total = varejo + reserva; o disponível se divide na proporção das duas.
     // CASCATA (CEO 30/10): 1º garante PROT meses do varejo; a SOBRA é dos distribuidores.
@@ -2399,9 +2407,9 @@ async function renderLotoes(){
       sal-=Math.min(mediaV, sal);
       const pot=Math.max(0, sal-travaUn);
       sobraM.push(pot);
-      sal-=Math.min(reserva, pot);
+      sal-=Math.min(resEf, pot);
     }
-    itens.push({cod, desc:r.descricao||'', grupo:r.grupo||'—', sLot, sEnt, bal:sEnt-sLot, reserva, lot6, acel,
+    itens.push({cod, desc:r.descricao||'', grupo:r.grupo||'—', sLot, sEnt, bal:sEnt-sLot, reserva, ovr, resEf, lot6, acel,
       media:mediaV, saldo:+r.estoque_util||0, tra:+r.transito||0, disp, mesesV, unV, unD:sobraHoje, sobraM, cheg,
       cob:r.cobertura!=null?+r.cobertura:null, fase:r.fase||null, media90:+r.media_90||0, eu:r.estoque_util,
       seco: lot60>0 && r.cobertura!=null && +r.cobertura<2});
@@ -2413,7 +2421,7 @@ async function renderLotoes(){
   const nSeco=lista.filter(i=>i.seco).length;
   const mLbl=m=>m.slice(5,7)+'/'+m.slice(2,4)+(m===hojeM?'*':'');
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Lotão = <b>nota de distribuidor ≥ 50 un</b> (+ fracionamento do dia, regra da doutrina). <b>Reserva/mês</b> = média simples dos lotões nos últimos 12 meses fechados — é o que o Pedido de Compra reserva de base para distribuidor. <b style="color:var(--ser)">▲ 6m</b> = <b>lotão acelerando</b>: a média dos 6 meses fechados roda ≥ 1,3× a reserva (com ≥ 2 meses de lote e ≥ 10 un/mês) — o Pedido de Compra passa a <b>comprar pelo ritmo novo</b> (a maior das duas médias); desacelerar não reduz nada, dilui devagar na 12m. Em cada mês: o vendido em lote; entre parênteses, <b>o resultado contra a reserva</b> (<span style="color:var(--crit)">+acima</span> = o comercial vendeu além do reservado · <span style="color:var(--good)">−abaixo</span> = coube na reserva); e na 3ª linha <b>📦 o estoque útil no fim daquele mês</b> (fechamento mensal do Protheus; <b>~</b> = mês que o Protheus ainda não fechou, foto da virada) — <span style="color:var(--crit)">vermelho</span> = terminou o mês abaixo da reserva: <b>sem estoque, o atacado não podia vender mesmo</b>. <b>Varejo/mês</b> = média oficial SEM lotões. <b>Disponível</b> = estoque útil + a caminho (contexto). O motor das colunas de mês é um <b>livro-razão de planilha</b>: saldo + entradas (pela <b>data prevista de cada PO</b>; sem data = 3º mês) − saída do varejo (média oficial) − saída de lotões (média de lotões, <b>só quando a folga do varejo fica ≥ a trava</b>, campo acima — abaixo dela, lotão do mês = ZERO). <b>HOJE</b> = só estoque − trava. A célula de cada mês mostra <b>quanto PODE ser vendido em lote</b> mantendo a trava; embaixo, os meses de lotão que isso representa. ⚠ = nem a trava coberta; <b style="color:var(--crit)">não vender lote</b> = zero. 🔴 = lote nos últimos 2 meses E cobertura do varejo &lt; 2m — <b>o lotão secou o setor</b>. * = mês parcial. Mouse no mês = entrada (importação+produção) daquele mês.</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Lotão = <b>nota de distribuidor ≥ 50 un</b> (+ fracionamento do dia, regra da doutrina). <b>Reserva/mês</b> = média simples dos lotões nos últimos 12 meses fechados — é o que o Pedido de Compra reserva de base para distribuidor. A <b>caixinha</b> embaixo do número fixa uma reserva manual para produto-chave: <b>preenchida, substitui a média em tudo</b> (nesta página e no Pedido de Compra, marcada 📌); em branco, vale a média. <b style="color:var(--ser)">▲ 6m</b> = <b>lotão acelerando</b>: a média dos 6 meses fechados roda ≥ 1,3× a reserva (com ≥ 2 meses de lote e ≥ 10 un/mês) — o Pedido de Compra passa a <b>comprar pelo ritmo novo</b> (a maior das duas médias); desacelerar não reduz nada, dilui devagar na 12m. Em cada mês: o vendido em lote; entre parênteses, <b>o resultado contra a reserva</b> (<span style="color:var(--crit)">+acima</span> = o comercial vendeu além do reservado · <span style="color:var(--good)">−abaixo</span> = coube na reserva); e na 3ª linha <b>📦 o estoque EQUIPATECH no fim daquele mês</b> (0101 arm. 01+98 · 0104/0105 arm. 01 — <b>lojas BB Baterias fora</b>, pois o atacado não vende delas; mouse mostra o total com lojas; fechamento mensal do Protheus; <b>~</b> = mês que o Protheus ainda não fechou, foto da virada) — <span style="color:var(--crit)">vermelho</span> = terminou o mês abaixo da reserva: <b>sem estoque, o atacado não podia vender mesmo</b>. <b>Varejo/mês</b> = média oficial SEM lotões. <b>Disponível</b> = estoque útil + a caminho (contexto). O motor das colunas de mês é um <b>livro-razão de planilha</b>: saldo + entradas (pela <b>data prevista de cada PO</b>; sem data = 3º mês) − saída do varejo (média oficial) − saída de lotões (média de lotões, <b>só quando a folga do varejo fica ≥ a trava</b>, campo acima — abaixo dela, lotão do mês = ZERO). <b>HOJE</b> = só estoque − trava. A célula de cada mês mostra <b>quanto PODE ser vendido em lote</b> mantendo a trava; embaixo, os meses de lotão que isso representa. ⚠ = nem a trava coberta; <b style="color:var(--crit)">não vender lote</b> = zero. 🔴 = lote nos últimos 2 meses E cobertura do varejo &lt; 2m — <b>o lotão secou o setor</b>. * = mês parcial. Mouse no mês = entrada (importação+produção) daquele mês.</p>
     <div class="kpis">
       <div class="kpi" style="cursor:default"><span class="lab">Produtos com lotão (12m)</span><span class="val">${nf.format(lista.length)}</span><span class="sub">Σ ${nf.format(Math.round(lista.reduce((s,i)=>s+i.sLot,0)))} un em lotes (9m)</span></div>
       <div class="kpi" style="cursor:default"><span class="lab">Do disponível hoje</span><span class="val">${nf.format(Math.round(lista.reduce((s,i)=>s+i.unV,0)))} · ${nf.format(Math.round(lista.reduce((s,i)=>s+i.unD,0)))}</span><span class="sub">varejo (protegido) · sobra p/ distrib. · <b style="color:var(--crit)">${nf.format(lista.filter(i=>i.unD<=0).length)} sem sobra</b></span></div>
@@ -2427,29 +2435,41 @@ async function renderLotoes(){
       <span class="count">${nf.format(lista.length)} produtos</span>
     </div>
     <div class="tablecard"><div class="tscroll"><table>
-      <thead><tr><th>Produto</th><th title="média simples dos lotões em 12 meses fechados — o que o Pedido reserva p/ distribuidor">Reserva/mês</th>${meses.map(m=>`<th title="lotões no mês (mouse = entrada do mês); entre parênteses, vendido − reserva; 📦 = estoque útil no fim do mês (vermelho = abaixo da reserva)">${mLbl(m)}</th>`).join('')}
+      <thead><tr><th>Produto</th><th title="média simples dos lotões em 12 meses fechados — o que o Pedido reserva p/ distribuidor; a caixinha fixa um valor manual (vale aqui e no Pedido)">Reserva/mês</th>${meses.map(m=>`<th title="lotões no mês (mouse = entrada do mês); entre parênteses, vendido − reserva; 📦 = estoque EQUIPATECH no fim do mês (vermelho = abaixo da reserva)">${mLbl(m)}</th>`).join('')}
         <th title="média oficial SEM lotões (60d÷2)">Varejo/mês</th><th title="estoque útil + a caminho">Disponível</th><th title="1º da fila: média do varejo × meses de proteção (⚠ = nem isso o disponível cobre)">🛒 Reservado p/ venda</th><th title="sobra HOJE, contando SÓ o estoque (sem trânsito), já descontada a proteção do varejo">🏭 p/ distrib. HOJE</th>${prox3.map((m,k)=>`<th title="fim de ${m}: estoque + chegadas previstas até lá − consumo do varejo − proteção; embaixo, os meses de lotão que isso representa">🏭 ${['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][+m.slice(5,7)-1]}/${m.slice(2,4)}</th>`).join('')}<th>Geração</th></tr></thead>
       <tbody>${lista.map(i=>`<tr ${i.seco?'style="background:color-mix(in srgb, var(--crit) 7%, transparent)"':''}>
         <td><span class="cod">${esc(i.cod)}</span>${i.seco?' 🔴':''}<br><span class="gr" style="font-size:11px">${esc(i.desc.slice(0,32))}</span></td>
-        <td style="text-align:right" title="${i.acel?`lotão acelerando: média 6m ${nf1.format(i.lot6)} vs 12m ${nf1.format(i.reserva)} (+${Math.round((i.lot6/i.reserva-1)*100)}%) — o Pedido de Compra já compra pelo ritmo novo`:'média simples dos 12 meses fechados'}"><b>${nf1.format(i.reserva)}</b>${i.acel?`<br><small style="color:var(--ser);font-weight:700">▲ 6m: ${nf1.format(i.lot6)}</small>`:''}<br><span class="gr" style="font-size:10.5px">un/mês</span></td>
+        <td style="text-align:right" title="${i.ovr!=null?`📌 reserva FIXADA manualmente — a média 12m sugere ${nf1.format(i.reserva)}; o Pedido de Compra usa o valor fixado`:i.acel?`lotão acelerando: média 6m ${nf1.format(i.lot6)} vs 12m ${nf1.format(i.reserva)} (+${Math.round((i.lot6/i.reserva-1)*100)}%) — o Pedido de Compra já compra pelo ritmo novo`:'média simples dos 12 meses fechados'}"><b>${nf1.format(i.resEf)}</b>${i.ovr!=null?`<br><small style="color:var(--lar);font-weight:700">📌 manual · média ${nf1.format(i.reserva)}</small>`:i.acel?`<br><small style="color:var(--ser);font-weight:700">▲ 6m: ${nf1.format(i.lot6)}</small>`:''}<br><span class="gr" style="font-size:10.5px">un/mês</span>${st.admin?`<br><input type="number" class="ltOv" data-cod="${esc(i.cod)}" value="${i.ovr!=null?i.ovr:''}" placeholder="auto" min="0" step="any" title="reserva manual: preenchida substitui a média (aqui e no Pedido de Compra); em branco volta à média" style="width:62px;margin-top:3px;padding:2px 4px;border:1px solid var(--hair);border-radius:5px;background:var(--surface);color:var(--ink);font-size:11px;text-align:right">`:''}</td>
         ${meses.map(m=>{const v=lot[i.cod][m]||0, e=(ent[i.cod]||{})[m]||0, parc=m===hojeM;
-          const dif=v-i.reserva;
+          const dif=v-i.resEf;
           const res=parc?'':`<br><small style="font-size:10px;${dif>0?'color:var(--crit);font-weight:700':dif<0&&v>0?'color:var(--good)':'color:var(--muted)'}">(${dif>0?'+':''}${nf.format(Math.round(dif))})</small>`;
           // 3ª linha (CEO 03/11): estoque útil no FIM do mês — vendeu abaixo da reserva mas
           // terminou sem estoque p/ um lote médio = o atacado não podia vender mesmo (vermelho)
           const f=(estF[i.cod]||{})[m], fim=f?f.s:0;
-          const fimTx=parc?'':`<br><small style="font-size:10px;${fim<i.reserva?'color:var(--crit)':'color:var(--muted)'}">📦 ${nf.format(Math.round(fim))}${f&&f.p?'~':''}</small>`;
-          return `<td style="text-align:right;${v>0?'font-weight:700':'color:var(--muted)'}" title="entrada no mês: ${nf.format(Math.round(e))} un · estoque útil no fim do mês: ${parc?'mês em curso':nf.format(Math.round(fim))+(f&&f.p?' (provisório — Protheus ainda não fechou o mês)':'')}">${v>0?nf.format(Math.round(v)):'·'}${res}${fimTx}</td>`;}).join('')}
+          const fimTx=parc?'':`<br><small style="font-size:10px;${fim<i.resEf?'color:var(--crit)':'color:var(--muted)'}">📦 ${nf.format(Math.round(fim))}${f&&f.p?'~':''}</small>`;
+          return `<td style="text-align:right;${v>0?'font-weight:700':'color:var(--muted)'}" title="entrada no mês: ${nf.format(Math.round(e))} un · estoque EQUIPATECH no fim do mês: ${parc?'mês em curso':nf.format(Math.round(fim))+(f&&f.p?' (provisório — Protheus ainda não fechou o mês)':'')+' · com lojas BB: '+nf.format(Math.round(f?f.t:0))}">${v>0?nf.format(Math.round(v)):'·'}${res}${fimTx}</td>`;}).join('')}
         <td style="text-align:right">${nf1.format(i.media)}</td>
         <td style="text-align:right"><b>${nf.format(Math.round(i.disp))}</b>${i.tra?`<br><span class="gr" style="font-size:10.5px">${nf.format(Math.round(i.saldo))} + ${nf.format(Math.round(i.tra))} a caminho</span>`:''}</td>
         <td style="text-align:right">${i.media>0?`<b>${nf.format(Math.round(i.unV))} un</b><br><span style="font-size:11.5px;${i.mesesV<PROT-0.05?'color:var(--crit);font-weight:700':'color:var(--good)'}">${nf1.format(i.mesesV)} m${i.mesesV<PROT-0.05?' ⚠':''}</span>`:'<span class="gr">—</span>'}</td>
-        <td style="text-align:right">${i.unD<=0?`<b style="color:var(--crit)">0 un</b><br><span style="font-size:11px;color:var(--crit);font-weight:700">não vender lote</span>`:`<b style="color:var(--accent)">${nf.format(Math.round(i.unD))} un</b><br><span style="font-size:11px;${i.reserva>0?mesCor(i.unD/i.reserva):''}">${i.reserva>0?nf1.format(i.unD/i.reserva)+' m de lote':''}</span>`}</td>
-        ${i.sobraM.map((s,k)=>`<td style="text-align:right" title="chegadas no mês: ${nf.format(Math.round(i.cheg[k]))} un">${s<=0?`<span style="color:var(--crit);font-weight:700">0</span>`:`<b>${nf.format(Math.round(s))}</b><br><span style="font-size:11px;${i.reserva>0?mesCor(s/i.reserva):''}">${i.reserva>0?nf1.format(s/i.reserva)+' m':''}</span>`}</td>`).join('')}
+        <td style="text-align:right">${i.unD<=0?`<b style="color:var(--crit)">0 un</b><br><span style="font-size:11px;color:var(--crit);font-weight:700">não vender lote</span>`:`<b style="color:var(--accent)">${nf.format(Math.round(i.unD))} un</b><br><span style="font-size:11px;${i.resEf>0?mesCor(i.unD/i.resEf):''}">${i.resEf>0?nf1.format(i.unD/i.resEf)+' m de lote':''}</span>`}</td>
+        ${i.sobraM.map((s,k)=>`<td style="text-align:right" title="chegadas no mês: ${nf.format(Math.round(i.cheg[k]))} un">${s<=0?`<span style="color:var(--crit);font-weight:700">0</span>`:`<b>${nf.format(Math.round(s))}</b><br><span style="font-size:11px;${i.resEf>0?mesCor(s/i.resEf):''}">${i.resEf>0?nf1.format(s/i.resEf)+' m':''}</span>`}</td>`).join('')}
         <td>${trendCell({fase:i.fase, estoque_util:i.eu, media_30:0, media_90:i.media90})}</td>
       </tr>`).join('')}</tbody>
     </table></div></div>`;
   $('#ltG').onchange=e=>{ st.ltG=e.target.value; renderLotoes(); };
   $('#ltProt').onchange=e=>{ st.ltProt=Math.max(0.5,+e.target.value||3); try{localStorage.setItem('bbhub-lot-prot',st.ltProt);}catch(x){} renderLotoes(); };
+  // 📌 caixinha da reserva manual: grava/apaga em lotao_reserva e re-renderiza com o valor efetivo
+  document.querySelectorAll('.ltOv').forEach(el=>el.onchange=async e=>{
+    const cod=e.target.dataset.cod, raw=e.target.value.trim();
+    e.target.disabled=true;
+    try{
+      if(raw===''){ const {error}=await sb.from('lotao_reserva').delete().eq('cod',cod); if(error) throw error; delete st.ltOv[cod]; }
+      else{ const v=Math.max(0,+raw.replace(',','.')||0);
+        const {error}=await sb.from('lotao_reserva').upsert({cod, reserva:v, definido_por:st.email, definido_em:new Date().toISOString()}); if(error) throw error;
+        st.ltOv[cod]=v; }
+      renderLotoes();
+    }catch(x){ e.target.disabled=false; alert('Não salvou a reserva manual: '+(x.message||x)); }
+  });
 }
 async function renderLogisticaUf(){
   // 🗺️ Logística UF v2 (CEO 25/10): modos % share · R$ · índice (1º período = 100) —
@@ -3034,6 +3054,9 @@ async function rodaPedido(){
     (await tudo('fato_vendas_anos',{eq:[]})).forEach(r=>anos[r.cod]={a1:+r.ano1||0,a2:+r.ano2||0,a3:+r.ano3||0});
     try{ (await tudo('pedido_legado',{eq:[]})).forEach(r=>legado[r.cod]={ped:+r.pedido||0, media:r.media!=null?+r.media:null, classe:r.classe||''}); }catch(e){}
     const extras={}; try{ (await tudo('pedido_extra',{eq:[]})).forEach(r=>extras[r.cod]={m:+r.meses||0, por:(r.definido_por||'').split('@')[0]}); }catch(e){}
+    // 📌 reserva manual de lotão (CEO 04/11/26): caixinha da aba Distribuidores — preenchida,
+    // substitui a média de lotões na base do pedido (e desliga a aceleração 6m)
+    const lotOv={}; try{ (await tudo('lotao_reserva',{eq:[]})).forEach(r=>lotOv[r.cod]=+r.reserva); }catch(e){}
     const backlog={}; try{ (await tudo('fato_backlog',{eq:[]})).forEach(r=>backlog[r.cod]={q:+r.qtd||0, peds:r.pedidos||''}); }catch(e){}
     st.pedNimp={}; try{ (await tudo('pedido_nao_importar',{eq:[]})).forEach(r=>st.pedNimp[r.cod]={por:(r.marcado_por||'').split('@')[0], em:r.marcado_em}); }catch(e){}
     for(let i=0;i<cods.length;i+=60){
@@ -3108,9 +3131,10 @@ async function rodaPedido(){
       // compra MENOS por isso (desaceleração dilui devagar na 12m, de propósito).
       const lot6=serieL.slice(-6).reduce((s,x)=>s+x,0)/6;
       const nL6=serieL.slice(-6).filter(x=>x>0).length;
-      const lotAcel=lot12>0 && nL6>=2 && lot6>=10 && lot6>=1.3*lot12;
-      const baseLot=lotAcel?lot6:lot12;
-      const lotAcelTxt=lotAcel?`🏭▲ lotão acelerando: média 6m ${nf1.format(lot6)} vs 12m ${nf1.format(lot12)} — comprando pelo ritmo novo`:null;
+      const lotOvr=lotOv[p.cod]!=null?+lotOv[p.cod]:null;   // 📌 reserva fixada na aba Distribuidores
+      const lotAcel=lotOvr==null && lot12>0 && nL6>=2 && lot6>=10 && lot6>=1.3*lot12;
+      const baseLot=lotOvr!=null?lotOvr:(lotAcel?lot6:lot12);
+      const lotAcelTxt=lotAcel?`🏭▲ lotão acelerando: média 6m ${nf1.format(lot6)} vs 12m ${nf1.format(lot12)} — comprando pelo ritmo novo`:(lotOvr!=null?`📌 reserva de lotão FIXADA na aba Distribuidores: ${nf1.format(lotOvr)} un/mês (média 12m: ${nf1.format(lot12)})`:null);
       const baseConv=base; base=baseConv+baseLot;
       const an=anos[p.cod]||{a1:0,a2:0,a3:0};
       // 📅 REPASSE DO PERFIL vs -3a/-2a/-1a (caso SS021): a janela de 12m ACHATA crescimento
@@ -3234,7 +3258,7 @@ async function rodaPedido(){
       const serie6L=serieL.slice(-6);
       const lg=legado[p.cod]||null;
       rows.push({cod:p.cod, desc:p.descricao||'', ean:p.ean||'', volt:p.voltagem||'', amper:p.amperagem||'', capac:p.capacidade||'', perfil, serie6:serie.slice(-6), serie6L, a1:an.a1, a2:an.a2, a3:an.a3, m3, m12, tend, base, baseConv, baseLot, idade:idade[p.cod]??null, mSusp, saldo, legado:lg?lg.ped:null, legadoTip:lg?`media legado ${nf1.format(lg.media||0)} · ${lg.classe}`:'',
-        traHoriz, traTot, prox, bkl, bklPed:bk?bk.peds:'', folgaHoje, alvo, sug, mesesCompra, folgaCheg, custo, mk, lotAcel, valor:custo!=null?sug*custo:null, flags:flags.join(' ')});
+        traHoriz, traTot, prox, bkl, bklPed:bk?bk.peds:'', folgaHoje, alvo, sug, mesesCompra, folgaCheg, custo, mk, lotAcel, lotOvr:lotOvr!=null, valor:custo!=null?sug*custo:null, flags:flags.join(' ')});
     }
     // 🚫 NÃO IMPORTAR MAIS: decisão gravada (pedido_nao_importar) — zera a sugestão e marca a linha
     rows.forEach(r=>{ const n=st.pedNimp[r.cod]; if(!n) return;
@@ -3310,7 +3334,7 @@ function desenhaPedido(){
       <td class="gr">${r.a3?nf.format(r.a3):'—'}</td><td class="gr">${r.a2?nf.format(r.a2):'—'}</td><td style="${r.a1>r.a2&&r.a2>=(r.a3||0)?'color:var(--good);font-weight:600':r.a1<r.a2*0.6&&r.a2>0?'color:var(--crit)':''}">${r.a1?nf.format(r.a1):'—'}</td>
       <td>${nf1.format(r.m3)}</td><td>${nf1.format(r.m12)}</td>
       <td>${r.tend!=null?nf1.format(r.tend)+'×':'—'}</td>
-      <td style="white-space:nowrap;${r.mSusp?'background:var(--warn-soft)':''}" title="${r.mSusp?'⚠ MÉDIA SUSPEITA (ver flags) · ':''}convencional ${nf1.format(r.baseConv)} (perfil ${r.perfil}) + lotes ${nf1.format(r.baseLot)} (média ${r.lotAcel?'6m ▲ acelerando':'12m'})"><b>${nf1.format(r.base)}</b>${r.baseLot>=0.5?`<br><span class="gr" style="font-size:10.5px">${nf1.format(r.baseConv)}+<span style="color:var(--lar)">${nf1.format(r.baseLot)}${r.lotAcel?'▲':''}</span></span>`:''}</td>
+      <td style="white-space:nowrap;${r.mSusp?'background:var(--warn-soft)':''}" title="${r.mSusp?'⚠ MÉDIA SUSPEITA (ver flags) · ':''}convencional ${nf1.format(r.baseConv)} (perfil ${r.perfil}) + lotes ${nf1.format(r.baseLot)} (${r.lotOvr?'📌 fixada na aba Distribuidores':r.lotAcel?'média 6m ▲ acelerando':'média 12m'})"><b>${nf1.format(r.base)}</b>${r.baseLot>=0.5?`<br><span class="gr" style="font-size:10.5px">${nf1.format(r.baseConv)}+<span style="color:var(--lar)">${nf1.format(r.baseLot)}${r.lotOvr?'📌':r.lotAcel?'▲':''}</span></span>`:''}</td>
       <td>${nf.format(Math.round(r.saldo))}</td>
       <td title="chega dentro do lead: ${nf.format(Math.round(r.traHoriz))}${r.prox?' · 1ª chegada '+r.prox.slice(8,10)+'/'+r.prox.slice(5,7):''}">${r.traTot?nf.format(Math.round(r.traTot)):'—'}</td>
       <td title="${esc(r.bklPed||'')}" style="${r.bkl?'color:var(--warn);font-weight:700':''}">${r.bkl?nf.format(Math.round(r.bkl)):'—'}</td>
