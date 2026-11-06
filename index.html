@@ -1160,6 +1160,14 @@ function montaSugestoes(){
 // ritmo de MC: 100% = no ritmo do próprio ano (pro-rata da janela sobre o 365dd)
 const mcRel=(w,dias,b365)=>{ if(!b365||b365<=0) return null; const esp=b365*dias/365; return esp?(+w||0)/esp*100:null; };
 const mcCor=p=>p==null?'':p>=110?'color:var(--good);font-weight:700':p>=90?'':p>=70?'color:var(--lar)':'color:var(--crit);font-weight:700';
+async function carregaFamilia(){
+  // 👨‍👦 mapa pai/filho (MV familia_sku, refresh no ETL diário): pai = dono da página VTEX;
+  // filho = SKU da mesma página que é OUTRO produto Protheus (prdcor na dim_compatibilidade).
+  // Usado pela CTRL, extrato, raio-X de MC e Pressão Ads.
+  if(st.famPai) return;
+  st.famPai={}; st.famFilho={};
+  try{ (await tudo('familia_sku',{eq:[]})).forEach(r=>{ (st.famPai[r.pai]=st.famPai[r.pai]||[]).push(r.filho); (st.famFilho[r.filho]=st.famFilho[r.filho]||[]).push(r.pai); }); }catch(e){}
+}
 async function abreMC(cod, m){
   let ov=document.getElementById('mcModal');
   if(!ov){ ov=document.createElement('div'); ov.id='mcModal'; document.body.appendChild(ov); }
@@ -1167,10 +1175,20 @@ async function abreMC(cod, m){
   ov.innerHTML='<div class="aclcard" style="width:min(880px,96vw)"><div class="carregando">Carregando MC…</div></div>';
   ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
   if(!window._mcEsc){ window._mcEsc=1; document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('mcModal')?.remove(); }); }
-  const {data:rows}=await sb.from('fato_mc').select('*').eq('cod',cod);
+  // 👨‍👦 família (CEO 05/11/26): se o produto é pai ou filho, busca a família toda e mostra
+  // um segundo quadro somado — é a família que o investimento de Ads do pai sustenta
+  await carregaFamilia();
+  const paiRef=(st.famFilho[cod]||[])[0]||null;
+  const famBase=paiRef||cod, famAll=[famBase,...(st.famPai[famBase]||[])];
+  const ehFam=famAll.length>1;
+  const {data:rowsAll}=await sb.from('fato_mc').select('*').in('cod', ehFam?famAll:[cod]);
+  const rows=(rowsAll||[]).filter(r=>r.cod===cod);
   const UN={'002':'Site (002)','001':'Atacado (001)','005':'ML (005)'};
   const ordem=['001','002','005'];
   const rs=(rows||[]).sort((a,b)=>ordem.indexOf(a.un)-ordem.indexOf(b.un));
+  const famUn={}, famTot={mc365:0,mc90:0,mc60:0,mc30:0,sem1:0,sem2:0};
+  if(ehFam) (rowsAll||[]).forEach(r=>{ const a=famUn[r.un]=famUn[r.un]||{mc365:0,mc90:0,mc60:0,mc30:0,sem1:0,sem2:0};
+    for(const k in famTot){ a[k]+=(+r[k]||0); famTot[k]+=(+r[k]||0); } });
   const tot={mc365:0,mc90:0,mc60:0,mc30:0,sem1:0,sem2:0};
   rs.forEach(r=>{ for(const k in tot) tot[k]+=(+r[k]||0); });
   const cel=(w,dias,b)=>{ const p=mcRel(w,dias,b); return `<td style="text-align:right;${mcCor(p)}">${p!=null?nf.format(Math.round(p))+'%':'—'}</td>`; };
@@ -1184,6 +1202,10 @@ async function abreMC(cod, m){
       <thead><tr><th style="text-align:left">Canal</th><th>MC 365dd</th><th>365/90</th><th>365/60</th><th>365/30</th><th>sem 2</th><th>sem 1</th></tr></thead>
       <tbody>${linha('TOTAL — todos os canais',tot,true)}${rs.map(r=>linha(UN[r.un]||('UN '+r.un), r)).join('')}</tbody></table></div>`
     :'<p class="gr">Sem MC registrada nos últimos 365 dias para este produto.</p>'}
+    ${ehFam?`<p style="margin:14px 0 6px;font-size:13px"><b>👨‍👦 FAMÍLIA — ${esc(famBase)} + ${famAll.length-1} filho(s)</b> <span class="gr">(${esc(famAll.slice(1).join(', '))})${paiRef?' · este produto é um FILHO: variação vendida dentro da página do pai':''} — é a família inteira que o Ads do pai sustenta</span></p>
+    <div class="tscroll"><table style="width:100%">
+      <thead><tr><th style="text-align:left">Canal</th><th>MC 365dd</th><th>365/90</th><th>365/60</th><th>365/30</th><th>sem 2</th><th>sem 1</th></tr></thead>
+      <tbody>${linha('TOTAL FAMÍLIA — todos os canais',famTot,true)}${ordem.filter(u=>famUn[u]).map(u=>linha(UN[u]||('UN '+u),famUn[u])).join('')}</tbody></table></div>`:''}
     <p class="gr" style="margin:10px 0 0">Estoque útil ${nf.format(m?._saldo||0)} un · giro ${nf1.format(m?._giro||0)}/mês · <b>cobertura ${cob!=null?nf1.format(cob)+' meses':'—'}</b> · calculado em ${d0?d0.split('-').reverse().join('/'):'—'} (atualiza no ETL das 6h)</p>`;
   ov.querySelector('#mcX').onclick=()=>ov.remove();
 }
@@ -1337,7 +1359,12 @@ async function abreExtrato(cod, m, acao){
     for(let i=0;i<NM;i++){ meses.push(dm.toISOString().slice(0,10)); dm.setMonth(dm.getMonth()+1); } }
   const ini=meses[0]<mondays[0]?meses[0]:mondays[0];
   const d0=new Date(ini+'T12:00:00'); d0.setDate(d0.getDate()-62); const ini0=d0.toISOString().slice(0,10);
-  const [vd,cv,ad,pr,es,cu,cc,hist,tAB,abLog,abModos]=await Promise.all([
+  // 👨‍👦 família (CEO 05/11/26): pai soma Ads/receita GA4/MC 002 dos filhos nas colunas de
+  // Ads e ROAS (o investimento do pai vende pela família toda); filho aponta "→ pai"
+  await carregaFamilia();
+  const paiRef=(st.famFilho[cod]||[])[0]||null;
+  const filhos=st.famPai[cod]||[];
+  const [vd,cv,ad,pr,es,cu,cc,hist,tAB,abLog,abModos,adF,cvF,vdF]=await Promise.all([
     sb.from('fato_vendas_diaria').select('data,qtd,qtd_b2c,val_b2c,lucro_b2c,qtd_ml,val_ml,lucro_ml,qtd_atac,val_atac,lucro_atac').eq('cod',cod).gte('data',ini0).order('data').then(r=>r.data||[]),
     sb.from('fato_conversao').select('data,views,compras,receita').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
     sb.from('fato_ads').select('data,custo').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
@@ -1349,6 +1376,9 @@ async function abreExtrato(cod, m, acao){
     sb.from('testes_ab').select('*').eq('cod',cod).eq('status','ativo').limit(1).then(r=>r.data?.[0]||null),
     sb.from('testes_ab_log').select('teste_id,quando,evento,braco').eq('cod',cod).order('quando').then(r=>r.data||[]),
     sb.from('testes_ab').select('id,modo').eq('cod',cod).then(r=>Object.fromEntries((r.data||[]).map(x=>[x.id,x.modo||'semanal']))),
+    filhos.length?sb.from('fato_ads').select('data,custo').in('cod',filhos).gte('data',ini).order('data').then(r=>r.data||[]):Promise.resolve([]),
+    filhos.length?sb.from('fato_conversao').select('data,receita').in('cod',filhos).gte('data',ini).order('data').then(r=>r.data||[]):Promise.resolve([]),
+    filhos.length?sb.from('fato_vendas_diaria').select('data,lucro_b2c').in('cod',filhos).gte('data',ini).order('data').then(r=>r.data||[]):Promise.resolve([]),
   ]);
   const wk=d=>{ const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()-((dt.getDay()+6)%7)); return dt.toISOString().slice(0,10); };
   // selo de teste A/B por semana: semana 1 = semana em que o teste foi criado (braço A);
@@ -1367,13 +1397,16 @@ async function abreExtrato(cod, m, acao){
       abW[w]={n, braco:abModos[ult.teste_id]==='diario'?'A/B':ult.braco, id:ult.teste_id};
     } }
   const qtdDia={}; vd.forEach(r=>{ qtdDia[r.data]=+r.qtd||0; });
-  const W={}; [...mondays, segAtual].forEach(w=>W[w]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,gc:0,gr:0,ads:0,saldo:null,de:null,por:null,porReal:null,atacTab:null,mlTab:null,custo:null,ccav:null,ccbb:null});
+  const W={}; [...mondays, segAtual].forEach(w=>W[w]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,gc:0,gr:0,ads:0,adsF:0,grF:0,l2F:0,saldo:null,de:null,por:null,porReal:null,atacTab:null,mlTab:null,custo:null,ccav:null,ccbb:null});
   vd.forEach(r=>{ const a=W[wk(r.data)]; if(!a) return;
     a.q2+=+r.qtd_b2c||0; a.v2+=+r.val_b2c||0; a.l2+=+r.lucro_b2c||0;
     a.qm+=+r.qtd_ml||0; a.vm+=+r.val_ml||0; a.lm+=+r.lucro_ml||0;
     a.q1+=+r.qtd_atac||0; a.v1+=+r.val_atac||0; a.l1+=+r.lucro_atac||0; });
   cv.forEach(r=>{ const a=W[wk(r.data)]; if(a){ a.vw+=+r.views||0; a.gc+=+r.compras||0; a.gr+=+r.receita||0; } });
   ad.forEach(r=>{ const a=W[wk(r.data)]; if(a) a.ads+=+r.custo||0; });
+  adF.forEach(r=>{ const a=W[wk(r.data)]; if(a) a.adsF+=+r.custo||0; });
+  cvF.forEach(r=>{ const a=W[wk(r.data)]; if(a) a.grF+=+r.receita||0; });
+  vdF.forEach(r=>{ const a=W[wk(r.data)]; if(a) a.l2F+=+r.lucro_b2c||0; });
   es.forEach(r=>{ const a=W[wk(r.snapshot)]; if(a) a.saldo=+r.estoque_util; });
   cu.forEach(r=>{ const a=W[wk(r.snapshot)]; if(a) a.custo=+r.custo; });
   cc.forEach(r=>{ const a=W[wk(r.data)]; if(a){ if(r.cc_avista!=null)a.ccav=+r.cc_avista; if(r.cc_b2b!=null)a.ccbb=+r.cc_b2b; } });
@@ -1384,7 +1417,7 @@ async function abreExtrato(cod, m, acao){
     else if(r.codtab==='401'){ a.mlTab=+r.preco_real||null; } });
   // agregação MENSAL: somáveis somam; pontuais (preço/custo/saldo/BGT) viram sequência de valores distintos (A → B)
   const mesDe=d=>d.slice(0,7);
-  const M={}; meses.forEach(ms=>M[mesDe(ms)]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,gc:0,gr:0,ads:0,saldo:[],de:[],porReal:[],atacTab:[],mlTab:[],custo:[],ccav:[],ccbb:[]});
+  const M={}; meses.forEach(ms=>M[mesDe(ms)]={q2:0,v2:0,l2:0,qm:0,vm:0,q1:0,v1:0,l1:0,lm:0,vw:0,gc:0,gr:0,ads:0,adsF:0,grF:0,l2F:0,saldo:[],de:[],porReal:[],atacTab:[],mlTab:[],custo:[],ccav:[],ccbb:[]});
   const pushU=(arr,v)=>{ v=+v; if(!isFinite(v))return; if(!arr.length||Math.abs(arr[arr.length-1]-v)>0.005) arr.push(v); };
   vd.forEach(r=>{ const a=M[mesDe(r.data)]; if(!a) return;
     a.q2+=+r.qtd_b2c||0; a.v2+=+r.val_b2c||0; a.l2+=+r.lucro_b2c||0;
@@ -1392,6 +1425,9 @@ async function abreExtrato(cod, m, acao){
     a.q1+=+r.qtd_atac||0; a.v1+=+r.val_atac||0; a.l1+=+r.lucro_atac||0; });
   cv.forEach(r=>{ const a=M[mesDe(r.data)]; if(a){ a.vw+=+r.views||0; a.gc+=+r.compras||0; a.gr+=+r.receita||0; } });
   ad.forEach(r=>{ const a=M[mesDe(r.data)]; if(a) a.ads+=+r.custo||0; });
+  adF.forEach(r=>{ const a=M[mesDe(r.data)]; if(a) a.adsF+=+r.custo||0; });
+  cvF.forEach(r=>{ const a=M[mesDe(r.data)]; if(a) a.grF+=+r.receita||0; });
+  vdF.forEach(r=>{ const a=M[mesDe(r.data)]; if(a) a.l2F+=+r.lucro_b2c||0; });
   es.forEach(r=>{ const a=M[mesDe(r.snapshot)]; if(a) pushU(a.saldo,r.estoque_util); });
   cu.forEach(r=>{ const a=M[mesDe(r.snapshot)]; if(a) pushU(a.custo,r.custo); });
   cc.forEach(r=>{ const a=M[mesDe(r.data)]; if(a){ if(r.cc_avista!=null)pushU(a.ccav,r.cc_avista); if(r.cc_b2b!=null)pushU(a.ccbb,r.cc_b2b); } });
@@ -1416,7 +1452,10 @@ async function abreExtrato(cod, m, acao){
     const mkA=(a.atacTab&&a.custo)?a.atacTab/a.custo:null;
     const mkM=(a.mlTab&&a.custo)?a.mlTab/a.custo:null;
     const prat=a.q2>0?a.v2/a.q2:null, tick=a.q1>0?a.v1/a.q1:null, tickM=a.qm>0?a.vm/a.qm:null;
-    const conv=a.vw>0?a.gc/a.vw*100:null, roas=a.ads>0?a.gr/a.ads:null, roasMc=(a.ads>0&&a.l2!=null)?a.l2/a.ads:null;
+    const conv=a.vw>0?a.gc/a.vw*100:null;
+    const adsT=(+a.ads||0)+(+a.adsF||0), grT=(+a.gr||0)+(+a.grF||0), l2T=(+a.l2||0)+(+a.l2F||0);
+    const roas=filhos.length?(adsT>0?grT/adsT:null):(a.ads>0?a.gr/a.ads:null);
+    const roasMc=filhos.length?(adsT>0?l2T/adsT:null):((a.ads>0&&a.l2!=null)?a.l2/a.ads:null);
     const sep='border-left:2px solid var(--hair);';
     return `<tr${emCurso?' class="emcurso"':''}><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1">${emCurso?'<b style="color:var(--accent)">EM CURSO</b> <span class="gr" title="semana aberta — números parciais; saldo/custo/preços de HOJE">*</span>':'<b>'+w.slice(8,10)+'/'+w.slice(5,7)+'</b>'}${abW[w]?` <span title="teste A/B #${abW[w].id} — semana ${abW[w].n} do teste, braço ${abW[w].braco}" style="background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:10px;border-radius:99px;padding:1px 7px">T${abW[w].n}·${abW[w].braco}</span>`:''}</td>
       <td style="${tdc}">${a.saldo!=null?nf.format(a.saldo):'—'}${(emCurso&&m?._transito>0)?` <span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}</td>
@@ -1438,9 +1477,9 @@ async function abreExtrato(cod, m, acao){
       <td style="${tdc}"><b>${F.n(a.gc)}</b></td>
       <td style="${tdc}">${F.p(conv)}</td>
       <td style="${tdc}color:var(--ch1)">${F.n(a.vw)}</td>
-      <td style="${tdc}">${F.r(a.ads)}</td>
-      <td style="${tdc}">${F.d1(roas)}</td>
-      <td style="${tdc}${corRmcFix(roasMc)}">${F.d1(roasMc)}</td>
+      <td style="${tdc}"${filhos.length?` title="👨‍👦 família — só este produto: ${rf.format(a.ads||0)} · filhos: ${rf.format(a.adsF||0)}"`:''}>${F.r(filhos.length?adsT:a.ads)}</td>
+      <td style="${tdc}">${paiRef?`<span class="gr" title="o Ads da família concentra no pai ${esc(paiRef)} — analise o ROAS no extrato dele">→ pai</span>`:F.d1(roas)}</td>
+      <td style="${tdc}${paiRef?'':corRmcFix(roasMc)}">${paiRef?'<span class="gr">→ pai</span>':F.d1(roasMc)}</td>
       <td style="${tdc}${sep}">${F.n(a.qm)}</td>
       <td style="${tdc}color:var(--ch4)">${mcCell(a.lm,a.vm)}</td>
       <td style="${tdc}">${F.m(a.mlTab)}</td>
@@ -1460,7 +1499,10 @@ async function abreExtrato(cod, m, acao){
     const mkA=(ult(a.atacTab)&&custoU)?ult(a.atacTab)/custoU:null;
     const mkM2=(ult(a.mlTab)&&custoU)?ult(a.mlTab)/custoU:null;
     const prat=a.q2>0?a.v2/a.q2:null, tick=a.q1>0?a.v1/a.q1:null, tickM=a.qm>0?a.vm/a.qm:null;
-    const conv=a.vw>0?a.gc/a.vw*100:null, roas=a.ads>0?a.gr/a.ads:null, roasMc=(a.ads>0&&a.l2!=null)?a.l2/a.ads:null;
+    const conv=a.vw>0?a.gc/a.vw*100:null;
+    const adsT=(+a.ads||0)+(+a.adsF||0), grT=(+a.gr||0)+(+a.grF||0), l2T=(+a.l2||0)+(+a.l2F||0);
+    const roas=filhos.length?(adsT>0?grT/adsT:null):(a.ads>0?a.gr/a.ads:null);
+    const roasMc=filhos.length?(adsT>0?l2T/adsT:null):((a.ads>0&&a.l2!=null)?a.l2/a.ads:null);
     const sep='border-left:2px solid var(--hair);';
     const dm=new Date(ms+'T12:00:00');
     return `<tr><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${MESLB[dm.getMonth()]}/${String(dm.getFullYear()).slice(2)}</b>${parcial?' <span class="gr" title="mês em andamento — números parciais">*</span>':''}</td>
@@ -1483,9 +1525,9 @@ async function abreExtrato(cod, m, acao){
       <td style="${tdc}"><b>${F.n(a.gc)}</b></td>
       <td style="${tdc}">${F.p(conv)}</td>
       <td style="${tdc}color:var(--ch1)">${F.n(a.vw)}</td>
-      <td style="${tdc}">${F.r(a.ads)}</td>
-      <td style="${tdc}">${F.d1(roas)}</td>
-      <td style="${tdc}${corRmcFix(roasMc)}">${F.d1(roasMc)}</td>
+      <td style="${tdc}"${filhos.length?` title="👨‍👦 família — só este produto: ${rf.format(a.ads||0)} · filhos: ${rf.format(a.adsF||0)}"`:''}>${F.r(filhos.length?adsT:a.ads)}</td>
+      <td style="${tdc}">${paiRef?`<span class="gr" title="o Ads da família concentra no pai ${esc(paiRef)} — analise o ROAS no extrato dele">→ pai</span>`:F.d1(roas)}</td>
+      <td style="${tdc}${paiRef?'':corRmcFix(roasMc)}">${paiRef?'<span class="gr">→ pai</span>':F.d1(roasMc)}</td>
       <td style="${tdc}${sep}">${F.n(a.qm)}</td>
       <td style="${tdc}color:var(--ch4)">${mcCell(a.lm,a.vm)}</td>
       <td style="${tdc}">${fseq(a.mlTab,v=>rf2.format(v))}</td>
@@ -1569,7 +1611,7 @@ async function abreExtrato(cod, m, acao){
       <tr>
         ${th('Saldo','estoque útil no fim da semana (snapshot; histórico desde 15/07/26)')}${th('Folga','saldo ÷ giro 60d÷2 (aprox — total c/ lotões)')}${th('Custo','custo unitário (desde 16/07/26)')}
         ${th('un','unidades atacado no período (semana ou mês)',1)}${th('MC 001','lucro bruto do período no Atacado e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('Tab','preço tabela 001 (real; desde 15/07/26)')}${th('Ticket','ticket médio atacado')}${th('BGT','concorrente B2B cash (desde 13/06/26)')}${th('Mkup','tabela 001 ÷ custo')}
-        ${th('un','unidades site no período (semana ou mês)',1)}${th('MC 002','lucro bruto do período no Site e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('PIX','preço FINAL à vista = POR×0,95 — o que o cliente paga (mesma régua da 1ª página)')}${th('Prat.','preço praticado site')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('Mkup','PIX (à vista real) ÷ custo — mesmo mk da 1ª página')}${th('Compras','compras GA4 do período (pedido feito no site — independe do faturamento)')}${th('Conv','compras GA4 ÷ views GA4')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads')}${th('ROAS GA4','receita GA4 ÷ Ads — venda do período no site, não o faturamento')}${th('ROAS MC','MC 002 (lucro bruto BASE BBDI) ÷ Ads do período — régua fixa: <3 vermelho · 3 a 5 laranja · ≥5 verde')}
+        ${th('un','unidades site no período (semana ou mês)',1)}${th('MC 002','lucro bruto do período no Site e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('PIX','preço FINAL à vista = POR×0,95 — o que o cliente paga (mesma régua da 1ª página)')}${th('Prat.','preço praticado site')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('Mkup','PIX (à vista real) ÷ custo — mesmo mk da 1ª página')}${th('Compras','compras GA4 do período (pedido feito no site — independe do faturamento)')}${th('Conv','compras GA4 ÷ views GA4')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads — produto com filhos 👨‍👦: a célula soma a família (pai + filhos); o mouse mostra a divisão')}${th('ROAS GA4','receita GA4 ÷ Ads — venda do período no site, não o faturamento. Produto com filhos: família somada · filho: → pai')}${th('ROAS MC','MC 002 (lucro bruto BASE BBDI) ÷ Ads do período — régua fixa: <3 vermelho · 3 a 5 laranja · ≥5 verde. Produto com filhos: família somada · filho: → pai')}
         ${th('un','unidades Mercado Livre no período',1)}${th('MC 005','lucro bruto do período no ML e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('Tab','preço tabela 401')}${th('Ticket','ticket médio ML')}${th('Mkup','tabela 401 ÷ custo')}</tr>
       </thead>
       <tbody id="xTbody">${linhas}</tbody></table></div>
@@ -1583,7 +1625,7 @@ async function abreExtrato(cod, m, acao){
                    h.de_sugerido!=null?('DE→'+rf2.format(h.de_sugerido)):null].filter(Boolean).join(' · ');
         return `<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><span class="gr" style="flex:none">${dt}</span>${badge}<span class="gr" style="flex:none">${esc((h.aprovado_por||'').split('@')[0])}</span><span style="flex:none">${mud}</span>${h.justificativa?`<span style="flex:1;color:var(--ink2)">“${esc(h.justificativa)}”</span>`:''}</div>`;
       }).join('')}</div></div>`:''}
-    <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom + linha <b style="color:var(--accent)">EM CURSO</b> (semana aberta: parcial, com saldo/custo/preços de HOJE — é ela que o analista deve olhar para precificar). Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões). ${acao?'Topo = a sugestão do analista exatamente como registrada (era → fica, markup resultante e alvo que ele viu); aplicar/devolver é na página Aprovações.':'Preencha o preço novo em cima, JUSTIFIQUE e OK — entra na MESMA fila de execução do Aprovar.'}</p>`;
+    <p class="gr" style="margin:10px 0 0">Semanas fechadas seg–dom + linha <b style="color:var(--accent)">EM CURSO</b> (semana aberta: parcial, com saldo/custo/preços de HOJE — é ela que o analista deve olhar para precificar). Preços de tabela/custo/saldo acumulam desde 15-16/07/26; BGT desde 13/06/26; vendas/lucro/views/ads têm 12 meses. Folga aproximada (giro total 60d÷2, sem excluir lotões).${filhos.length?` <b>👨‍👦 Família:</b> Ads, ROAS GA4 e ROAS MC desta tabela somam o pai + ${filhos.length} filho(s) (${esc(filhos.join(', '))}); vendas, views e compras são só deste produto.`:''}${paiRef?` <b style="color:var(--lar)">↳ Este produto é FILHO de ${esc(paiRef)}</b> (variação vendida dentro da página do pai) — o Ads da família concentra no pai, então o ROAS está no extrato dele.`:''} ${acao?'Topo = a sugestão do analista exatamente como registrada (era → fica, markup resultante e alvo que ele viu); aplicar/devolver é na página Aprovações.':'Preencha o preço novo em cima, JUSTIFIQUE e OK — entra na MESMA fila de execução do Aprovar.'}</p>`;
   ov.querySelector('#mcX').onclick=()=>ov.remove();
   // botão verde "Diário" na linha Semanal/Mensal — só para elegíveis (20+ un/semana)
   (async()=>{
@@ -3409,14 +3451,14 @@ function ligaPedidoSaida(){
 async function renderPressao(){
   $('#conteudo').innerHTML='<div class="carregando">Carregando painel 80/20…</div>';
   let user=null; try{ user=(await sb.auth.getUser()).data.user; }catch(e){}
-  const [painelRaw, acomp, semanas, filhosArr]=await Promise.all([
+  const [painelRaw, acomp, semanas]=await Promise.all([
     tudo('ads_pressao_painel',{mod:q=>q.order('receita_b2c_28d',{ascending:false})}),
     tudo('ads_pressao',{mod:q=>q.neq('status','descartado').order('id',{ascending:false})}),
     tudo('ads_pressao_semanal',{mod:q=>q.order('semana_ini',{ascending:false})}),
-    tudo('filhos_prdcor',{eq:[]}),
   ]);
-  const FILHOS=new Set(filhosArr.map(x=>x.cod));
-  const painel=painelRaw.filter(p=>!FILHOS.has(p.cod));  // ads investe só no PAI — filho (Z0_PRDCOR na SZ0) fica fora
+  await carregaFamilia();   // 👨‍👦 (substitui a view filhos_prdcor, que estourava timeout)
+  const FILHOS=new Set(Object.keys(st.famFilho));
+  const painel=painelRaw.filter(p=>!FILHOS.has(p.cod));  // ads investe só no PAI — o ETL já soma receita/MC/Ads dos filhos na linha do pai (05/11/26)
   const ativos={};
   for(const a of acomp) if(!ativos[a.cod] && a.status!=='desmontado') ativos[a.cod]=a;
   const semPorCod={};
@@ -3670,7 +3712,7 @@ async function renderPressao(){
     $('#przCorpo').innerHTML=rows.map(p=>{
       const a=ativos[p.cod];
       return `<tr>
-      <td><a href="#sugestoes/${encodeURIComponent(p.cod)}" title="abrir o extrato semanal do produto" style="font-weight:600">${esc(p.cod)}</a> <span data-mcw="${esc(p.cod)}" title="MC × Ads × ROAS MC — últimas 15 semanas (site)" style="cursor:pointer;opacity:.7">📈</span><br><span class="gr" style="font-size:11px">${esc((p.descricao||'').slice(0,34))}</span></td>
+      <td><a href="#sugestoes/${encodeURIComponent(p.cod)}" title="abrir o extrato semanal do produto" style="font-weight:600">${esc(p.cod)}</a>${(st.famPai[p.cod]||[]).length?` <span title="👨‍👦 família: receita, MC, Ads e ROAS desta linha somam o pai + filho(s) ${esc((st.famPai[p.cod]||[]).join(', '))} — agregado no ETL diário" style="font-size:11px;opacity:.85">👨‍👦</span>`:''} <span data-mcw="${esc(p.cod)}" title="MC × Ads × ROAS MC — últimas 15 semanas (site)" style="cursor:pointer;opacity:.7">📈</span><br><span class="gr" style="font-size:11px">${esc((p.descricao||'').slice(0,34))}</span></td>
       <td>${p._idx==null?'<span style="color:var(--muted)">\u2014</span>':`<b style="font-size:13px;color:${p._idx>=130?'var(--good)':p._idx<=70?'var(--crit)':'var(--ink)'}">${p._idx}</b>`}</td>
       <td>${p.estoque!=null?nf.format(Math.round(p.estoque)):'\u2014'}</td>
       <td title="${p.folga_dias!=null?nf.format(Math.round(p.folga_dias))+' dias':''}" style="${p.folga_dias!=null?(p.folga_dias<30?'color:var(--crit);font-weight:700':p.folga_dias<60?'color:var(--lar);font-weight:600':''):''}">${p.folga_dias!=null?nf1.format(p.folga_dias/30.44)+' m':'\u2014'}</td>
@@ -4030,10 +4072,7 @@ async function renderSugestoes(){
   for(const m of st.markup){ let s1=null,d30=null; for(const un of ['001','002','005']){ const r=st.mcAll[m.cod+'|'+un]; if(r){ s1=(s1||0)+(+r.sem1||0); d30=(d30||0)+(+r.mc30||0); } } m._lucroS1=s1; m._lucro30=d30; }
   if(!st.adsJan){ st.adsJan={}; try{ (await tudo('fato_ads_janelas',{eq:[]})).forEach(r=>st.adsJan[r.cod]=r); }catch(e){} }
   if(!st.ccMap){ st.ccMap={}; (await tudo('concorrencia_atual',{select:'cod,data,cc_avista,cc_b2b',eq:[]})).forEach(r=>st.ccMap[r.cod]=r); }
-  // 👨‍👦 pai/filho (CEO 05/11/26): view familia_sku (dim_compatibilidade: prdcor preenchido =
-  // aquele SKU da página do pai é OUTRO produto Protheus, o filho — ex. BB11-DE080 → DE080-H)
-  if(!st.famPai){ st.famPai={}; st.famFilho={};
-    try{ (await tudo('familia_sku',{eq:[]})).forEach(r=>{ (st.famPai[r.pai]=st.famPai[r.pai]||[]).push(r.filho); (st.famFilho[r.filho]=st.famFilho[r.filho]||[]).push(r.pai); }); }catch(e){} }
+  await carregaFamilia();   // 👨‍👦 pai/filho (CEO 05/11/26) — ex. BB11-DE080 → DE080-H
   const {out,medConv}=montaSugestoes();
   if(st.sgClasseAuto===undefined){
     st.sgClasse={1:'A',2:'B',3:'C',4:'D'}[new Date().getDay()]??null;
