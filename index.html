@@ -4030,6 +4030,10 @@ async function renderSugestoes(){
   for(const m of st.markup){ let s1=null,d30=null; for(const un of ['001','002','005']){ const r=st.mcAll[m.cod+'|'+un]; if(r){ s1=(s1||0)+(+r.sem1||0); d30=(d30||0)+(+r.mc30||0); } } m._lucroS1=s1; m._lucro30=d30; }
   if(!st.adsJan){ st.adsJan={}; try{ (await tudo('fato_ads_janelas',{eq:[]})).forEach(r=>st.adsJan[r.cod]=r); }catch(e){} }
   if(!st.ccMap){ st.ccMap={}; (await tudo('concorrencia_atual',{select:'cod,data,cc_avista,cc_b2b',eq:[]})).forEach(r=>st.ccMap[r.cod]=r); }
+  // 👨‍👦 pai/filho (CEO 05/11/26): view familia_sku (dim_compatibilidade: prdcor preenchido =
+  // aquele SKU da página do pai é OUTRO produto Protheus, o filho — ex. BB11-DE080 → DE080-H)
+  if(!st.famPai){ st.famPai={}; st.famFilho={};
+    try{ (await tudo('familia_sku',{eq:[]})).forEach(r=>{ (st.famPai[r.pai]=st.famPai[r.pai]||[]).push(r.filho); (st.famFilho[r.filho]=st.famFilho[r.filho]||[]).push(r.pai); }); }catch(e){} }
   const {out,medConv}=montaSugestoes();
   if(st.sgClasseAuto===undefined){
     st.sgClasse={1:'A',2:'B',3:'C',4:'D'}[new Date().getDay()]??null;
@@ -4046,7 +4050,7 @@ async function renderSugestoes(){
   const cOut={site:0,atac:0,ml:0}; lista.forEach(m=>{if(m._outS===2)cOut.site++;if(m._outA===2)cOut.atac++;if(m._outM===2)cOut.ml++;});
   st.sgSel=st.sgSel||new Set();
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>A edição de preço acontece no extrato 📊 do produto</b> — os campos lá vêm sempre preenchidos com o preço ATUAL de cada canal (sem sugestão automática); o que você alterar e salvar entra na fila. <b>O DE é sempre manual</b> (eu não recalculo DE). Alvos = mediana do markup por canal (UN) × grupo × geração — referência informativa · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — a decisão é do analista. <b style="color:var(--crit)">Preço em vermelho</b> = markup daquele canal a mais de 2 desvios-padrão da distribuição do grupo×geração no mesmo canal; <b style="color:var(--lar)">laranja</b> = entre 1σ e 2σ. Clique nos títulos das colunas para ordenar (2º clique inverte). Clique no <b>código do produto</b> para o raio-X de MC: lucro bruto 365dd e o ritmo 90/60/30 dias e semanas, por canal — é ele que diz se o preço atual está entregando. Aprovar <b>não altera preço</b> — só entra na fila de execução.</p>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>A edição de preço acontece no extrato 📊 do produto</b> — os campos lá vêm sempre preenchidos com o preço ATUAL de cada canal (sem sugestão automática); o que você alterar e salvar entra na fila. <b>O DE é sempre manual</b> (eu não recalculo DE). Alvos = mediana do markup por canal (UN) × grupo × geração — referência informativa · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — a decisão é do analista. <b style="color:var(--crit)">Preço em vermelho</b> = markup daquele canal a mais de 2 desvios-padrão da distribuição do grupo×geração no mesmo canal; <b style="color:var(--lar)">laranja</b> = entre 1σ e 2σ. Clique nos títulos das colunas para ordenar (2º clique inverte). Clique no <b>código do produto</b> para o raio-X de MC: lucro bruto 365dd e o ritmo 90/60/30 dias e semanas, por canal — é ele que diz se o preço atual está entregando. Aprovar <b>não altera preço</b> — só entra na fila de execução. <b>👨‍👦 Pai/filho:</b> produto com variação (ex.: BB11-DE080 → DE080-H, a versão de 9 células vendida DENTRO da mesma página) aparece com o filho <b style="color:var(--lar)">↳ grudado e indentado</b> logo abaixo do pai, sempre — mesmo que um filtro escondesse o filho. O investimento de Ads concentra no pai (~80%; o Google escolhe qual variação servir), então o <b>ROAS MC vale na linha do pai</b>: lá MC 002 e Ads já somam a família inteira (👨‍👦); a linha do filho aponta "→ pai". Views e compras continuam individuais de cada um (a atribuição por SKU está correta — conferida 05/11/26).</p>
     ${(()=>{
       const anal=c=>{const t=out.filter(m=>m._classe===c);return {tot:t.length, falt:t.filter(m=>!pendSet.has(m.cod)&&!ocultosMov[m.cod]).length};};
       const dia=new Date().getDay();
@@ -4125,9 +4129,19 @@ async function renderSugestoes(){
     document.querySelectorAll('#conteudo th.ord').forEach(th=>{
       const s=th.querySelector('.seta'); if(s) s.textContent = th.dataset.c===st.sgCol ? (st.sgDir>0?'▲':'▼') : '';
     });
-    st.extLista=rows.map(r=>r.cod);   // ordem visível — alimenta o "OK → próximo" do extrato
+    // 👨‍👦 filho gruda indentado logo abaixo do pai sempre que o pai está na tela (CEO 05/11/26):
+    // o filho sai do lugar próprio e entra colado — mesmo que o funil/filtro o escondesse —
+    // para o analista avaliar a família junta. Pai fora da tela = filho aparece normal, sozinho.
+    const outMap={}; out.forEach(x=>outMap[x.cod]=x);
+    const presentes=new Set(rows.map(r=>r.cod));
+    const disp=[], usado=new Set();
+    const anexa=(m,nivel)=>{ if(!m||usado.has(m.cod)) return; usado.add(m.cod); m._nivel=nivel; disp.push(m);
+      (st.famPai[m.cod]||[]).forEach(fc=>anexa(outMap[fc],nivel+1)); };
+    for(const m of rows){ if((st.famFilho[m.cod]||[]).some(p=>presentes.has(p))) continue; anexa(m,0); }
+    st.extLista=disp.map(r=>r.cod);   // ordem visível — alimenta o "OK → próximo" do extrato
     const shown=st.sgShown||150;
-    $('#sgCount').textContent=nf.format(rows.length)+' sugestões'+(rows.length>shown?' · exibindo '+nf.format(shown):'');
+    const nFi=disp.filter(x=>x._nivel>0).length;
+    $('#sgCount').textContent=nf.format(disp.length-nFi)+' sugestões'+(nFi?' · '+nf.format(nFi)+' filho(s) 👨‍👦':'')+(disp.length>shown?' · exibindo '+nf.format(shown):'');
     const tb=$('#sgRows'); tb.innerHTML='';
     const MB={}; rows.forEach(x=>MB[x.cod]=x);
     const fmtP=p=>p!=null?nf.format(Math.round(p))+'%':'—';
@@ -4137,11 +4151,20 @@ async function renderSugestoes(){
       const c1=g>0?s/g:(s>0?Infinity:null);
       const c2=g>0?(s+t)/g:((s+t)>0?Infinity:null);
       return `<td style="text-align:right;white-space:nowrap;font-size:12px"><span style="${corCob(c1)}">${fmtCob(c1)}</span><br><span style="${corCob(c2)}">${fmtCob(c2)}</span></td>`; };
-    const rmcCell=cod=>{ const r=st.mcAll?.[cod+'|002'], aj=st.adsJan?.[cod];
-      const r1=(r&&aj&&+aj.ads_sem1>0)?(+r.sem1||0)/+aj.ads_sem1:null;
-      const r30=(r&&aj&&+aj.ads30>0)?(+r.mc30||0)/+aj.ads30:null;
+    const rmcCell=m=>{ const cod=m.cod;
+      // 👨‍👦 ROAS por FAMÍLIA (CEO 05/11/26): o Ads concentra no pai (~80%), mas a venda que ele
+      // gera cai em pai E filhos → na linha do pai, MC e Ads somam a família inteira; a linha do
+      // filho grudado aponta "→ pai" (o filho quase não tem investimento próprio, ROAS isolado engana)
+      if(m._nivel>0) return '<td style="text-align:right"><span class="gr" title="o Ads da família concentra no pai — o ROAS que vale é o da linha do pai (soma MC e Ads de pai + filhos)">→ pai</span></td>';
+      const fam=[cod,...(st.famPai[cod]||[])];
+      let mc1=0,mc30=0,a1=0,a30=0;
+      fam.forEach(c=>{ const r=st.mcAll?.[c+'|002'], aj=st.adsJan?.[c];
+        if(r){ mc1+=+r.sem1||0; mc30+=+r.mc30||0; }
+        if(aj){ a1+=+aj.ads_sem1||0; a30+=+aj.ads30||0; } });
+      const r1=a1>0?mc1/a1:null, r30=a30>0?mc30/a30:null;
       if(r1==null&&r30==null) return '<td style="text-align:right"><span class="gr">—</span></td>';
-      return `<td style="text-align:right;white-space:nowrap;font-size:12px"><span style="${corRmcFix(r1)}">${r1!=null?nf1.format(r1):'—'}</span><br><span style="${corRmcFix(r30)}">${r30!=null?nf1.format(r30):'—'}</span></td>`; };
+      const tagF=fam.length>1?`<span title="família 👨‍👦: MC 002 e Ads somam o pai + ${fam.length-1} filho(s): ${esc(fam.slice(1).join(', '))}" style="font-size:10px;opacity:.8">👨‍👦</span> `:'';
+      return `<td style="text-align:right;white-space:nowrap;font-size:12px">${tagF}<span style="${corRmcFix(r1)}">${r1!=null?nf1.format(r1):'—'}</span><br><span style="${corRmcFix(r30)}">${r30!=null?nf1.format(r30):'—'}</span></td>`; };
     const mcCell=(cod,un)=>{ const r=st.mcAll?.[cod+'|'+un];
       if(!r) return '<td style="text-align:right"><span class="gr">—</span></td>';
       const p1=mcRel(r.sem1,7,r.mc365), p30=mcRel(r.mc30,30,r.mc365);
@@ -4149,12 +4172,13 @@ async function renderSugestoes(){
     const lucroCell=m=>{ if(m._lucroS1==null&&m._lucro30==null) return '<td style="text-align:right"><span class="gr">—</span></td>';
       const neg=v=>v<0?'color:var(--crit)':'';
       return `<td style="text-align:right;white-space:nowrap;font-size:12px" title="lucro bruto R$ (Atacado + Site + ML): última semana fechada / 30 dias"><b style="${neg(m._lucroS1)}">${rf.format(m._lucroS1||0)}</b><br><span class="gr" style="${neg(m._lucro30)}">${rf.format(m._lucro30||0)}</span></td>`; };
-    for(const m of rows.slice(0,shown)){
+    for(const m of disp.slice(0,shown)){
       const vDe=st.sgDe?.[m.cod]??m.p_site_de, vAt=st.sgAtac?.[m.cod]??m._atacSug??m.p_atacado, vMl=st.sgMl?.[m.cod]??m._mlSug??m.p_marketplace;
       const sid=esc(m.cod).replace(/[^A-Za-z0-9]/g,'_');
       const tr=document.createElement('tr');
+      if(m._nivel>0) tr.style.background='color-mix(in srgb, var(--lar) 5%, transparent)';
       tr.innerHTML=`<td style="text-align:center"><input type="checkbox" data-cod="${esc(m.cod)}" ${st.sgSel.has(m.cod)?'checked':''} style="width:16px;height:16px"></td>
-        <td style="text-align:left;white-space:nowrap"><span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span>${m._classe?`<span class="abcchip abc-${m._classe}" title="curva ${m._classe} da venda 12m">${m._classe}</span>`:''} <span data-ext="${esc(m.cod)}" title="extrato semanal completo — 26 semanas (saldo, folga, preços, BGT, vendas, conversão, ads, lucro) + preço novo" style="cursor:pointer;opacity:.7">📊</span> <span data-nota="${esc(m.cod)}" title="anotar na ata do dia" style="cursor:pointer;opacity:.65">📝</span> ${VER==='aguardando'
+        <td style="text-align:left;white-space:nowrap${m._nivel>0?';padding-left:'+(10+m._nivel*20)+'px':''}">${m._nivel>0?`<span style="color:var(--lar);font-weight:800" title="variação (filho) de ${esc((st.famFilho[m.cod]||[])[0]||'')} — vendida DENTRO da página do pai, logo acima">↳</span> `:''}<span class="cod" data-mc="${esc(m.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="${esc(m.descricao||'')} — clique: raio-X de MC por canal">${esc(m.cod)}</span>${m._classe?`<span class="abcchip abc-${m._classe}" title="curva ${m._classe} da venda 12m">${m._classe}</span>`:''} <span data-ext="${esc(m.cod)}" title="extrato semanal completo — 26 semanas (saldo, folga, preços, BGT, vendas, conversão, ads, lucro) + preço novo" style="cursor:pointer;opacity:.7">📊</span> <span data-nota="${esc(m.cod)}" title="anotar na ata do dia" style="cursor:pointer;opacity:.65">📝</span> ${VER==='aguardando'
           ?(revMap[m.cod]?`<span data-undorev="${revMap[m.cod].id}" title="revisado por ${esc(revMap[m.cod].aprovado_por||'')} em ${new Date(revMap[m.cod].criado_em).toLocaleDateString('pt-BR')} — clique para DESFAZER (volta pra fila)" style="cursor:pointer;color:var(--warn);font-weight:700">↩</span>`:'')
           :`<span data-rev="${esc(m.cod)}" title="conferi e está OK — volta à fila após 7 dias e +200 views" style="cursor:pointer;color:var(--good);font-weight:700;opacity:.75">✓</span>`}<br><span class="gr">${esc(m.grupo||'')}</span>${(VER==='aguardando'&&execMap[m.cod])?(e=>`<br><span class="gr" style="color:var(--accent)"${e.justificativa?` title="${esc(e.justificativa)} — ${esc(e.aprovado_por||'')}"`:''}>⚡ ${e.preco_sugerido!=null?rf2.format(e.preco_atual)+'→'+rf2.format(e.preco_sugerido):''}${e.atac_sugerido!=null?' · atac→'+rf2.format(e.atac_sugerido):''}${e.ml_sugerido!=null?' · ml→'+rf2.format(e.ml_sugerido):''} · ${new Date(e.executado_em).toLocaleDateString('pt-BR').slice(0,5)}</span>${e.justificativa?`<br><span class="gr" style="font-style:italic">“${esc(e.justificativa.slice(0,70))}${e.justificativa.length>70?'…':''}”</span>`:''}`)(execMap[m.cod]):''}${(VER==='aguardando'&&ocultosMov[m.cod])?(r=>{const dias=Math.floor((Date.now()-new Date(r.mov_em).getTime())/864e5);return `<br><span class="gr" style="color:var(--warn)" title="volta à fila quando completar 7 dias E 200 views desde a movimentação">⏳ ${nf.format(r.views_desde)}/200 views · ${nf.format(dias)}/7 dias</span>`;})(ocultosMov[m.cod]):''}</td>
         ${st.sgAB?(t=>t?`<td style="white-space:nowrap"><span style="background:var(--accent-soft);color:var(--accent);padding:1px 8px;border-radius:9px;font-size:11px;font-weight:700">${t.modo==='diario'?'🌗 diário':'🔁 semanal'}</span></td><td style="white-space:nowrap;font-size:12px">${new Date(t.criado_em).toLocaleDateString('pt-BR')}<br><span class="gr" style="font-size:10.5px">${Math.max(1,Math.round((Date.now()-new Date(t.criado_em))/864e5))}d</span></td>`:'<td>—</td><td>—</td>')(st.abInfo?.[m.cod]):''}
@@ -4167,7 +4191,7 @@ async function renderSugestoes(){
         ${mcCell(m.cod,'001')}
         <td>${m.p_atacado?`<span data-ph="${esc(m.cod)}|001" title="clique: evolução de preço 90d — Atacado" style="cursor:pointer;border-bottom:1px dotted var(--muted);${corOut(m._outA)}">${rf2.format(m.p_atacado)}</span>`:'—'}<br><span class="gr">${m.mk_atacado?'mk '+nf1.format(m.mk_atacado)+'×':''}${m._alvoA?' · alvo '+nf1.format(m._alvoA)+'×':''}</span>${(cc=>cc&&cc.cc_b2b?`<br><span title="concorrente BGT (B2B cash) em ${new Date(cc.data+'T12:00:00').toLocaleDateString('pt-BR')}" style="font-size:11px;font-weight:600;color:${m.p_atacado&&+m.p_atacado>+cc.cc_b2b?'var(--crit)':'var(--good)'}">BGT ${rf2.format(cc.cc_b2b)}</span>`:'')(st.ccMap[m.cod])}</td>
         ${mcCell(m.cod,'002')}
-        ${rmcCell(m.cod)}
+        ${rmcCell(m)}
         <td>${m.p_site_de?rf2.format(m.p_site_de):'—'}</td>
         <td><span data-ph="${esc(m.cod)}|002" title="clique: evolução de preço 90d — Site" style="cursor:pointer">${m.p_site_por?rf2.format(m.p_site_por):'—'}<br><b style="border-bottom:1px dotted var(--muted);${corOut(m._outS)}">${rf2.format(m.p_site)}</b> <span class="gr">PIX</span></span><br><span class="gr">mk ${nf1.format(m.mk_site)}× · alvo ${nf1.format(m._alvo)}×</span>${(cc=>cc&&cc.cc_avista?`<br><span title="concorrente BGT (à vista B2C) em ${new Date(cc.data+'T12:00:00').toLocaleDateString('pt-BR')}" style="font-size:11px;font-weight:600;color:${m.p_site&&+m.p_site>+cc.cc_avista?'var(--crit)':'var(--good)'}">BGT ${rf2.format(cc.cc_avista)}</span>`:'')(st.ccMap[m.cod])}</td>
         ${mcCell(m.cod,'005')}
