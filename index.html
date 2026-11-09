@@ -5496,7 +5496,7 @@ async function renderBlackFriday(){
   try{ rows = await tudo('bf_params', {eq: []}); }
   catch(e){ $('#conteudo').innerHTML = '<p class="gr">Erro ao carregar bf_params: ' + esc(e.message||e) + '</p>'; return; }
   const P = {}; rows.forEach(r => P[r.grupo] = r.params);
-  const G = P._global || {fases: [], piso_liq: 10, piso_desova: 0, cob_min: 2, entupido_meses: 12, teto_desova: 25, bgt_pp: 3, bgt_on: true};
+  const G = P._global || {fases: [], piso_mc: 10, piso_mc_desova: 0, cob_min: 0.5, entupido_meses: 12, teto_desova: 25};
   const fases = G.fases || [];
   const hoje = new Date().toLocaleDateString('sv-SE');
   const fAtual = fases.findIndex(f => hoje >= f[0] && hoje <= f[1]);
@@ -5506,7 +5506,7 @@ async function renderBlackFriday(){
   const num = (id, v, step, w, tit) => `<input id="${id}" type="number" step="${step||1}" value="${v}" title="${tit||''}" style="width:${w||54}px;padding:3px 5px;font-size:12.5px;text-align:right">`;
 
   $('#conteudo').innerHTML = `
-    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Desconto-alvo por grupo, subindo em fases até a Black Friday (27/11)</b> — aplicado no <b>site (canal VTEX 1)</b> via promoções por percentual; os preços de tabela NÃO mudam. O alvo da fase é o ponto de partida; por cima dele valem as <b>mesmas travas do Pedido de Compra</b>: <b>folga</b> (cobertura &lt; ${G.cob_min}m = sem desconto; 2–4m até 5 pp; 4–6m até 10 pp; 6–9m até 15 pp; 9m+ sem trava extra), <b>margem</b> (desconto nunca derruba a margem líquida do modelo 002 abaixo do piso), <b>BGT</b> (já ≥3% mais barato que o concorrente: alvo −${G.bgt_pp} pp · ≥5% mais caro: alvo +${G.bgt_pp} pp) e <b>👨‍👦 pai/filho</b> (a análise é do pai; o desconto vale para a família toda — página VTEX única). <b>Entupido</b> (cobertura ≥ ${G.entupido_meses} meses) pode FURAR o teto do grupo até o teto de desova, com piso próprio — é recuperação de investimento. Edite e <b>SALVAR</b>; o motor aplica na VTEX na próxima rodada e nada muda na loja sem rodada.</p>
+    <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Desconto-alvo por grupo, subindo em fases até a Black Friday (27/11)</b> — aplicado no <b>site (canal VTEX 1)</b> via promoções por percentual (no PRODUTO, página inteira); os preços de tabela NÃO mudam. O alvo da fase é o ponto de partida; por cima dele valem duas travas: <b>folga</b> (cobertura = meses de estoque sobrando: &lt; ${G.cob_min}m = sem desconto · ${G.cob_min}–2m até 5 pp · 2m+ sem trava — ter folga não dá o desconto, só não restringe) e <b>margem</b> (a MC real 60d da referência no site não pode cair abaixo do piso com o desconto). <b>👨‍👦 Pai/filho</b>: a análise é do pai e o desconto vale para a família toda (página VTEX única). <b>Entupido</b> (cobertura ≥ ${G.entupido_meses} meses) pode FURAR o teto do grupo até o teto de desova, com piso próprio — é recuperação de investimento. Edite e <b>SALVAR</b>; o motor aplica na VTEX na próxima rodada e nada muda na loja sem rodada.</p>
 
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px">
       ${fases.map((f, i) => `<div style="flex:1;min-width:128px;border-radius:10px;padding:8px 12px;border:2px solid ${i===fAtual?'var(--accent)':'var(--hair)'};${i===fAtual?'box-shadow:0 1px 8px rgba(42,120,214,.35)':''}">
@@ -5517,13 +5517,11 @@ async function renderBlackFriday(){
 
     <div class="tablecard" style="padding:10px 14px;margin-bottom:10px">
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
-        <label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="margem líquida mínima pós-desconto no modelo do site (custo×1,3 + R$15 + 15% do preço)">piso margem líq. %${num('bfPisoLiq', G.piso_liq, 0.5)}</label>
-        <label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="piso de margem só para os entupidos (desova = recuperar investimento)">piso desova %${num('bfPisoDes', G.piso_desova, 0.5)}</label>
-        <label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="abaixo desta cobertura o produto NÃO ganha desconto (ia faltar de qualquer jeito)">cobertura mín. (m)${num('bfCobMin', G.cob_min, 0.5)}</label>
+        <label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="a MC real 60d (lucro bruto ÷ receita, site) da referência não pode cair abaixo disto com o desconto">piso MC real %${num('bfPisoMc', G.piso_mc, 0.5)}</label>
+        <label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="piso de MC só para os entupidos (desova = recuperar investimento)">piso desova %${num('bfPisoDes', G.piso_mc_desova, 0.5)}</label>
+        <label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="abaixo desta cobertura (meses de estoque sobrando) o produto NÃO ganha desconto (ia faltar de qualquer jeito)">cobertura mín. (m)${num('bfCobMin', G.cob_min, 0.5)}</label>
         <label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="a partir desta cobertura o produto é ENTUPIDO e pode furar o teto do grupo">entupido ≥ (m)${num('bfEntup', G.entupido_meses, 1)}</label>
         <label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="desconto máximo absoluto dos entupidos">teto desova %${num('bfTetoDes', G.teto_desova, 1)}</label>
-        <label style="display:inline-flex;flex-direction:column;font-size:11px;color:var(--muted)" title="ajuste pelo preço do concorrente (BGT), em pontos percentuais">BGT ± pp${num('bfBgtPp', G.bgt_pp, 1)}</label>
-        <label style="display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)" title="desligar ignora o preço do concorrente"><input id="bfBgtOn" type="checkbox" ${G.bgt_on?'checked':''}>BGT ativo</label>
         <span style="flex:1"></span>
         <button class="btn" id="bfSalvar" style="padding:8px 26px;font-weight:700;font-size:13.5px">💾 SALVAR</button>
       </div>
@@ -5558,10 +5556,9 @@ async function renderBlackFriday(){
                  fases: [0,1,2,3,4].map(i => +document.getElementById(`bfF${i}-` + r.grupo).value || 0)},
         atualizado_em: agora, atualizado_por: u}));
       linhas.push({grupo: '_global', params: {...G,
-        piso_liq: +$('#bfPisoLiq').value || 0, piso_desova: +$('#bfPisoDes').value || 0,
+        piso_mc: +$('#bfPisoMc').value || 0, piso_mc_desova: +$('#bfPisoDes').value || 0,
         cob_min: +$('#bfCobMin').value || 0, entupido_meses: +$('#bfEntup').value || 12,
-        teto_desova: +$('#bfTetoDes').value || 0, bgt_pp: +$('#bfBgtPp').value || 0,
-        bgt_on: $('#bfBgtOn').checked}, atualizado_em: agora, atualizado_por: u});
+        teto_desova: +$('#bfTetoDes').value || 0}, atualizado_em: agora, atualizado_por: u});
       const {error} = await sb.from('bf_params').upsert(linhas);
       if(error) throw error;
       btn.textContent = '✅ salvo';
