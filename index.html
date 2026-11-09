@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-103145';
+const BUILD='20261109-103514';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5596,7 +5596,7 @@ async function renderBlackFriday(){
     <p class="gr" style="margin:10px 0 0">Última gravação: ${ult?esc(ult.atualizado_por||'?')+' em '+new Date(ult.atualizado_em).toLocaleString('pt-BR'):'—'}. Grupos = famílias da Visão Global (familia_produto). Grupo sem linha aqui fica SEM desconto.</p>
     <div id="bfMsg"></div>
     <h3 style="margin:18px 0 6px">Descontos — você no comando, referência a referência</h3>
-    <p class="gr" style="margin:0 0 8px"><b>Tudo começa SEM desconto.</b> A coluna "desc. semana" mostra o que o plano prevê para a fase atual (com as travas) — mas só entra na loja a referência que você <b>marcar no ✓</b>. Desmarcou, sai (preço original volta). A aplicação na tabela 002 roda em seguida e a coluna status mostra "NA LOJA". 🔴 = desova. Sem grupo escolhido, mostra os <b>95/5</b>.</p>
+    <p class="gr" style="margin:0 0 8px"><b>Tudo começa SEM desconto.</b> A coluna do desconto mostra o que o plano prevê para a fase atual (com as travas) — mas só entra na loja a referência que você <b>marcar no ✓</b> e <b>ENVIAR no botão 📤</b>. Desmarcou + enviou, sai (preço original volta). Depois do envio a coluna status mostra "NA LOJA". Nada é aplicado automaticamente. 🔴 = desova. Sem grupo escolhido, mostra os <b>95/5</b>.</p>
     <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
       <select id="bfGrupo" style="padding:6px 10px"><option value="">— grupo: todos —</option></select>
       <input id="bfBusca" placeholder="filtrar por código… (ex.: DE040)" style="padding:6px 12px;min-width:220px">
@@ -5605,7 +5605,11 @@ async function renderBlackFriday(){
       <span style="flex:1"></span>
       <button id="bfLimpar" style="border:1px solid var(--crit);color:var(--crit);border-radius:9px;padding:6px 14px;font-weight:600;font-size:12.5px;display:none">✖ limpar TODAS as marcações</button>
     </div>
-    <p class="gr" style="margin:0 0 8px">📤 <b>Enviar os preços</b>: quando terminar de marcar, peça ao Claude ("envia os preços") que ele aplica na tabela 002 na hora e confirma o que entrou — ou deixe quieto, que a rodada das <b>06h50</b> aplica sozinha o que estiver marcado. O resumo ao lado dos filtros mostra sempre quantas estão marcadas <b>em todos os grupos</b>.</p>
+    <div style="display:flex;gap:12px;align-items:center;margin:0 0 10px;flex-wrap:wrap">
+      <button class="btn" id="bfEnviar" style="padding:9px 26px;font-weight:800;font-size:13.5px;display:none">📤 ENVIAR PREÇOS PARA A LOJA</button>
+      <span id="bfEnvioSt" class="gr"></span>
+      <span class="gr" style="font-size:11.5px">nada vai para a loja sem clicar aqui — marcadas recebem o desconto, desmarcadas que estiverem na loja voltam ao original</span>
+    </div>
     <div id="bfPlano"><p class="gr">carregando…</p></div>`;
 
   (async () => {
@@ -5701,6 +5705,30 @@ async function renderBlackFriday(){
         await grava(refs, tchk.checked);
         tchk.disabled = false; desenha();
       };
+    };
+    const btnE = $('#bfEnviar');
+    if(st.admin) btnE.style.display = '';
+    btnE.onclick = async () => {
+      const n = Object.values(apr).filter(marcado).length;
+      const naLoja = Object.values(apr).filter(a => a.status === 'aplicado').length;
+      if(!window.confirm(`Enviar agora para a tabela 002?\n\n• ${n} referência(s) marcadas recebem o desconto do período\n• desmarcadas que estiverem na loja (${naLoja} hoje) voltam ao preço original\n\nO preço original fica guardado e volta depois da BF.`)) return;
+      const stE = $('#bfEnvioSt');
+      btnE.disabled = true; stE.textContent = 'enviando…';
+      const u = (await sb.auth.getUser()).data.user?.email || '?';
+      const {data: cmd, error} = await sb.from('bf_comandos').insert({acao: 'enviar', solicitado_por: u}).select().single();
+      if(error){ stE.textContent = 'erro: ' + error.message; btnE.disabled = false; return; }
+      const t0 = Date.now();
+      const timer = setInterval(async () => {
+        const {data: c2} = await sb.from('bf_comandos').select('status,resumo').eq('id', cmd.id).single();
+        if(c2?.status === 'concluido' || c2?.status === 'erro'){
+          clearInterval(timer); btnE.disabled = false;
+          stE.innerHTML = c2.status === 'concluido' ? '<b style="color:var(--good)">✅ enviado — loja atualizada</b>' : '<b style="color:var(--crit)">❌ erro no envio — chame o Claude</b>';
+          if(c2.resumo) stE.title = c2.resumo;
+          apr = {}; (await tudo('bf_aprovacao', {eq: []})).forEach(a => apr[a.ref] = a);
+          desenha();
+        } else if(c2?.status === 'rodando'){ stE.textContent = 'aplicando na tabela 002…'; }
+        else if(Date.now() - t0 > 240000){ clearInterval(timer); btnE.disabled = false; stE.textContent = '⏱ sem resposta — o executor do Mac pode estar desligado; chame o Claude'; }
+      }, 4000);
     };
     const btnL = $('#bfLimpar');
     if(st.admin) btnL.style.display = '';
