@@ -5614,12 +5614,14 @@ async function renderBlackFriday(){
       const corte = sel.slice(0, 500);
       const temApr = corte.some(r => apr[r.ref]) && st.admin;   // aprovar/rejeitar é do CEO
       $('#bfAprovar').style.display = $('#bfRejeitar').style.display = temApr ? '' : 'none';
-      $('#bfPlano').innerHTML = `<div class="tablecard"><div class="tscroll"><table style="max-width:1340px">
+      $('#bfPlano').innerHTML = `<div class="tablecard"><div class="tscroll"><table style="max-width:1560px">
         <thead><tr>${temApr?'<th style="padding:6px 6px"><input type="checkbox" id="bfTodosChk" checked title="marcar/desmarcar todas as pendentes"></th>':''}
         <th style="text-align:left;padding:6px 10px">referência</th>
         <th style="padding:6px 10px" title="MC real 60d no site (família)">MC 60d</th>
         <th style="padding:6px 10px" title="meses de estoque sobrando">cob.</th>
         <th style="padding:6px 10px" title="faturamento B2C 30d da referência">GMV 30d</th>
+        <th style="padding:6px 10px" title="taxa de conversão do site (compras GA4 ÷ views, família somada): mês anterior → mês ATUAL (parcial)">conv. ant→atual</th>
+        <th style="padding:6px 10px" title="ROAS MC (lucro bruto 002 ÷ Ads, família somada): mês anterior → mês ATUAL (parcial). Régua: <3 vermelho · 3–5 laranja · ≥5 verde">ROAS MC ant→atual</th>
         <th style="padding:6px 10px" title="preço à vista (PIX) de hoje na tabela 002 — pai da família">à vista hoje</th>
         <th style="padding:6px 10px" title="menor preço à vista do concorrente (BGT), última coleta">BGT hoje</th>
         <th style="padding:6px 10px;color:var(--accent)" title="preço à vista que FICA com o desconto da fase vigente">fica por</th>
@@ -5641,6 +5643,8 @@ async function renderBlackFriday(){
           <td style="text-align:center;padding:5px 10px">${r.mc_real!=null?(+r.mc_real).toFixed(0)+'%':'—'}</td>
           <td style="text-align:center;padding:5px 10px">${r.cob!=null?(+r.cob).toFixed(1):'—'}</td>
           <td style="text-align:right;padding:5px 10px;color:var(--muted)">${r.gmv30!=null?Math.round(+r.gmv30).toLocaleString('pt-BR'):'—'}</td>
+          <td style="text-align:center;padding:5px 10px;white-space:nowrap">${r.conv_m1!=null||r.conv_m0!=null?`<span class="gr">${r.conv_m1!=null?(+r.conv_m1).toFixed(1)+'%':'—'}</span> → <b>${r.conv_m0!=null?(+r.conv_m0).toFixed(1)+'%':'—'}</b>`:'<span class=gr>—</span>'}</td>
+          <td style="text-align:center;padding:5px 10px;white-space:nowrap">${(()=>{const cor=v=>v==null?'var(--muted)':v<3?'var(--crit)':v<5?'var(--lar)':'var(--good)';return r.roasmc_m1!=null||r.roasmc_m0!=null?`<span style="color:${cor(+r.roasmc_m1)}">${r.roasmc_m1!=null?(+r.roasmc_m1).toFixed(1):'—'}</span> → <b style="color:${cor(r.roasmc_m0!=null?+r.roasmc_m0:null)}">${r.roasmc_m0!=null?(+r.roasmc_m0).toFixed(1):'—'}</b>`:'<span class=gr>—</span>';})()}</td>
           <td style="text-align:right;padding:5px 10px">${pv?'R$ '+pv.toFixed(2).replace('.',','):'—'}</td>
           <td style="text-align:right;padding:5px 10px;color:var(--muted)">${bgt?'R$ '+bgt.toFixed(2).replace('.',','):'—'}</td>
           <td style="text-align:right;padding:5px 10px;font-weight:700;color:var(--accent)">${pv&&d?'R$ '+fica.toFixed(2).replace('.',','):pv?'=':'—'}</td>
