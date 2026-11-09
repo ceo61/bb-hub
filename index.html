@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-110421';
+const BUILD='20261109-111835';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5606,10 +5606,11 @@ async function renderBlackFriday(){
       <button id="bfLimpar" style="border:1px solid var(--crit);color:var(--crit);border-radius:9px;padding:6px 14px;font-weight:600;font-size:12.5px;display:none">✖ limpar TODAS as marcações</button>
     </div>
     <div style="display:flex;gap:12px;align-items:center;margin:0 0 10px;flex-wrap:wrap">
-      <button class="btn" id="bfEnviar" style="padding:9px 26px;font-weight:800;font-size:13.5px;display:none">📤 ENVIAR PREÇOS PARA A LOJA</button>
+      <button class="btn" id="bfVer" style="padding:9px 26px;font-weight:800;font-size:13.5px;display:none">👁 VER O QUE VAI MUDAR HOJE</button>
       <span id="bfEnvioSt" class="gr"></span>
-      <span class="gr" style="font-size:11.5px">nada vai para a loja sem clicar aqui — marcadas recebem o desconto, desmarcadas que estiverem na loja voltam ao original</span>
+      <span class="gr" style="font-size:11.5px">nada vai para a loja sem passar por aqui: primeiro você VÊ a lista exata de mudanças (marcações novas, fase/BGT do dia, restaurações), depois confirma o envio</span>
     </div>
+    <div id="bfPreview"></div>
     <div id="bfPlano"><p class="gr">carregando…</p></div>`;
 
   (async () => {
@@ -5661,7 +5662,7 @@ async function renderBlackFriday(){
         <th style="padding:6px 8px" title="linha de cima: taxa de conversão do site (compras GA4 ÷ views, família somada), mês atual (parcial) · mês anterior. Linha de baixo: ROAS MC (lucro bruto 002 ÷ Ads), mesmos meses — régua: <3 vermelho · 3–5 laranja · ≥5 verde">conv. m0·m1<br>ROAS MC m0·m1</th>
         <th style="padding:6px 8px" title="nosso preço à vista (PIX) na 002 — linha de cima: tabela CHEIA (pré-BF); linha de baixo: o que está NA LOJA (enviado) ou como fica se marcada">à vista cheio<br><span style="font-weight:400">na loja (R$)</span></th>
         <th style="padding:6px 8px" title="menor preço à vista do concorrente (BGT), última coleta">BGT (R$)</th>
-        <th style="padding:6px 8px" title="ONLINE: o preço que está NA LOJA agora comparado ao concorrente (enviadas = com desconto; demais = preço cheio)">vs BGT</th>
+        <th style="padding:6px 8px" title="posição PRETENDIDA vs concorrente: reage na hora às caixinhas (marcada = preço com desconto/🎯; desmarcada = preço cheio). O envio torna real — o preço DE FATO na loja está na linha de baixo da coluna de preço">vs BGT</th>
         <th style="padding:6px 8px" title="desconto previsto pelo plano para a fase ATUAL (com travas de folga/margem). O balão mostra a escada completa">desc. F${fAtual+1}</th>
         <th style="padding:6px 8px;color:var(--accent)" title="marcar = aplicar o desconto do período (F${fAtual+1}) nesta referência; desmarcar = voltar ao preço original. O check do cabeçalho marca/desmarca todas as visíveis">${st.admin?'<input type="checkbox" id="bfTodosChk"> ':''}aplicar F${fAtual+1}</th>
         <th style="padding:6px 8px" title="marcar = aprofundar o desconto até ficar ~1% ABAIXO do concorrente (nunca menos que o desconto do período; trava: MC pós-desconto ≥ piso e teto duro de 25%). Precisa da linha marcada em 'aplicar' e de preço BGT coletado">🎯 bater BGT</th>
@@ -5682,8 +5683,9 @@ async function renderBlackFriday(){
           }
           const fica = pv * (1 - dFin/100);
           const naLojaAgora = b ? +b.real_novo : pv;             // o que o cliente vê AGORA
+          const efet = chk ? fica : pv;                          // posição PRETENDIDA (reage às caixinhas)
           let vs = '<span class=gr>sem<br>BGT</span>';
-          if(bgt > 0 && naLojaAgora > 0){ const dd = (naLojaAgora/bgt - 1) * 100, s = (dd>0?'+':'') + dd.toFixed(0) + '%';
+          if(bgt > 0 && efet > 0){ const dd = (efet/bgt - 1) * 100, s = (dd>0?'+':'') + dd.toFixed(0) + '%';
             vs = dd <= 0 ? `<b style="color:var(--good)">abaixo<br>${s}</b>`
                : dd <= 3 ? `<span style="color:var(--lar)">acima<br>${s}</span>`
                : `<b style="color:var(--crit)">acima<br>${s}</b>`; }
@@ -5728,30 +5730,59 @@ async function renderBlackFriday(){
         tchk.disabled = false; desenha();
       };
     };
-    const btnE = $('#bfEnviar');
-    if(st.admin) btnE.style.display = '';
-    btnE.onclick = async () => {
-      const n = Object.values(apr).filter(marcado).length;
-      const naLoja = Object.values(apr).filter(a => a.status === 'aplicado').length;
-      if(!window.confirm(`Enviar agora para a tabela 002?\n\n• ${n} referência(s) marcadas recebem o desconto do período\n• desmarcadas que estiverem na loja (${naLoja} hoje) voltam ao preço original\n\nO preço original fica guardado e volta depois da BF.`)) return;
-      const stE = $('#bfEnvioSt');
-      btnE.disabled = true; stE.textContent = 'enviando…';
+    const stE = $('#bfEnvioSt');
+    const roda = (acao) => new Promise(async (res) => {
       const u = (await sb.auth.getUser()).data.user?.email || '?';
-      const {data: cmd, error} = await sb.from('bf_comandos').insert({acao: 'enviar', solicitado_por: u}).select().single();
-      if(error){ stE.textContent = 'erro: ' + error.message; btnE.disabled = false; return; }
+      const {data: cmd, error} = await sb.from('bf_comandos').insert({acao, solicitado_por: u}).select().single();
+      if(error){ res({erro: error.message}); return; }
       const t0 = Date.now();
       const timer = setInterval(async () => {
         const {data: c2} = await sb.from('bf_comandos').select('status,resumo').eq('id', cmd.id).single();
-        if(c2?.status === 'concluido' || c2?.status === 'erro'){
-          clearInterval(timer); btnE.disabled = false;
-          stE.innerHTML = c2.status === 'concluido' ? '<b style="color:var(--good)">✅ enviado — loja atualizada</b>' : '<b style="color:var(--crit)">❌ erro no envio — chame o Claude</b>';
-          if(c2.resumo) stE.title = c2.resumo;
-          apr = {}; (await tudo('bf_aprovacao', {eq: []})).forEach(a => apr[a.ref] = a);
-          bl = {}; try{ (await tudo('bf_baseline', {eq: []})).forEach(b => bl[b.cod] = b); }catch(e){}
-          desenha();
-        } else if(c2?.status === 'rodando'){ stE.textContent = 'aplicando na tabela 002…'; }
-        else if(Date.now() - t0 > 240000){ clearInterval(timer); btnE.disabled = false; stE.textContent = '⏱ sem resposta — o executor do Mac pode estar desligado; chame o Claude'; }
+        if(c2?.status === 'concluido' || c2?.status === 'erro'){ clearInterval(timer); res(c2); }
+        else if(c2?.status === 'rodando'){ stE.textContent = acao === 'dry' ? 'calculando…' : 'aplicando na tabela 002…'; }
+        else if(Date.now() - t0 > 240000){ clearInterval(timer); res({erro: '⏱ sem resposta — o executor do Mac pode estar desligado; chame o Claude'}); }
       }, 4000);
+    });
+    const btnV = $('#bfVer');
+    if(st.admin) btnV.style.display = '';
+    btnV.onclick = async () => {
+      btnV.disabled = true; stE.textContent = 'calculando o que mudaria…'; $('#bfPreview').innerHTML = '';
+      const c = await roda('dry');
+      btnV.disabled = false;
+      if(c.erro || c.status === 'erro'){ stE.innerHTML = '<span style="color:var(--crit)">' + esc(c.erro || 'erro ao calcular — chame o Claude') + '</span>'; return; }
+      stE.textContent = '';
+      let prev = null; try{ prev = JSON.parse(c.resumo); }catch(e){}
+      if(!prev){ stE.textContent = 'não consegui ler a prévia — chame o Claude'; return; }
+      const ms = prev.mudancas || [];
+      if(!ms.length){ $('#bfPreview').innerHTML = '<p style="margin:4px 0 12px;color:var(--good);font-weight:600">✅ Nada a mudar — a loja já está exatamente como as marcações e o plano de hoje.</p>'; return; }
+      const TL = {novo: 'novo desconto', repreco: 're-preço (fase/BGT/🎯)', restaura: '↩ volta ao original'};
+      const nN = ms.filter(m => m.tipo === 'novo').length, nR = ms.filter(m => m.tipo === 'repreco').length, nV = ms.filter(m => m.tipo === 'restaura').length;
+      $('#bfPreview').innerHTML = `<div class="tablecard" style="padding:14px 18px;margin:0 0 14px;border:2px solid var(--accent)">
+        <b style="font-size:14px">${ms.length} alteração(ões) de preço ao enviar</b> <span class="gr">— ${nN} descontos novos · ${nR} re-preços · ${nV} restaurações</span>
+        <div class="tscroll" style="max-height:320px;margin:10px 0"><table style="width:auto">
+          <thead><tr><th style="text-align:left;padding:4px 12px">produto</th><th style="text-align:left;padding:4px 12px">o que é</th><th style="text-align:right;padding:4px 12px">POR hoje</th><th style="text-align:right;padding:4px 12px">POR novo</th><th style="text-align:right;padding:4px 12px">Δ</th></tr></thead>
+          <tbody>${ms.slice(0, 200).map(m => `<tr>
+            <td style="padding:3px 12px"><b>${esc(m.cod)}</b>${m.ref && m.ref !== m.cod ? ` <span class="gr">(${esc(m.ref)})</span>` : ''}</td>
+            <td style="padding:3px 12px">${TL[m.tipo] || esc(m.tipo)}</td>
+            <td style="text-align:right;padding:3px 12px">${(+m.de).toFixed(2).replace('.', ',')}</td>
+            <td style="text-align:right;padding:3px 12px;font-weight:700">${(+m.para).toFixed(2).replace('.', ',')}</td>
+            <td style="text-align:right;padding:3px 12px;color:${m.para < m.de ? 'var(--accent)' : 'var(--lar)'}">${((m.para / m.de - 1) * 100).toFixed(1)}%</td>
+          </tr>`).join('')}</tbody>
+        </table>${ms.length > 200 ? `<p class="gr">… e mais ${ms.length - 200} (todas vão no envio)</p>` : ''}</div>
+        <button class="btn" id="bfConfirma" style="padding:9px 24px;font-weight:800">📤 CONFIRMAR E ENVIAR ${ms.length} ALTERAÇÕES</button>
+        <button id="bfCancela" style="margin-left:10px;border:1px solid var(--hair);border-radius:9px;padding:9px 18px;color:var(--ink2)">cancelar</button>
+      </div>`;
+      $('#bfCancela').onclick = () => { $('#bfPreview').innerHTML = ''; };
+      $('#bfConfirma').onclick = async () => {
+        const bc = $('#bfConfirma'); bc.disabled = true; bc.textContent = 'enviando…';
+        const c2 = await roda('enviar');
+        if(c2.erro || c2.status === 'erro'){ bc.disabled = false; bc.textContent = '📤 tentar de novo'; stE.innerHTML = '<span style="color:var(--crit)">' + esc(c2.erro || 'erro no envio — chame o Claude') + '</span>'; return; }
+        $('#bfPreview').innerHTML = '';
+        stE.innerHTML = '<b style="color:var(--good)">✅ enviado — loja atualizada</b>';
+        apr = {}; (await tudo('bf_aprovacao', {eq: []})).forEach(a => apr[a.ref] = a);
+        bl = {}; try{ (await tudo('bf_baseline', {eq: []})).forEach(b => bl[b.cod] = b); }catch(e){}
+        desenha();
+      };
     };
     const btnL = $('#bfLimpar');
     if(st.admin) btnL.style.display = '';
