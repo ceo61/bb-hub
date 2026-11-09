@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-121744';
+const BUILD='20261109-125342';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5649,6 +5649,8 @@ async function renderBlackFriday(){
       else if(!gf && !todas) sel = sel.filter(r => r._n95);
       const corte = sel.slice(0, 500);
       visiveis = sel.map(r => r.ref);   // escopo do 👁/envio = o que o filtro mostra
+      const comApr = corte.filter(r => apr[r.ref]);
+      const todasM = comApr.length > 0 && comApr.every(r => marcado(apr[r.ref]));  // check-mestre espelha o estado
       resumo();
       $('#bfPlano').innerHTML = `<div class="tablecard"><div class="tscroll"><table style="max-width:1180px">
         <thead><tr>
@@ -5661,7 +5663,7 @@ async function renderBlackFriday(){
         <th style="padding:6px 8px" title="menor preço à vista do concorrente (BGT), última coleta">BGT (R$)</th>
         <th style="padding:6px 8px" title="posição PRETENDIDA vs concorrente: reage na hora às caixinhas (marcada = preço com desconto/🎯; desmarcada = preço cheio). O envio torna real — o preço DE FATO na loja está na linha de baixo da coluna de preço">vs BGT</th>
         <th style="padding:6px 8px" title="desconto previsto pelo plano para a fase ATUAL (com travas de folga/margem). O balão mostra a escada completa">desc. F${fAtual+1}</th>
-        <th style="padding:6px 6px;color:var(--accent)" title="marcar = aplicar o desconto do período (F${fAtual+1}) nesta referência; desmarcar = voltar ao preço original. O check do cabeçalho marca/desmarca todas as visíveis">${st.admin?'<input type="checkbox" id="bfTodosChk"><br>':''}aplicar<br>F${fAtual+1}</th>
+        <th style="padding:6px 6px;color:var(--accent)" title="marcar = aplicar o desconto do período (F${fAtual+1}) nesta referência; desmarcar = voltar ao preço original. O check do cabeçalho marca/desmarca todas as visíveis">${st.admin?`<input type="checkbox" id="bfTodosChk" ${todasM?'checked':''}><br>`:''}aplicar<br>F${fAtual+1}</th>
         <th style="padding:6px 6px" title="marcar = aprofundar o desconto até ficar ~1% ABAIXO do concorrente (nunca menos que o desconto do período; trava: MC pós-desconto ≥ piso e teto duro de 25%). Precisa da linha marcada em 'aplicar' e de preço BGT coletado">🎯 bater<br>BGT</th>
         <th style="padding:6px 10px">status</th>
         </tr></thead><tbody>
