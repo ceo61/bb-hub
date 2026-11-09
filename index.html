@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-114658';
+const BUILD='20261109-121144';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5600,8 +5600,6 @@ async function renderBlackFriday(){
       <input id="bfBusca" placeholder="filtrar por código… (ex.: DE040)" style="padding:6px 12px;min-width:220px">
       <label style="font-size:12.5px;color:var(--muted)"><input id="bfTodas" type="checkbox"> mostrar todas (cauda inclusa)</label>
       <span class="gr" id="bfResumoChk" style="font-weight:600"></span>
-      <span style="flex:1"></span>
-      <button id="bfLimpar" style="border:1px solid var(--crit);color:var(--crit);border-radius:9px;padding:6px 14px;font-weight:600;font-size:12.5px;display:none">✖ limpar TODAS as marcações</button>
     </div>
     <div style="display:flex;gap:12px;align-items:center;margin:0 0 10px;flex-wrap:wrap">
       <button class="btn" id="bfVer" style="padding:9px 26px;font-weight:800;font-size:13.5px;display:none">👁 VER O QUE VAI MUDAR HOJE</button>
@@ -5788,18 +5786,6 @@ async function renderBlackFriday(){
         bl = {}; try{ (await tudo('bf_baseline', {eq: []})).forEach(b => bl[b.cod] = b); }catch(e){}
         desenha();
       };
-    };
-    const btnL = $('#bfLimpar');
-    if(st.admin) btnL.style.display = '';
-    btnL.onclick = async () => {
-      const refs = Object.values(apr).filter(marcado).map(a => a.ref);
-      if(!refs.length){ $('#bfMsg').innerHTML = '<p class="gr">não há nenhuma marcação em nenhum grupo.</p>'; return; }
-      if(!window.confirm(`Limpar TODAS as ${refs.length} marcações (todos os grupos)? As que já estiverem na loja voltam ao preço original na próxima aplicação.`)) return;
-      btnL.disabled = true;
-      await grava(refs, false);
-      btnL.disabled = false;
-      $('#bfMsg').innerHTML = `<p style="color:var(--good)">✅ ${refs.length} marcações limpas — nada selecionado em nenhum grupo.</p>`;
-      desenha();
     };
     $('#bfBusca').oninput = desenha;
     $('#bfTodas').onchange = desenha;
