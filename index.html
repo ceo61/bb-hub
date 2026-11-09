@@ -1366,6 +1366,29 @@ async function abreExtrato(cod, m, acao){
   await carregaFamilia();
   const paiRef=(st.famFilho[cod]||[])[0]||null;
   const filhos=st.famPai[cod]||[];
+  // 🖤 BF (CEO 09/11/26): aviso do desconto efetivo HOJE na unidade do canal (002/site por ora)
+  let bfAviso='';
+  try{
+    if(!st.bfPlanoMap){
+      st.bfPlanoMap={};
+      (await tudo('bf_plano',{eq:[]})).forEach(r=>{ st.bfPlanoMap[r.ref]=r; (r.membros||'').split('+').forEach(mm=>{ if(mm) st.bfPlanoMap[mm]=r; }); });
+      const g=(await tudo('bf_params',{eq:[['grupo','_global']]}))[0];
+      st.bfFases=(g?.params?.fases)||[];
+    }
+    const bfRow=st.bfPlanoMap[cod]||st.bfPlanoMap[paiRef]||null;
+    const hj=new Date().toLocaleDateString('sv-SE');
+    const fi=st.bfFases.findIndex(f=>hj>=f[0]&&hj<=f[1]);
+    if(fi>=0){
+      const NOM=['F1 · Aquecimento','F2 · Esquenta','F3 · Semana BF','F4 · BLACK FRIDAY','F5 · Pós/Cyber'];
+      const dBR=s=>s? s.slice(8,10)+'/'+s.slice(5,7):'';
+      if(bfRow){
+        const d=bfRow['f'+(fi+1)]||0;
+        bfAviso=`<div style="margin:8px 0 2px;padding:7px 12px;border:1.5px solid ${d>0?'var(--accent)':'var(--hair)'};border-radius:10px;font-size:12.5px">🖤 <b>Black Friday — 002 (site)</b>: ${d>0?`desconto efetivo HOJE <b style="font-size:14px;color:var(--accent)">${d}%</b> sobre o POR (promoção VTEX "BF26 · ${d}%" — o cliente já vê o preço com ele; os campos de preço aqui NÃO incluem o desconto)`:'<b>sem desconto BF hoje</b> (travado por folga/margem ou alvo 0)'} · ${NOM[fi]} ${dBR(st.bfFases[fi][0])}–${dBR(st.bfFases[fi][1])} · escada: ${[1,2,3,4,5].map(i=>`F${i} ${bfRow['f'+i]||0}%`).join(' · ')}${bfRow.entupido?' · 🔴 desova':''} · <span class="gr">atacado (001): sem promoção BF por enquanto</span></div>`;
+      } else {
+        bfAviso=`<div style="margin:8px 0 2px;padding:7px 12px;border:1.5px solid var(--hair);border-radius:10px;font-size:12.5px">🖤 <b>Black Friday</b>: esta referência está <b>fora do plano BF</b> (sem desconto em nenhuma fase) · <span class="gr">detalhes na página 🖤 Black Friday</span></div>`;
+      }
+    }
+  }catch(e){}
   const [vd,cv,ad,pr,es,cu,cc,hist,tAB,abLog,abModos,adF,cvF,vdF]=await Promise.all([
     sb.from('fato_vendas_diaria').select('data,qtd,qtd_b2c,val_b2c,lucro_b2c,qtd_ml,val_ml,lucro_ml,qtd_atac,val_atac,lucro_atac').eq('cod',cod).gte('data',ini0).order('data').then(r=>r.data||[]),
     sb.from('fato_conversao').select('data,views,compras,receita').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
@@ -1590,7 +1613,7 @@ async function abreExtrato(cod, m, acao){
       </span>`;
   }
   ov.querySelector('.aclcard').innerHTML=`
-    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><a href="https://www.bbbaterias.com.br/${encodeURIComponent(cod.toLowerCase())}" target="_blank" rel="noopener" title="abrir a página do produto no site (nova aba)" style="flex:none;color:var(--accent);font-weight:600;font-size:12.5px;text-decoration:none;border:1px solid var(--hair);border-radius:8px;padding:4px 10px">🌐 ver no site ↗</a><span id="xPrzTag" style="flex:none"></span><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato do produto</span><button class="btn" id="xDiagBtn" style="padding:6px 14px;flex:none;font-size:12.5px" title="A IA lê folga, mercado, funil e margem deste produto e classifica na matriz de diagnóstico">🧠 Diagnóstico IA</button><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>
+    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:17px">📊 ${esc(cod)}</h2><a href="https://www.bbbaterias.com.br/${encodeURIComponent(cod.toLowerCase())}" target="_blank" rel="noopener" title="abrir a página do produto no site (nova aba)" style="flex:none;color:var(--accent);font-weight:600;font-size:12.5px;text-decoration:none;border:1px solid var(--hair);border-radius:8px;padding:4px 10px">🌐 ver no site ↗</a><span id="xPrzTag" style="flex:none"></span><span class="gr" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m?.descricao||'')} · extrato do produto</span><button class="btn" id="xDiagBtn" style="padding:6px 14px;flex:none;font-size:12.5px" title="A IA lê folga, mercado, funil e margem deste produto e classifica na matriz de diagnóstico">🧠 Diagnóstico IA</button><span id="mcX" style="cursor:pointer;font-size:20px">✕</span></div>${bfAviso}
     <div class="tablecard" style="padding:11px 16px;margin:10px 0 12px">
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;font-size:12.5px">
         ${topoHtml}
@@ -5546,22 +5569,31 @@ async function renderBlackFriday(){
     <p class="gr" style="margin:10px 0 0">Última gravação: ${ult?esc(ult.atualizado_por||'?')+' em '+new Date(ult.atualizado_em).toLocaleString('pt-BR'):'—'}. Grupos = famílias da Visão Global (familia_produto). Grupo sem linha aqui fica SEM desconto.</p>
     <div id="bfMsg"></div>
     <h3 style="margin:18px 0 6px">Desconto vigente por referência</h3>
-    <p class="gr" style="margin:0 0 8px">O que está DE FATO aplicado no site (depois das travas de folga e margem), referência a referência — recalculado na rodada diária das 6h50. 🔴 = entupido (desova). A coluna azul é a fase vigente.</p>
-    <input id="bfBusca" placeholder="filtrar por código ou grupo… (ex.: DE040, TECL)" style="padding:6px 12px;min-width:260px;margin-bottom:8px">
+    <p class="gr" style="margin:0 0 8px">O que está DE FATO aplicado no site (depois das travas de folga e margem), referência a referência — recalculado na rodada diária das 6h50. Por padrão mostra só os <b>95/5</b> (referências que fazem 95% do faturamento B2C); a busca procura em TODAS. 🔴 = entupido (desova). A coluna azul é a fase vigente.</p>
+    <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <input id="bfBusca" placeholder="filtrar por código ou grupo… (ex.: DE040, TECL)" style="padding:6px 12px;min-width:260px">
+      <label style="font-size:12.5px;color:var(--muted)"><input id="bfTodas" type="checkbox"> mostrar todas (cauda inclusa)</label>
+    </div>
     <div id="bfPlano"><p class="gr">carregando…</p></div>`;
 
   (async () => {
     let pl = [];
     try{ pl = await tudo('bf_plano', {eq: []}); }catch(e){ $('#bfPlano').innerHTML = '<p class="gr">bf_plano indisponível: ' + esc(e.message||e) + '</p>'; return; }
-    pl.sort((a, b) => (b.hoje - a.hoje) || (b.preco - a.preco));
+    pl.sort((a, b) => (+b.gmv30 || 0) - (+a.gmv30 || 0));
+    const totG = pl.reduce((s, r) => s + (+r.gmv30 || 0), 0);
+    let acc = 0;
+    pl.forEach(r => { r._n95 = acc < totG * 0.95; acc += (+r.gmv30 || 0); });
     const desenha = () => {
       const q = ($('#bfBusca').value || '').trim().toUpperCase();
-      const sel = q ? pl.filter(r => r.ref.toUpperCase().includes(q) || (r.grupo||'').toUpperCase().includes(q) || (r.membros||'').toUpperCase().includes(q)) : pl;
-      const corte = q ? sel : sel.slice(0, 200);
+      const todas = $('#bfTodas').checked;
+      let sel = q ? pl.filter(r => r.ref.toUpperCase().includes(q) || (r.grupo||'').toUpperCase().includes(q) || (r.membros||'').toUpperCase().includes(q)) : pl;
+      if(!q && !todas) sel = sel.filter(r => r._n95);
+      const corte = sel.slice(0, 500);
       $('#bfPlano').innerHTML = `<div class="tablecard"><div class="tscroll"><table style="max-width:1020px">
         <thead><tr><th style="text-align:left;padding:6px 10px">referência</th><th style="padding:6px 10px">grupo</th>
         <th style="padding:6px 10px" title="MC real 60d no site (família)">MC 60d</th>
         <th style="padding:6px 10px" title="meses de estoque sobrando">cob.</th>
+        <th style="padding:6px 10px" title="faturamento B2C 30d da referência">GMV 30d</th>
         ${['F1','F2','F3','F4 BF','F5'].map((f, i) => `<th style="padding:6px 10px;${i===fAtual?'color:var(--accent)':''}">${f}${i===fAtual?' ⬅':''}</th>`).join('')}
         </tr></thead><tbody>
         ${corte.map(r => `<tr>
@@ -5569,12 +5601,14 @@ async function renderBlackFriday(){
           <td style="text-align:center;padding:5px 10px">${esc(r.grupo||'')}</td>
           <td style="text-align:center;padding:5px 10px">${r.mc_real!=null?(+r.mc_real).toFixed(0)+'%':'—'}</td>
           <td style="text-align:center;padding:5px 10px">${r.cob!=null?(+r.cob).toFixed(1):'—'}</td>
+          <td style="text-align:right;padding:5px 10px;color:var(--muted)">${r.gmv30!=null?Math.round(+r.gmv30).toLocaleString('pt-BR'):'—'}</td>
           ${['f1','f2','f3','f4','f5'].map((f, i) => `<td style="text-align:center;padding:5px 10px;${i===fAtual?'background:rgba(42,120,214,.10);font-weight:800':''}">${r[f]>0?r[f]+'%':'<span class=gr>—</span>'}</td>`).join('')}
         </tr>`).join('')}
         </tbody></table></div></div>
-        <p class="gr" style="margin:6px 0 0">${sel.length} referências${!q && sel.length > 200 ? ' (mostrando as 200 maiores — use o filtro)' : ''}.</p>`;
+        <p class="gr" style="margin:6px 0 0">${sel.length} referências${!q && !todas ? ' (95/5 — os maiores até 95% do faturamento)' : ''}${sel.length > 500 ? ' · mostrando 500, use o filtro' : ''}.</p>`;
     };
     $('#bfBusca').oninput = desenha;
+    $('#bfTodas').onchange = desenha;
     desenha();
   })();
 
