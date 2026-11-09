@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-121144';
+const BUILD='20261109-121744';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5610,7 +5610,7 @@ async function renderBlackFriday(){
     <div id="bfPlano"><p class="gr">carregando…</p></div>`;
 
   (async () => {
-    let pl = [], apr = {}, bl = {};
+    let pl = [], apr = {}, bl = {}, visiveis = [];
     try{ pl = await tudo('bf_plano', {eq: []}); }catch(e){ $('#bfPlano').innerHTML = '<p class="gr">bf_plano indisponível: ' + esc(e.message||e) + '</p>'; return; }
     try{ (await tudo('bf_aprovacao', {eq: []})).forEach(a => apr[a.ref] = a); }catch(e){}
     try{ (await tudo('bf_baseline', {eq: []})).forEach(b => bl[b.cod] = b); }catch(e){}
@@ -5648,6 +5648,7 @@ async function renderBlackFriday(){
       if(q) sel = sel.filter(r => r.ref.toUpperCase().includes(q) || (r.membros||'').toUpperCase().includes(q));
       else if(!gf && !todas) sel = sel.filter(r => r._n95);
       const corte = sel.slice(0, 500);
+      visiveis = sel.map(r => r.ref);   // escopo do 👁/envio = o que o filtro mostra
       resumo();
       $('#bfPlano').innerHTML = `<div class="tablecard"><div class="tscroll"><table style="max-width:1180px">
         <thead><tr>
@@ -5734,9 +5735,9 @@ async function renderBlackFriday(){
       };
     };
     const stE = $('#bfEnvioSt');
-    const roda = (acao) => new Promise(async (res) => {
+    const roda = (acao, refs) => new Promise(async (res) => {
       const u = (await sb.auth.getUser()).data.user?.email || '?';
-      const {data: cmd, error} = await sb.from('bf_comandos').insert({acao, solicitado_por: u}).select().single();
+      const {data: cmd, error} = await sb.from('bf_comandos').insert({acao, solicitado_por: u, params: refs ? {refs} : null}).select().single();
       if(error){ res({erro: error.message}); return; }
       const t0 = Date.now();
       const timer = setInterval(async () => {
@@ -5750,18 +5751,19 @@ async function renderBlackFriday(){
     if(st.admin) btnV.style.display = '';
     btnV.onclick = async () => {
       btnV.disabled = true; stE.textContent = 'calculando o que mudaria…'; $('#bfPreview').innerHTML = '';
-      const c = await roda('dry');
+      const escopo = visiveis.slice();   // congela o que está na tela — prévia e envio usam o MESMO escopo
+      const c = await roda('dry', escopo);
       btnV.disabled = false;
       if(c.erro || c.status === 'erro'){ stE.innerHTML = '<span style="color:var(--crit)">' + esc(c.erro || 'erro ao calcular — chame o Claude') + '</span>'; return; }
       stE.textContent = '';
       let prev = null; try{ prev = JSON.parse(c.resumo); }catch(e){}
       if(!prev){ stE.textContent = 'não consegui ler a prévia — chame o Claude'; return; }
       const ms = prev.mudancas || [];
-      if(!ms.length){ $('#bfPreview').innerHTML = '<p style="margin:4px 0 12px;color:var(--good);font-weight:600">✅ Nada a mudar — a loja já está exatamente como as marcações e o plano de hoje.</p>'; return; }
+      if(!ms.length){ $('#bfPreview').innerHTML = `<p style="margin:4px 0 12px;color:var(--good);font-weight:600">✅ Nada a mudar nas ${escopo.length} referências do filtro atual — loja igual às marcações e ao plano de hoje.</p>`; return; }
       const TL = {novo: 'novo desconto', repreco: 're-preço (fase/BGT/🎯)', restaura: '↩ volta ao original'};
       const nN = ms.filter(m => m.tipo === 'novo').length, nR = ms.filter(m => m.tipo === 'repreco').length, nV = ms.filter(m => m.tipo === 'restaura').length;
       $('#bfPreview').innerHTML = `<div class="tablecard" style="padding:14px 18px;margin:0 0 14px;border:2px solid var(--accent)">
-        <b style="font-size:14px">${ms.length} alteração(ões) de preço ao enviar</b> <span class="gr">— ${nN} descontos novos · ${nR} re-preços · ${nV} restaurações</span>
+        <b style="font-size:14px">${ms.length} alteração(ões) de preço ao enviar</b> <span class="gr">— ${nN} descontos novos · ${nR} re-preços · ${nV} restaurações · escopo: as ${escopo.length} referências do filtro atual (o resto da loja não é tocado)</span>
         <div class="tscroll" style="max-height:320px;margin:10px 0"><table style="width:auto">
           <thead><tr><th style="text-align:left;padding:4px 12px">produto</th><th style="text-align:left;padding:4px 12px">o que é</th><th style="text-align:right;padding:4px 12px" title="preço final PIX que está na loja agora (POR×0,95)">à vista na loja hoje</th><th style="text-align:right;padding:4px 12px" title="preço final PIX depois do envio">à vista novo</th><th style="text-align:right;padding:4px 12px" title="variação sobre o preço de hoje na loja">Δ</th></tr></thead>
           <tbody>${ms.slice(0, 200).map(m => `<tr title="POR na tabela 002: ${(+m.de).toFixed(2).replace('.', ',')} → ${(+m.para).toFixed(2).replace('.', ',')}">
@@ -5778,7 +5780,7 @@ async function renderBlackFriday(){
       $('#bfCancela').onclick = () => { $('#bfPreview').innerHTML = ''; };
       $('#bfConfirma').onclick = async () => {
         const bc = $('#bfConfirma'); bc.disabled = true; bc.textContent = 'enviando…';
-        const c2 = await roda('enviar');
+        const c2 = await roda('enviar', escopo);
         if(c2.erro || c2.status === 'erro'){ bc.disabled = false; bc.textContent = '📤 tentar de novo'; stE.innerHTML = '<span style="color:var(--crit)">' + esc(c2.erro || 'erro no envio — chame o Claude') + '</span>'; return; }
         $('#bfPreview').innerHTML = '';
         stE.innerHTML = '<b style="color:var(--good)">✅ enviado — loja atualizada</b>';
