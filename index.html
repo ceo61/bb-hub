@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-103514';
+const BUILD='20261109-104708';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5613,9 +5613,10 @@ async function renderBlackFriday(){
     <div id="bfPlano"><p class="gr">carregando…</p></div>`;
 
   (async () => {
-    let pl = [], apr = {};
+    let pl = [], apr = {}, bl = {};
     try{ pl = await tudo('bf_plano', {eq: []}); }catch(e){ $('#bfPlano').innerHTML = '<p class="gr">bf_plano indisponível: ' + esc(e.message||e) + '</p>'; return; }
     try{ (await tudo('bf_aprovacao', {eq: []})).forEach(a => apr[a.ref] = a); }catch(e){}
+    try{ (await tudo('bf_baseline', {eq: []})).forEach(b => bl[b.cod] = b); }catch(e){}
     pl.sort((a, b) => (+b.gmv30 || 0) - (+a.gmv30 || 0));
     const totG = pl.reduce((s, r) => s + (+r.gmv30 || 0), 0);
     let acc = 0;
@@ -5658,19 +5659,22 @@ async function renderBlackFriday(){
         <th style="padding:6px 10px" title="meses de estoque sobrando">cob.</th>
         <th style="padding:6px 10px" title="faturamento B2C 30d da referência">GMV 30d</th>
         <th style="padding:6px 8px" title="linha de cima: taxa de conversão do site (compras GA4 ÷ views, família somada), mês atual (parcial) · mês anterior. Linha de baixo: ROAS MC (lucro bruto 002 ÷ Ads), mesmos meses — régua: <3 vermelho · 3–5 laranja · ≥5 verde">conv. m0·m1<br>ROAS MC m0·m1</th>
-        <th style="padding:6px 8px" title="nosso preço à vista (PIX) na tabela 002 — linha de cima: tabela de hoje; linha de baixo: como fica (sem marcação = igual; marcada = com o desconto do período)">à vista hoje<br><span style="font-weight:400">c/ desconto (R$)</span></th>
+        <th style="padding:6px 8px" title="nosso preço à vista (PIX) na 002 — linha de cima: tabela CHEIA (pré-BF); linha de baixo: o que está NA LOJA (enviado) ou como fica se marcada">à vista cheio<br><span style="font-weight:400">na loja (R$)</span></th>
         <th style="padding:6px 8px" title="menor preço à vista do concorrente (BGT), última coleta">BGT (R$)</th>
-        <th style="padding:6px 8px" title="nosso preço de HOJE (sem desconto) comparado ao concorrente">vs BGT</th>
+        <th style="padding:6px 8px" title="ONLINE: o preço que está NA LOJA agora comparado ao concorrente (enviadas = com desconto; demais = preço cheio)">vs BGT</th>
         <th style="padding:6px 8px" title="desconto previsto pelo plano para a fase ATUAL (com travas de folga/margem). O balão mostra a escada completa">desc. F${fAtual+1}</th>
         <th style="padding:6px 8px;color:var(--accent)" title="marcar = aplicar o desconto do período (F${fAtual+1}) nesta referência; desmarcar = voltar ao preço original. O check do cabeçalho marca/desmarca todas as visíveis">${st.admin?'<input type="checkbox" id="bfTodosChk"> ':''}aplicar F${fAtual+1}</th>
         <th style="padding:6px 10px">status</th>
         </tr></thead><tbody>
         ${corte.map(r => { const a = apr[r.ref]; const d = +r.hoje || 0;
           const chk = marcado(a);
-          const pv = +r.preco || 0, bgt = +r.bgt || 0;
+          const b = bl[r.ref];
+          const pv = b ? +b.real_original : (+r.preco || 0);     // tabela cheia (pré-BF)
+          const bgt = +r.bgt || 0;
           const fica = pv * (1 - d/100);
+          const naLojaAgora = b ? +b.real_novo : pv;             // o que o cliente vê AGORA
           let vs = '<span class=gr>sem<br>BGT</span>';
-          if(bgt > 0 && pv > 0){ const dd = (pv/bgt - 1) * 100, s = (dd>0?'+':'') + dd.toFixed(0) + '%';
+          if(bgt > 0 && naLojaAgora > 0){ const dd = (naLojaAgora/bgt - 1) * 100, s = (dd>0?'+':'') + dd.toFixed(0) + '%';
             vs = dd <= 0 ? `<b style="color:var(--good)">abaixo<br>${s}</b>`
                : dd <= 3 ? `<span style="color:var(--lar)">acima<br>${s}</span>`
                : `<b style="color:var(--crit)">acima<br>${s}</b>`; }
@@ -5683,7 +5687,7 @@ async function renderBlackFriday(){
           <td style="text-align:center;padding:5px 10px">${r.cob!=null?(+r.cob).toFixed(1):'—'}</td>
           <td style="text-align:right;padding:5px 10px;color:var(--muted)">${r.gmv30!=null?Math.round(+r.gmv30).toLocaleString('pt-BR'):'—'}</td>
           <td style="text-align:center;padding:5px 8px;white-space:nowrap">${r.conv_m1!=null||r.conv_m0!=null?`${r.conv_m0!=null?(+r.conv_m0).toFixed(1)+'%':'—'} · ${r.conv_m1!=null?(+r.conv_m1).toFixed(1)+'%':'—'}`:'<span class=gr>—</span>'}<br>${(()=>{const cor=v=>v==null?'var(--muted)':v<3?'var(--crit)':v<5?'var(--lar)':'var(--good)';return r.roasmc_m1!=null||r.roasmc_m0!=null?`<span style="color:${cor(r.roasmc_m0!=null?+r.roasmc_m0:null)}">${r.roasmc_m0!=null?(+r.roasmc_m0).toFixed(1):'—'}</span> · <span style="color:${cor(r.roasmc_m1!=null?+r.roasmc_m1:null)}">${r.roasmc_m1!=null?(+r.roasmc_m1).toFixed(1):'—'}</span>`:'<span class=gr>—</span>';})()}</td>
-          <td style="text-align:right;padding:5px 8px;white-space:nowrap">${pv?pv.toFixed(2).replace('.',','):'—'}<br><span style="${chk?'font-weight:700;color:var(--accent)':'color:var(--muted)'}" title="${chk?'com o desconto do período aplicado':'sem desconto (marque a caixinha para aplicar)'}">${pv?(chk?fica:pv).toFixed(2).replace('.',','):'—'}</span></td>
+          <td style="text-align:right;padding:5px 8px;white-space:nowrap">${pv?pv.toFixed(2).replace('.',','):'—'}<br><span style="${b?'font-weight:700;color:var(--accent)':(chk?'font-weight:700;color:var(--accent)':'color:var(--muted)')}" title="${b?'preço NA LOJA agora (enviado)':chk?'como fica com o desconto do período (ainda não enviado)':'sem desconto (marque a caixinha para aplicar)'}">${pv?(b?naLojaAgora:(chk?fica:pv)).toFixed(2).replace('.',','):'—'}</span></td>
           <td style="text-align:right;padding:5px 8px;color:var(--muted)">${bgt?bgt.toFixed(2).replace('.',','):'—'}</td>
           <td style="text-align:center;padding:5px 8px;line-height:1.25">${vs}</td>
           <td style="text-align:center;padding:5px 8px;font-weight:600" title="escada: ${['f1','f2','f3','f4','f5'].map((f,i)=>`F${i+1} ${r[f]||0}%`).join(' · ')}">${d?d+'%':'<span class=gr>—</span>'}</td>
@@ -5725,6 +5729,7 @@ async function renderBlackFriday(){
           stE.innerHTML = c2.status === 'concluido' ? '<b style="color:var(--good)">✅ enviado — loja atualizada</b>' : '<b style="color:var(--crit)">❌ erro no envio — chame o Claude</b>';
           if(c2.resumo) stE.title = c2.resumo;
           apr = {}; (await tudo('bf_aprovacao', {eq: []})).forEach(a => apr[a.ref] = a);
+          bl = {}; try{ (await tudo('bf_baseline', {eq: []})).forEach(b => bl[b.cod] = b); }catch(e){}
           desenha();
         } else if(c2?.status === 'rodando'){ stE.textContent = 'aplicando na tabela 002…'; }
         else if(Date.now() - t0 > 240000){ clearInterval(timer); btnE.disabled = false; stE.textContent = '⏱ sem resposta — o executor do Mac pode estar desligado; chame o Claude'; }
