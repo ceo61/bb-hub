@@ -5617,7 +5617,7 @@ async function renderBlackFriday(){
       if(q) sel = sel.filter(r => r.ref.toUpperCase().includes(q) || (r.membros||'').toUpperCase().includes(q));
       else if(!gf && !todas) sel = sel.filter(r => r._n95);
       const corte = sel.slice(0, 500);
-      const temApr = corte.some(r => apr[r.ref]);
+      const temApr = corte.some(r => apr[r.ref]) && st.admin;   // aprovar/rejeitar é do CEO
       $('#bfAprovar').style.display = $('#bfRejeitar').style.display = temApr ? '' : 'none';
       $('#bfPlano').innerHTML = `<div class="tablecard"><div class="tscroll"><table style="max-width:1340px">
         <thead><tr>${temApr?'<th style="padding:6px 6px"><input type="checkbox" id="bfTodosChk" checked title="marcar/desmarcar todas as pendentes"></th>':''}
