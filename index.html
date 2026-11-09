@@ -5626,7 +5626,6 @@ async function renderBlackFriday(){
       resumo();
       $('#bfPlano').innerHTML = `<div class="tablecard"><div class="tscroll"><table style="max-width:1460px">
         <thead><tr>
-        <th style="padding:6px 6px" title="marcar/desmarcar TODAS as referências visíveis">${st.admin?'<input type="checkbox" id="bfTodosChk">':''}✓</th>
         <th style="text-align:left;padding:6px 10px">referência</th>
         <th style="padding:6px 10px" title="MC real 60d no site (família)">MC 60d</th>
         <th style="padding:6px 10px" title="meses de estoque sobrando">cob.</th>
@@ -5635,18 +5634,18 @@ async function renderBlackFriday(){
         <th style="padding:6px 10px" title="ROAS MC (lucro bruto 002 ÷ Ads, família somada): mês atual (parcial) · mês anterior — informativo. Régua: <3 vermelho · 3–5 laranja · ≥5 verde">ROAS MC m0 · m1</th>
         <th style="padding:6px 10px" title="preço à vista (PIX) de hoje na tabela 002 — pai da família">à vista hoje</th>
         <th style="padding:6px 10px" title="menor preço à vista do concorrente (BGT), última coleta">BGT hoje</th>
-        <th style="padding:6px 10px" title="desconto previsto pelo plano para a fase ATUAL (com travas de folga/margem). Só entra na loja se a linha estiver marcada no ✓. O balão mostra a escada completa">desc. semana</th>
-        <th style="padding:6px 10px;color:var(--accent)" title="preço à vista que fica SE marcado (à vista × desconto da semana)">fica por</th>
-        <th style="padding:6px 10px" title="posição vs concorrente com o desconto efetivo (marcado = com desconto; desmarcado = preço cheio)">vs BGT</th>
+        <th style="padding:6px 10px" title="nosso preço de HOJE (sem desconto) comparado ao concorrente">vs BGT</th>
+        <th style="padding:6px 10px" title="desconto previsto pelo plano para a fase ATUAL (com travas de folga/margem). O balão mostra a escada completa">desc. F${fAtual+1}</th>
+        <th style="padding:6px 10px" title="preço à vista que fica com o desconto do período aplicado">fica por</th>
+        <th style="padding:6px 8px;color:var(--accent)" title="marcar = aplicar o desconto do período (F${fAtual+1}) nesta referência; desmarcar = voltar ao preço original. O check do cabeçalho marca/desmarca todas as visíveis">${st.admin?'<input type="checkbox" id="bfTodosChk"> ':''}aplicar F${fAtual+1}</th>
         <th style="padding:6px 10px">status</th>
         </tr></thead><tbody>
         ${corte.map(r => { const a = apr[r.ref]; const d = +r.hoje || 0;
           const chk = marcado(a);
           const pv = +r.preco || 0, bgt = +r.bgt || 0;
-          const dEf = chk ? d : 0;
-          const fica = pv * (1 - d/100), efet = pv * (1 - dEf/100);
+          const fica = pv * (1 - d/100);
           let vs = '<span class=gr>sem BGT</span>';
-          if(bgt > 0 && pv > 0){ const dd = (efet/bgt - 1) * 100, s = (dd>0?'+':'') + dd.toFixed(0) + '%';
+          if(bgt > 0 && pv > 0){ const dd = (pv/bgt - 1) * 100, s = (dd>0?'+':'') + dd.toFixed(0) + '%';
             vs = dd <= 0 ? `<b style="color:var(--good)">abaixo ${s}</b>`
                : dd <= 3 ? `<span style="color:var(--lar)">acima ${s}</span>`
                : `<b style="color:var(--crit)">acima ${s}</b>`; }
@@ -5654,7 +5653,6 @@ async function renderBlackFriday(){
                       : chk ? '<span style="font-size:11px;color:var(--good);font-weight:700" title="marcada — entra na próxima aplicação">✓ marcada</span>'
                       : '<span class="gr" style="font-size:11px">sem desconto</span>';
           return `<tr>
-          <td style="padding:5px 6px">${a ? `<input type="checkbox" class="bfChk" data-ref="${esc(r.ref)}" ${chk?'checked':''} ${st.admin?'':'disabled'}>` : ''}</td>
           <td style="padding:5px 10px"><b>${esc(r.ref)}</b>${r.entupido?' <span title="entupido (≥12m de estoque) — desova">🔴</span>':''}${r.membros && r.membros !== r.ref ? ` <span class="gr" title="família: ${esc(r.membros)}">👨‍👦</span>`:''}<br><span class="gr" style="font-size:11px">${esc((r.descr||'').slice(0, 40))}</span></td>
           <td style="text-align:center;padding:5px 10px">${r.mc_real!=null?(+r.mc_real).toFixed(0)+'%':'—'}</td>
           <td style="text-align:center;padding:5px 10px">${r.cob!=null?(+r.cob).toFixed(1):'—'}</td>
@@ -5663,9 +5661,10 @@ async function renderBlackFriday(){
           <td style="text-align:center;padding:5px 10px;white-space:nowrap">${(()=>{const cor=v=>v==null?'var(--muted)':v<3?'var(--crit)':v<5?'var(--lar)':'var(--good)';return r.roasmc_m1!=null||r.roasmc_m0!=null?`<span style="color:${cor(r.roasmc_m0!=null?+r.roasmc_m0:null)}">${r.roasmc_m0!=null?(+r.roasmc_m0).toFixed(1):'—'}</span> · <span style="color:${cor(r.roasmc_m1!=null?+r.roasmc_m1:null)}">${r.roasmc_m1!=null?(+r.roasmc_m1).toFixed(1):'—'}</span>`:'<span class=gr>—</span>';})()}</td>
           <td style="text-align:right;padding:5px 10px">${pv?'R$ '+pv.toFixed(2).replace('.',','):'—'}</td>
           <td style="text-align:right;padding:5px 10px;color:var(--muted)">${bgt?'R$ '+bgt.toFixed(2).replace('.',','):'—'}</td>
-          <td style="text-align:center;padding:5px 10px;font-weight:600" title="escada: ${['f1','f2','f3','f4','f5'].map((f,i)=>`F${i+1} ${r[f]||0}%`).join(' · ')}">${d?d+'%':'<span class=gr>—</span>'}</td>
-          <td style="text-align:right;padding:5px 10px;font-weight:${chk?'700':'400'};color:${chk?'var(--accent)':'var(--muted)'}">${pv&&d?'R$ '+fica.toFixed(2).replace('.',','):pv?'=':'—'}</td>
           <td style="text-align:center;padding:5px 10px">${vs}</td>
+          <td style="text-align:center;padding:5px 10px;font-weight:600" title="escada: ${['f1','f2','f3','f4','f5'].map((f,i)=>`F${i+1} ${r[f]||0}%`).join(' · ')}">${d?d+'%':'<span class=gr>—</span>'}</td>
+          <td style="text-align:right;padding:5px 10px;color:var(--muted)">${pv&&d?'R$ '+fica.toFixed(2).replace('.',','):pv?'=':'—'}</td>
+          <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfChk" data-ref="${esc(r.ref)}" ${chk?'checked':''} ${st.admin?'':'disabled'}>` : ''}</td>
           <td style="text-align:center;padding:5px 10px">${stTxt}</td>
         </tr>`; }).join('')}
         </tbody></table></div></div>
