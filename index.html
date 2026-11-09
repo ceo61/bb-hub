@@ -5543,8 +5543,40 @@ async function renderBlackFriday(){
         ${[0,1,2,3,4].map(i => `<td style="text-align:center;padding:6px 10px;${i===fAtual?'background:rgba(42,120,214,.10)':''}">${num(`bfF${i}-`+r.grupo, (p.fases||[])[i]??0, 1)}</td>`).join('')}
       </tr>`; }).join('')}</tbody>
     </table></div></div>
-    <p class="gr" style="margin:10px 0 0">Última gravação: ${ult?esc(ult.atualizado_por||'?')+' em '+new Date(ult.atualizado_em).toLocaleString('pt-BR'):'—'}. Grupos = famílias da Visão Global (familia_produto). Grupo sem linha aqui fica SEM desconto. O desconto efetivo de cada referência (depois das travas) aparece no painel de acompanhamento diário da BF.</p>
-    <div id="bfMsg"></div>`;
+    <p class="gr" style="margin:10px 0 0">Última gravação: ${ult?esc(ult.atualizado_por||'?')+' em '+new Date(ult.atualizado_em).toLocaleString('pt-BR'):'—'}. Grupos = famílias da Visão Global (familia_produto). Grupo sem linha aqui fica SEM desconto.</p>
+    <div id="bfMsg"></div>
+    <h3 style="margin:18px 0 6px">Desconto vigente por referência</h3>
+    <p class="gr" style="margin:0 0 8px">O que está DE FATO aplicado no site (depois das travas de folga e margem), referência a referência — recalculado na rodada diária das 6h50. 🔴 = entupido (desova). A coluna azul é a fase vigente.</p>
+    <input id="bfBusca" placeholder="filtrar por código ou grupo… (ex.: DE040, TECL)" style="padding:6px 12px;min-width:260px;margin-bottom:8px">
+    <div id="bfPlano"><p class="gr">carregando…</p></div>`;
+
+  (async () => {
+    let pl = [];
+    try{ pl = await tudo('bf_plano', {eq: []}); }catch(e){ $('#bfPlano').innerHTML = '<p class="gr">bf_plano indisponível: ' + esc(e.message||e) + '</p>'; return; }
+    pl.sort((a, b) => (b.hoje - a.hoje) || (b.preco - a.preco));
+    const desenha = () => {
+      const q = ($('#bfBusca').value || '').trim().toUpperCase();
+      const sel = q ? pl.filter(r => r.ref.toUpperCase().includes(q) || (r.grupo||'').toUpperCase().includes(q) || (r.membros||'').toUpperCase().includes(q)) : pl;
+      const corte = q ? sel : sel.slice(0, 200);
+      $('#bfPlano').innerHTML = `<div class="tablecard"><div class="tscroll"><table style="max-width:1020px">
+        <thead><tr><th style="text-align:left;padding:6px 10px">referência</th><th style="padding:6px 10px">grupo</th>
+        <th style="padding:6px 10px" title="MC real 60d no site (família)">MC 60d</th>
+        <th style="padding:6px 10px" title="meses de estoque sobrando">cob.</th>
+        ${['F1','F2','F3','F4 BF','F5'].map((f, i) => `<th style="padding:6px 10px;${i===fAtual?'color:var(--accent)':''}">${f}${i===fAtual?' ⬅':''}</th>`).join('')}
+        </tr></thead><tbody>
+        ${corte.map(r => `<tr>
+          <td style="padding:5px 10px"><b>${esc(r.ref)}</b>${r.entupido?' <span title="entupido (≥12m de estoque) — desova">🔴</span>':''}${r.membros && r.membros !== r.ref ? ` <span class="gr" title="família: ${esc(r.membros)}">👨‍👦</span>`:''}<br><span class="gr" style="font-size:11px">${esc((r.descr||'').slice(0, 40))}</span></td>
+          <td style="text-align:center;padding:5px 10px">${esc(r.grupo||'')}</td>
+          <td style="text-align:center;padding:5px 10px">${r.mc_real!=null?(+r.mc_real).toFixed(0)+'%':'—'}</td>
+          <td style="text-align:center;padding:5px 10px">${r.cob!=null?(+r.cob).toFixed(1):'—'}</td>
+          ${['f1','f2','f3','f4','f5'].map((f, i) => `<td style="text-align:center;padding:5px 10px;${i===fAtual?'background:rgba(42,120,214,.10);font-weight:800':''}">${r[f]>0?r[f]+'%':'<span class=gr>—</span>'}</td>`).join('')}
+        </tr>`).join('')}
+        </tbody></table></div></div>
+        <p class="gr" style="margin:6px 0 0">${sel.length} referências${!q && sel.length > 200 ? ' (mostrando as 200 maiores — use o filtro)' : ''}.</p>`;
+    };
+    $('#bfBusca').oninput = desenha;
+    desenha();
+  })();
 
   $('#bfSalvar').onclick = async () => {
     const btn = $('#bfSalvar'); btn.disabled = true; btn.textContent = 'gravando…';
