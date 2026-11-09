@@ -5636,7 +5636,7 @@ async function renderBlackFriday(){
         <th style="padding:6px 10px" title="menor preço à vista do concorrente (BGT), última coleta">BGT hoje</th>
         <th style="padding:6px 10px" title="nosso preço de HOJE (sem desconto) comparado ao concorrente">vs BGT</th>
         <th style="padding:6px 10px" title="desconto previsto pelo plano para a fase ATUAL (com travas de folga/margem). O balão mostra a escada completa">desc. F${fAtual+1}</th>
-        <th style="padding:6px 10px" title="preço à vista que fica com o desconto do período aplicado">fica por</th>
+        <th style="padding:6px 10px" title="preço à vista que fica: sem marcação = igual ao de hoje; marcada = com o desconto do período">fica por</th>
         <th style="padding:6px 8px;color:var(--accent)" title="marcar = aplicar o desconto do período (F${fAtual+1}) nesta referência; desmarcar = voltar ao preço original. O check do cabeçalho marca/desmarca todas as visíveis">${st.admin?'<input type="checkbox" id="bfTodosChk"> ':''}aplicar F${fAtual+1}</th>
         <th style="padding:6px 10px">status</th>
         </tr></thead><tbody>
@@ -5663,7 +5663,7 @@ async function renderBlackFriday(){
           <td style="text-align:right;padding:5px 10px;color:var(--muted)">${bgt?'R$ '+bgt.toFixed(2).replace('.',','):'—'}</td>
           <td style="text-align:center;padding:5px 10px">${vs}</td>
           <td style="text-align:center;padding:5px 10px;font-weight:600" title="escada: ${['f1','f2','f3','f4','f5'].map((f,i)=>`F${i+1} ${r[f]||0}%`).join(' · ')}">${d?d+'%':'<span class=gr>—</span>'}</td>
-          <td style="text-align:right;padding:5px 10px;color:var(--muted)">${pv&&d?'R$ '+fica.toFixed(2).replace('.',','):pv?'=':'—'}</td>
+          <td style="text-align:right;padding:5px 10px;${chk?'font-weight:700;color:var(--accent)':'color:var(--muted)'}" title="${chk?'com o desconto do período aplicado':'sem desconto (marque a caixinha para aplicar)'}">${pv?'R$ '+(chk?fica:pv).toFixed(2).replace('.',','):'—'}</td>
           <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfChk" data-ref="${esc(r.ref)}" ${chk?'checked':''} ${st.admin?'':'disabled'}>` : ''}</td>
           <td style="text-align:center;padding:5px 10px">${stTxt}</td>
         </tr>`; }).join('')}
