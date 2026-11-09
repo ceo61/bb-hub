@@ -294,7 +294,7 @@ tr.emcurso td{opacity:.55}
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPA_URL = "https://zmplnwzsieccgfpdryvi.supabase.co";
-const SUPA_KEY = "sb_publishable_wyrwKsdftifpQ5YV9z7rng_s6hTzcx5";
+const SUPA_KEY = "";
 const sb = createClient(SUPA_URL, SUPA_KEY);
 
 /* ---------- utilidades ---------- */
@@ -1383,7 +1383,7 @@ async function abreExtrato(cod, m, acao){
       const dBR=s=>s? s.slice(8,10)+'/'+s.slice(5,7):'';
       if(bfRow){
         const d=bfRow['f'+(fi+1)]||0;
-        bfAviso=`<div style="margin:8px 0 2px;padding:7px 12px;border:1.5px solid ${d>0?'var(--accent)':'var(--hair)'};border-radius:10px;font-size:12.5px">🖤 <b>Black Friday — 002 (site)</b>: ${d>0?`desconto efetivo HOJE <b style="font-size:14px;color:var(--accent)">${d}%</b> sobre o POR (promoção VTEX "BF26 · ${d}%" — o cliente já vê o preço com ele; os campos de preço aqui NÃO incluem o desconto)`:'<b>sem desconto BF hoje</b> (travado por folga/margem ou alvo 0)'} · ${NOM[fi]} ${dBR(st.bfFases[fi][0])}–${dBR(st.bfFases[fi][1])} · escada: ${[1,2,3,4,5].map(i=>`F${i} ${bfRow['f'+i]||0}%`).join(' · ')}${bfRow.entupido?' · 🔴 desova':''} · <span class="gr">atacado (001): sem promoção BF por enquanto</span></div>`;
+        bfAviso=`<div style="margin:8px 0 2px;padding:7px 12px;border:1.5px solid ${d>0?'var(--accent)':'var(--hair)'};border-radius:10px;font-size:12.5px">🖤 <b>Black Friday — 002 (site)</b>: ${d>0?`desconto-alvo HOJE <b style="font-size:14px;color:var(--accent)">${d}%</b> sobre o POR — ⚠ <b>ainda NÃO aplicado na loja</b> (promoções VTEX desativadas 09/11; aplicação vai migrar p/ preço direto na tabela)`:'<b>sem desconto BF hoje</b> (travado por folga/margem ou alvo 0)'} · ${NOM[fi]} ${dBR(st.bfFases[fi][0])}–${dBR(st.bfFases[fi][1])} · escada: ${[1,2,3,4,5].map(i=>`F${i} ${bfRow['f'+i]||0}%`).join(' · ')}${bfRow.entupido?' · 🔴 desova':''} · <span class="gr">atacado (001): sem promoção BF por enquanto</span></div>`;
       } else {
         bfAviso=`<div style="margin:8px 0 2px;padding:7px 12px;border:1.5px solid var(--hair);border-radius:10px;font-size:12.5px">🖤 <b>Black Friday</b>: esta referência está <b>fora do plano BF</b> (sem desconto em nenhuma fase) · <span class="gr">detalhes na página 🖤 Black Friday</span></div>`;
       }
