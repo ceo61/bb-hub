@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-102922';
+const BUILD='20261109-103145';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5602,7 +5602,10 @@ async function renderBlackFriday(){
       <input id="bfBusca" placeholder="filtrar por código… (ex.: DE040)" style="padding:6px 12px;min-width:220px">
       <label style="font-size:12.5px;color:var(--muted)"><input id="bfTodas" type="checkbox"> mostrar todas (cauda inclusa)</label>
       <span class="gr" id="bfResumoChk" style="font-weight:600"></span>
+      <span style="flex:1"></span>
+      <button id="bfLimpar" style="border:1px solid var(--crit);color:var(--crit);border-radius:9px;padding:6px 14px;font-weight:600;font-size:12.5px;display:none">✖ limpar TODAS as marcações</button>
     </div>
+    <p class="gr" style="margin:0 0 8px">📤 <b>Enviar os preços</b>: quando terminar de marcar, peça ao Claude ("envia os preços") que ele aplica na tabela 002 na hora e confirma o que entrou — ou deixe quieto, que a rodada das <b>06h50</b> aplica sozinha o que estiver marcado. O resumo ao lado dos filtros mostra sempre quantas estão marcadas <b>em todos os grupos</b>.</p>
     <div id="bfPlano"><p class="gr">carregando…</p></div>`;
 
   (async () => {
@@ -5651,10 +5654,10 @@ async function renderBlackFriday(){
         <th style="padding:6px 10px" title="meses de estoque sobrando">cob.</th>
         <th style="padding:6px 10px" title="faturamento B2C 30d da referência">GMV 30d</th>
         <th style="padding:6px 8px" title="linha de cima: taxa de conversão do site (compras GA4 ÷ views, família somada), mês atual (parcial) · mês anterior. Linha de baixo: ROAS MC (lucro bruto 002 ÷ Ads), mesmos meses — régua: <3 vermelho · 3–5 laranja · ≥5 verde">conv. m0·m1<br>ROAS MC m0·m1</th>
-        <th style="padding:6px 8px" title="linha de cima: nosso preço à vista (PIX) de hoje na tabela 002 (pai da família). Linha de baixo: menor preço à vista do concorrente (BGT), última coleta">à vista hoje<br><span style="font-weight:400">BGT (R$)</span></th>
+        <th style="padding:6px 8px" title="nosso preço à vista (PIX) na tabela 002 — linha de cima: tabela de hoje; linha de baixo: como fica (sem marcação = igual; marcada = com o desconto do período)">à vista hoje<br><span style="font-weight:400">c/ desconto (R$)</span></th>
+        <th style="padding:6px 8px" title="menor preço à vista do concorrente (BGT), última coleta">BGT (R$)</th>
         <th style="padding:6px 8px" title="nosso preço de HOJE (sem desconto) comparado ao concorrente">vs BGT</th>
         <th style="padding:6px 8px" title="desconto previsto pelo plano para a fase ATUAL (com travas de folga/margem). O balão mostra a escada completa">desc. F${fAtual+1}</th>
-        <th style="padding:6px 8px" title="preço à vista que fica: sem marcação = igual ao de hoje; marcada = com o desconto do período">fica por (R$)</th>
         <th style="padding:6px 8px;color:var(--accent)" title="marcar = aplicar o desconto do período (F${fAtual+1}) nesta referência; desmarcar = voltar ao preço original. O check do cabeçalho marca/desmarca todas as visíveis">${st.admin?'<input type="checkbox" id="bfTodosChk"> ':''}aplicar F${fAtual+1}</th>
         <th style="padding:6px 10px">status</th>
         </tr></thead><tbody>
@@ -5676,10 +5679,10 @@ async function renderBlackFriday(){
           <td style="text-align:center;padding:5px 10px">${r.cob!=null?(+r.cob).toFixed(1):'—'}</td>
           <td style="text-align:right;padding:5px 10px;color:var(--muted)">${r.gmv30!=null?Math.round(+r.gmv30).toLocaleString('pt-BR'):'—'}</td>
           <td style="text-align:center;padding:5px 8px;white-space:nowrap">${r.conv_m1!=null||r.conv_m0!=null?`${r.conv_m0!=null?(+r.conv_m0).toFixed(1)+'%':'—'} · ${r.conv_m1!=null?(+r.conv_m1).toFixed(1)+'%':'—'}`:'<span class=gr>—</span>'}<br>${(()=>{const cor=v=>v==null?'var(--muted)':v<3?'var(--crit)':v<5?'var(--lar)':'var(--good)';return r.roasmc_m1!=null||r.roasmc_m0!=null?`<span style="color:${cor(r.roasmc_m0!=null?+r.roasmc_m0:null)}">${r.roasmc_m0!=null?(+r.roasmc_m0).toFixed(1):'—'}</span> · <span style="color:${cor(r.roasmc_m1!=null?+r.roasmc_m1:null)}">${r.roasmc_m1!=null?(+r.roasmc_m1).toFixed(1):'—'}</span>`:'<span class=gr>—</span>';})()}</td>
-          <td style="text-align:right;padding:5px 8px;white-space:nowrap">${pv?pv.toFixed(2).replace('.',','):'—'}<br><span class="gr">${bgt?bgt.toFixed(2).replace('.',','):'—'}</span></td>
+          <td style="text-align:right;padding:5px 8px;white-space:nowrap">${pv?pv.toFixed(2).replace('.',','):'—'}<br><span style="${chk?'font-weight:700;color:var(--accent)':'color:var(--muted)'}" title="${chk?'com o desconto do período aplicado':'sem desconto (marque a caixinha para aplicar)'}">${pv?(chk?fica:pv).toFixed(2).replace('.',','):'—'}</span></td>
+          <td style="text-align:right;padding:5px 8px;color:var(--muted)">${bgt?bgt.toFixed(2).replace('.',','):'—'}</td>
           <td style="text-align:center;padding:5px 8px;line-height:1.25">${vs}</td>
           <td style="text-align:center;padding:5px 8px;font-weight:600" title="escada: ${['f1','f2','f3','f4','f5'].map((f,i)=>`F${i+1} ${r[f]||0}%`).join(' · ')}">${d?d+'%':'<span class=gr>—</span>'}</td>
-          <td style="text-align:right;padding:5px 8px;${chk?'font-weight:700;color:var(--accent)':'color:var(--muted)'}" title="${chk?'com o desconto do período aplicado':'sem desconto (marque a caixinha para aplicar)'}">${pv?(chk?fica:pv).toFixed(2).replace('.',','):'—'}</td>
           <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfChk" data-ref="${esc(r.ref)}" ${chk?'checked':''} ${st.admin?'':'disabled'}>` : ''}</td>
           <td style="text-align:center;padding:5px 10px">${stTxt}</td>
         </tr>`; }).join('')}
@@ -5698,6 +5701,18 @@ async function renderBlackFriday(){
         await grava(refs, tchk.checked);
         tchk.disabled = false; desenha();
       };
+    };
+    const btnL = $('#bfLimpar');
+    if(st.admin) btnL.style.display = '';
+    btnL.onclick = async () => {
+      const refs = Object.values(apr).filter(marcado).map(a => a.ref);
+      if(!refs.length){ $('#bfMsg').innerHTML = '<p class="gr">não há nenhuma marcação em nenhum grupo.</p>'; return; }
+      if(!window.confirm(`Limpar TODAS as ${refs.length} marcações (todos os grupos)? As que já estiverem na loja voltam ao preço original na próxima aplicação.`)) return;
+      btnL.disabled = true;
+      await grava(refs, false);
+      btnL.disabled = false;
+      $('#bfMsg').innerHTML = `<p style="color:var(--good)">✅ ${refs.length} marcações limpas — nada selecionado em nenhum grupo.</p>`;
+      desenha();
     };
     $('#bfBusca').oninput = desenha;
     $('#bfTodas').onchange = desenha;
