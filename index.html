@@ -312,17 +312,22 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    Toda consulta que possa passar disso DEVE usar tudo() abaixo — nunca sb.from().select() direto.
    select direto só para resultados garantidamente pequenos (ex.: fato_mc por cod, etl_log c/ limit).
    Caso real: página SKUs truncou rótulos/meses do DE125 (1.496 e 2.860 linhas) e parecia dado faltando. */
-async function tudo(tabela, filtros){ // paginação PostgREST (limite 1000/req)
-  const out=[]; let de=0;
-  for(;;){
-    let q = sb.from(tabela).select(filtros.select||'*').range(de, de+999);
+async function tudo(tabela, filtros){ // paginação PostgREST (teto 1000/req) — 1ª página com count, resto em PARALELO
+  const monta=(de, comCount)=>{
+    let q = sb.from(tabela).select(filtros.select||'*', comCount?{count:'exact'}:undefined).range(de, de+999);
     for(const [c,v] of (filtros.eq||[])) q=q.eq(c,v);
     if(filtros.mod) q=filtros.mod(q);
-    const {data,error} = await q;
-    if(error) throw error;
-    out.push(...data);
-    if(data.length<1000) break;
-    de+=1000;
+    return q;
+  };
+  const {data, error, count} = await monta(0, true);
+  if(error) throw error;
+  if(!data || data.length<1000) return data||[];
+  const resto=[];
+  for(let de=1000; de<(count||0); de+=1000) resto.push(monta(de, false));
+  const out=[...data];
+  for(const r of await Promise.all(resto)){
+    if(r.error) throw r.error;
+    out.push(...r.data);
   }
   return out;
 }
@@ -933,8 +938,14 @@ function flagsDe(m, med){
 }
 async function carregaMarkup(){
   if(st.markup) return;
-    st.markup = await tudo('precos_markup', {eq:[['snapshot',st.snap]]});
-    st.markup = st.markup.filter(m=>m.custo>0 && !m.cod.startsWith('SP-') && !m.cod.includes('DEVOLUCAO'));
+    // 4 cargas em PARALELO (antes eram seriais — abertura pesada, CEO 09/11/26)
+    const [mkRaw, abcRows, estqRows, convRows] = await Promise.all([
+      tudo('precos_markup', {eq:[['snapshot',st.snap]]}),
+      tudo('abc_produto', {select:'cod,classe,pct_acum', eq:[]}),
+      tudo('fato_estoque', {select:'cod,estoque_util', eq:[['snapshot',st.snap]]}),
+      tudo('conversao_28d', {select:'cod,views,compras,taxa_conv', eq:[]}),
+    ]);
+    st.markup = mkRaw.filter(m=>m.custo>0 && !m.cod.startsWith('SP-') && !m.cod.includes('DEVOLUCAO'));
     const porG={};
     for(const m of st.markup) if(m.mk_site&&m.mk_site>1&&m.mk_site<15){
       (porG[m.grupo]=porG[m.grupo]||[]).push(m.mk_site);
@@ -960,10 +971,10 @@ async function carregaMarkup(){
       const mn=v.reduce((s,x)=>s+x,0)/v.length;
       r[g]={m:mn,s:Math.sqrt(v.reduce((s,x)=>s+(x-mn)**2,0)/v.length)};}}return r;};
     st.mkDist=stats(porG); st.mkDistA=stats(porGA); st.mkDistM=stats(porGM);
-    st.abc={}; (await tudo('abc_produto',{select:'cod,classe,pct_acum',eq:[]})).forEach(r=>st.abc[r.cod]=r.classe);
-    const estq={}; (await tudo('fato_estoque',{select:'cod,estoque_util',eq:[['snapshot',st.snap]]})).forEach(e=>estq[e.cod]=e.estoque_util);
+    st.abc={}; abcRows.forEach(r=>st.abc[r.cod]=r.classe);
+    const estq={}; estqRows.forEach(e=>estq[e.cod]=e.estoque_util);
     const tra={}; (st.transito||[]).forEach(t=>{ tra[t.cod]=(tra[t.cod]||0)+(+t.qtd_pendente||0); });
-    const conv={}; (await tudo('conversao_28d',{select:'cod,views,compras,taxa_conv',eq:[]})).forEach(x=>conv[x.cod]=x);
+    const conv={}; convRows.forEach(x=>conv[x.cod]=x);
     const radarMap=new Map(st.radar.map(r=>[r.cod,r]));
     for(const m of st.markup){ const rr=radarMap.get(m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._transito=tra[m.cod]||0; m._meses=GERORD.indexOf(m.geracao); m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); const cv=conv[m.cod]; m._views=cv?.views||0; m._conv=cv?.taxa_conv??null; }
 }
@@ -1407,7 +1418,7 @@ async function abreExtrato(cod, m, acao){
     sb.from('fato_vendas_diaria').select('data,qtd,qtd_b2c,val_b2c,lucro_b2c,qtd_ml,val_ml,lucro_ml,qtd_atac,val_atac,lucro_atac').eq('cod',cod).gte('data',ini0).order('data').then(r=>r.data||[]),
     sb.from('fato_conversao').select('data,views,compras,receita').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
     sb.from('fato_ads').select('data,custo').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
-    sb.from('fato_precos').select('snapshot,codtab,filial,preco_de,preco_por,preco_real').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
+    tudo('fato_precos',{select:'snapshot,codtab,filial,preco_de,preco_por,preco_real',eq:[['cod',cod]],mod:q=>q.gte('snapshot',ini).order('snapshot')}).catch(e=>{console.warn('fato_precos extrato:',e);return[];}),
     sb.from('fato_estoque').select('snapshot,estoque_util').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
     sb.from('fato_custo').select('snapshot,custo').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
     sb.from('fato_concorrencia').select('data,cc_avista,cc_b2b').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
@@ -1615,9 +1626,6 @@ async function abreExtrato(cod, m, acao){
       <button class="btn" id="xAprova" style="padding:7px 18px;flex:none">✔ OK — aprovar</button>
       <button id="xOkProx" title="conferi e está OK — sem ajuste (mesmo efeito do ✓ da lista: sai da fila por 7 dias + 200 views) e já abre o PRÓXIMO produto da lista" style="background:var(--good);color:#fff;border:none;border-radius:9px;padding:8px 16px;flex:none;font-weight:700">✓ Sem ajuste → próximo</button>
       <button id="xAbBtn" title="Rotação semanal automática entre dois preços B2C (troca domingo 23h)" style="border:1px solid var(--accent);color:var(--accent);border-radius:9px;padding:8px 14px;flex:none;font-weight:600">🔁 Incluir teste semanal</button>
-      <span style="flex:none;display:inline-flex;align-items:center;gap:4px;border:1px dashed var(--warn);border-radius:9px;padding:6px 10px" title="produto LANÇAMENTO: meses EXTRAS de cobertura no Pedido de Compra — quando o pedido RODAR, soma esses meses ao alvo deste produto">
-        🚀 lançamento: +<input id="xExtra" type="number" min="0" max="9" step="1" placeholder="0" style="width:36px;text-align:center;font-weight:700"> m
-        <button class="btn" id="xExtraOk" style="padding:3px 10px;font-size:11px">ok</button><span class="gr" id="xExtraMsg" style="font-size:10.5px"></span></span>
       <span id="xAbForm" class="hide" style="display:none;gap:10px;align-items:flex-end;flex-wrap:wrap">
         <span>Preço A (à vista)<br><input type="number" step="0.01" min="0" id="xAbA" value="${m?.p_site!=null?(+m.p_site).toFixed(2):''}" style="width:100px;text-align:right"></span>
         <span>Preço B (à vista)<br><input type="number" step="0.01" min="0" id="xAbB" style="width:100px;text-align:right"></span>
@@ -1745,19 +1753,6 @@ async function abreExtrato(cod, m, acao){
     ov.querySelector('#xMkM').textContent=(+xMl2.value>0?'fica ':'')+hint(+xMl2.value, alvoM, true);
   };
   [xAt,xDe,xa,xMl2].forEach(i=>i.oninput=atualiza); atualiza();
-  (async()=>{ try{
-    const {data:ex}=await sb.from('pedido_extra').select('*').eq('cod',cod).maybeSingle();
-    const inp=ov.querySelector('#xExtra'), msg=ov.querySelector('#xExtraMsg');
-    if(ex&&inp){ inp.value=ex.meses; msg.textContent=`por ${(ex.definido_por||'').split('@')[0]} em ${new Date(ex.definido_em).toLocaleDateString('pt-BR')}`; }
-  }catch(e){} })();
-  ov.querySelector('#xExtraOk').onclick=async()=>{
-    const inp=ov.querySelector('#xExtra'), msg=ov.querySelector('#xExtraMsg');
-    const v=Math.max(0,Math.min(9,Math.round(+inp.value||0)));
-    let em='?'; try{ em=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e){}
-    if(v===0){ await sb.from('pedido_extra').delete().eq('cod',cod); msg.textContent='removido — pedido volta ao alvo normal'; inp.value=''; return; }
-    const {error}=await sb.from('pedido_extra').upsert({cod, meses:v, definido_por:em, definido_em:new Date().toISOString()});
-    msg.textContent=error?('erro: '+error.message):`salvo ✓ +${v}m — o próximo RODAR do pedido usa`;
-  };
   const okProx=ov.querySelector('#xOkProx');
   if(okProx) okProx.onclick=async()=>{
     okProx.disabled=true; okProx.textContent='marcando…';
