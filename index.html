@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-104708';
+const BUILD='20261109-110421';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5664,6 +5664,7 @@ async function renderBlackFriday(){
         <th style="padding:6px 8px" title="ONLINE: o preço que está NA LOJA agora comparado ao concorrente (enviadas = com desconto; demais = preço cheio)">vs BGT</th>
         <th style="padding:6px 8px" title="desconto previsto pelo plano para a fase ATUAL (com travas de folga/margem). O balão mostra a escada completa">desc. F${fAtual+1}</th>
         <th style="padding:6px 8px;color:var(--accent)" title="marcar = aplicar o desconto do período (F${fAtual+1}) nesta referência; desmarcar = voltar ao preço original. O check do cabeçalho marca/desmarca todas as visíveis">${st.admin?'<input type="checkbox" id="bfTodosChk"> ':''}aplicar F${fAtual+1}</th>
+        <th style="padding:6px 8px" title="marcar = aprofundar o desconto até ficar ~1% ABAIXO do concorrente (nunca menos que o desconto do período; trava: MC pós-desconto ≥ piso e teto duro de 25%). Precisa da linha marcada em 'aplicar' e de preço BGT coletado">🎯 bater BGT</th>
         <th style="padding:6px 10px">status</th>
         </tr></thead><tbody>
         ${corte.map(r => { const a = apr[r.ref]; const d = +r.hoje || 0;
@@ -5671,7 +5672,15 @@ async function renderBlackFriday(){
           const b = bl[r.ref];
           const pv = b ? +b.real_original : (+r.preco || 0);     // tabela cheia (pré-BF)
           const bgt = +r.bgt || 0;
-          const fica = pv * (1 - d/100);
+          let dFin = d, batNote = '';
+          if(a?.bater_bgt && bgt > 0 && pv > 0){
+            const dBat = Math.max(0, (1 - (bgt*0.99)/pv)*100);
+            const piso = +G.piso_mc || 10;
+            const dm = r.mc_real!=null ? Math.max(0, (+r.mc_real - piso)/(100-piso)*100) : 25;
+            dFin = Math.min(Math.max(d, dBat), dm, 25);
+            if(dFin < dBat - 0.01) batNote = ' · ⚠ trava de margem segura ANTES do BGT';
+          }
+          const fica = pv * (1 - dFin/100);
           const naLojaAgora = b ? +b.real_novo : pv;             // o que o cliente vê AGORA
           let vs = '<span class=gr>sem<br>BGT</span>';
           if(bgt > 0 && naLojaAgora > 0){ const dd = (naLojaAgora/bgt - 1) * 100, s = (dd>0?'+':'') + dd.toFixed(0) + '%';
@@ -5690,8 +5699,9 @@ async function renderBlackFriday(){
           <td style="text-align:right;padding:5px 8px;white-space:nowrap">${pv?pv.toFixed(2).replace('.',','):'—'}<br><span style="${b?'font-weight:700;color:var(--accent)':(chk?'font-weight:700;color:var(--accent)':'color:var(--muted)')}" title="${b?'preço NA LOJA agora (enviado)':chk?'como fica com o desconto do período (ainda não enviado)':'sem desconto (marque a caixinha para aplicar)'}">${pv?(b?naLojaAgora:(chk?fica:pv)).toFixed(2).replace('.',','):'—'}</span></td>
           <td style="text-align:right;padding:5px 8px;color:var(--muted)">${bgt?bgt.toFixed(2).replace('.',','):'—'}</td>
           <td style="text-align:center;padding:5px 8px;line-height:1.25">${vs}</td>
-          <td style="text-align:center;padding:5px 8px;font-weight:600" title="escada: ${['f1','f2','f3','f4','f5'].map((f,i)=>`F${i+1} ${r[f]||0}%`).join(' · ')}">${d?d+'%':'<span class=gr>—</span>'}</td>
+          <td style="text-align:center;padding:5px 8px;font-weight:600" title="escada: ${['f1','f2','f3','f4','f5'].map((f,i)=>`F${i+1} ${r[f]||0}%`).join(' · ')}${batNote}">${dFin?(Number.isInteger(+dFin.toFixed(1))?dFin.toFixed(0):dFin.toFixed(1))+'%'+(a?.bater_bgt&&dFin>d?' 🎯':''):'<span class=gr>—</span>'}</td>
           <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfChk" data-ref="${esc(r.ref)}" ${chk?'checked':''} ${st.admin?'':'disabled'}>` : ''}</td>
+          <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfBat" data-ref="${esc(r.ref)}" ${a.bater_bgt?'checked':''} ${st.admin&&bgt>0?'':'disabled'} ${bgt>0?'':'title="sem preço BGT coletado"'}>` : ''}</td>
           <td style="text-align:center;padding:5px 10px">${stTxt}</td>
         </tr>`; }).join('')}
         </tbody></table></div></div>
@@ -5700,6 +5710,14 @@ async function renderBlackFriday(){
         c.disabled = true;
         const ok = await grava([c.dataset.ref], c.checked);
         if(!ok) c.checked = !c.checked;
+        c.disabled = false; desenha();
+      });
+      document.querySelectorAll('.bfBat').forEach(c => c.onchange = async () => {
+        c.disabled = true;
+        const u = (await sb.auth.getUser()).data.user?.email || '?';
+        const {error} = await sb.from('bf_aprovacao').update({bater_bgt: c.checked, decidido_por: u, decidido_em: new Date().toISOString()}).eq('ref', c.dataset.ref);
+        if(error){ c.checked = !c.checked; $('#bfMsg').innerHTML = '<p style="color:var(--crit)">Erro: ' + esc(error.message) + '</p>'; }
+        else if(apr[c.dataset.ref]) apr[c.dataset.ref].bater_bgt = c.checked;
         c.disabled = false; desenha();
       });
       const tchk = document.getElementById('bfTodosChk');
