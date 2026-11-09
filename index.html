@@ -5624,19 +5624,17 @@ async function renderBlackFriday(){
       else if(!gf && !todas) sel = sel.filter(r => r._n95);
       const corte = sel.slice(0, 500);
       resumo();
-      $('#bfPlano').innerHTML = `<div class="tablecard"><div class="tscroll"><table style="max-width:1460px">
+      $('#bfPlano').innerHTML = `<div class="tablecard"><div class="tscroll"><table style="max-width:1180px">
         <thead><tr>
         <th style="text-align:left;padding:6px 10px">referência</th>
         <th style="padding:6px 10px" title="MC real 60d no site (família)">MC 60d</th>
         <th style="padding:6px 10px" title="meses de estoque sobrando">cob.</th>
         <th style="padding:6px 10px" title="faturamento B2C 30d da referência">GMV 30d</th>
-        <th style="padding:6px 10px" title="taxa de conversão do site (compras GA4 ÷ views, família somada): mês atual (parcial) · mês anterior — informativo">conv. m0 · m1</th>
-        <th style="padding:6px 10px" title="ROAS MC (lucro bruto 002 ÷ Ads, família somada): mês atual (parcial) · mês anterior — informativo. Régua: <3 vermelho · 3–5 laranja · ≥5 verde">ROAS MC m0 · m1</th>
-        <th style="padding:6px 10px" title="preço à vista (PIX) de hoje na tabela 002 — pai da família">à vista hoje</th>
-        <th style="padding:6px 10px" title="menor preço à vista do concorrente (BGT), última coleta">BGT hoje</th>
-        <th style="padding:6px 10px" title="nosso preço de HOJE (sem desconto) comparado ao concorrente">vs BGT</th>
-        <th style="padding:6px 10px" title="desconto previsto pelo plano para a fase ATUAL (com travas de folga/margem). O balão mostra a escada completa">desc. F${fAtual+1}</th>
-        <th style="padding:6px 10px" title="preço à vista que fica: sem marcação = igual ao de hoje; marcada = com o desconto do período">fica por</th>
+        <th style="padding:6px 8px" title="linha de cima: taxa de conversão do site (compras GA4 ÷ views, família somada), mês atual (parcial) · mês anterior. Linha de baixo: ROAS MC (lucro bruto 002 ÷ Ads), mesmos meses — régua: <3 vermelho · 3–5 laranja · ≥5 verde">conv. m0·m1<br>ROAS MC m0·m1</th>
+        <th style="padding:6px 8px" title="linha de cima: nosso preço à vista (PIX) de hoje na tabela 002 (pai da família). Linha de baixo: menor preço à vista do concorrente (BGT), última coleta">à vista hoje<br><span style="font-weight:400">BGT (R$)</span></th>
+        <th style="padding:6px 8px" title="nosso preço de HOJE (sem desconto) comparado ao concorrente">vs BGT</th>
+        <th style="padding:6px 8px" title="desconto previsto pelo plano para a fase ATUAL (com travas de folga/margem). O balão mostra a escada completa">desc. F${fAtual+1}</th>
+        <th style="padding:6px 8px" title="preço à vista que fica: sem marcação = igual ao de hoje; marcada = com o desconto do período">fica por (R$)</th>
         <th style="padding:6px 8px;color:var(--accent)" title="marcar = aplicar o desconto do período (F${fAtual+1}) nesta referência; desmarcar = voltar ao preço original. O check do cabeçalho marca/desmarca todas as visíveis">${st.admin?'<input type="checkbox" id="bfTodosChk"> ':''}aplicar F${fAtual+1}</th>
         <th style="padding:6px 10px">status</th>
         </tr></thead><tbody>
@@ -5644,11 +5642,11 @@ async function renderBlackFriday(){
           const chk = marcado(a);
           const pv = +r.preco || 0, bgt = +r.bgt || 0;
           const fica = pv * (1 - d/100);
-          let vs = '<span class=gr>sem BGT</span>';
+          let vs = '<span class=gr>sem<br>BGT</span>';
           if(bgt > 0 && pv > 0){ const dd = (pv/bgt - 1) * 100, s = (dd>0?'+':'') + dd.toFixed(0) + '%';
-            vs = dd <= 0 ? `<b style="color:var(--good)">abaixo ${s}</b>`
-               : dd <= 3 ? `<span style="color:var(--lar)">acima ${s}</span>`
-               : `<b style="color:var(--crit)">acima ${s}</b>`; }
+            vs = dd <= 0 ? `<b style="color:var(--good)">abaixo<br>${s}</b>`
+               : dd <= 3 ? `<span style="color:var(--lar)">acima<br>${s}</span>`
+               : `<b style="color:var(--crit)">acima<br>${s}</b>`; }
           const stTxt = a?.status==='aplicado' ? `<b style="font-size:11px;color:var(--accent)" title="preço com desconto NA LOJA${a.aplicado_em?' desde '+new Date(a.aplicado_em).toLocaleDateString('pt-BR'):''}">NA LOJA</b>`
                       : chk ? '<span style="font-size:11px;color:var(--good);font-weight:700" title="marcada — entra na próxima aplicação">✓ marcada</span>'
                       : '<span class="gr" style="font-size:11px">sem desconto</span>';
@@ -5657,13 +5655,11 @@ async function renderBlackFriday(){
           <td style="text-align:center;padding:5px 10px">${r.mc_real!=null?(+r.mc_real).toFixed(0)+'%':'—'}</td>
           <td style="text-align:center;padding:5px 10px">${r.cob!=null?(+r.cob).toFixed(1):'—'}</td>
           <td style="text-align:right;padding:5px 10px;color:var(--muted)">${r.gmv30!=null?Math.round(+r.gmv30).toLocaleString('pt-BR'):'—'}</td>
-          <td style="text-align:center;padding:5px 10px;white-space:nowrap">${r.conv_m1!=null||r.conv_m0!=null?`${r.conv_m0!=null?(+r.conv_m0).toFixed(1)+'%':'—'} · ${r.conv_m1!=null?(+r.conv_m1).toFixed(1)+'%':'—'}`:'<span class=gr>—</span>'}</td>
-          <td style="text-align:center;padding:5px 10px;white-space:nowrap">${(()=>{const cor=v=>v==null?'var(--muted)':v<3?'var(--crit)':v<5?'var(--lar)':'var(--good)';return r.roasmc_m1!=null||r.roasmc_m0!=null?`<span style="color:${cor(r.roasmc_m0!=null?+r.roasmc_m0:null)}">${r.roasmc_m0!=null?(+r.roasmc_m0).toFixed(1):'—'}</span> · <span style="color:${cor(r.roasmc_m1!=null?+r.roasmc_m1:null)}">${r.roasmc_m1!=null?(+r.roasmc_m1).toFixed(1):'—'}</span>`:'<span class=gr>—</span>';})()}</td>
-          <td style="text-align:right;padding:5px 10px">${pv?'R$ '+pv.toFixed(2).replace('.',','):'—'}</td>
-          <td style="text-align:right;padding:5px 10px;color:var(--muted)">${bgt?'R$ '+bgt.toFixed(2).replace('.',','):'—'}</td>
-          <td style="text-align:center;padding:5px 10px">${vs}</td>
-          <td style="text-align:center;padding:5px 10px;font-weight:600" title="escada: ${['f1','f2','f3','f4','f5'].map((f,i)=>`F${i+1} ${r[f]||0}%`).join(' · ')}">${d?d+'%':'<span class=gr>—</span>'}</td>
-          <td style="text-align:right;padding:5px 10px;${chk?'font-weight:700;color:var(--accent)':'color:var(--muted)'}" title="${chk?'com o desconto do período aplicado':'sem desconto (marque a caixinha para aplicar)'}">${pv?'R$ '+(chk?fica:pv).toFixed(2).replace('.',','):'—'}</td>
+          <td style="text-align:center;padding:5px 8px;white-space:nowrap">${r.conv_m1!=null||r.conv_m0!=null?`${r.conv_m0!=null?(+r.conv_m0).toFixed(1)+'%':'—'} · ${r.conv_m1!=null?(+r.conv_m1).toFixed(1)+'%':'—'}`:'<span class=gr>—</span>'}<br>${(()=>{const cor=v=>v==null?'var(--muted)':v<3?'var(--crit)':v<5?'var(--lar)':'var(--good)';return r.roasmc_m1!=null||r.roasmc_m0!=null?`<span style="color:${cor(r.roasmc_m0!=null?+r.roasmc_m0:null)}">${r.roasmc_m0!=null?(+r.roasmc_m0).toFixed(1):'—'}</span> · <span style="color:${cor(r.roasmc_m1!=null?+r.roasmc_m1:null)}">${r.roasmc_m1!=null?(+r.roasmc_m1).toFixed(1):'—'}</span>`:'<span class=gr>—</span>';})()}</td>
+          <td style="text-align:right;padding:5px 8px;white-space:nowrap">${pv?pv.toFixed(2).replace('.',','):'—'}<br><span class="gr">${bgt?bgt.toFixed(2).replace('.',','):'—'}</span></td>
+          <td style="text-align:center;padding:5px 8px;line-height:1.25">${vs}</td>
+          <td style="text-align:center;padding:5px 8px;font-weight:600" title="escada: ${['f1','f2','f3','f4','f5'].map((f,i)=>`F${i+1} ${r[f]||0}%`).join(' · ')}">${d?d+'%':'<span class=gr>—</span>'}</td>
+          <td style="text-align:right;padding:5px 8px;${chk?'font-weight:700;color:var(--accent)':'color:var(--muted)'}" title="${chk?'com o desconto do período aplicado':'sem desconto (marque a caixinha para aplicar)'}">${pv?(chk?fica:pv).toFixed(2).replace('.',','):'—'}</td>
           <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfChk" data-ref="${esc(r.ref)}" ${chk?'checked':''} ${st.admin?'':'disabled'}>` : ''}</td>
           <td style="text-align:center;padding:5px 10px">${stTxt}</td>
         </tr>`; }).join('')}
