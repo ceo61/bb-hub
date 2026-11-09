@@ -312,6 +312,26 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    Toda consulta que possa passar disso DEVE usar tudo() abaixo — nunca sb.from().select() direto.
    select direto só para resultados garantidamente pequenos (ex.: fato_mc por cod, etl_log c/ limit).
    Caso real: página SKUs truncou rótulos/meses do DE125 (1.496 e 2.860 linhas) e parecia dado faltando. */
+/* auto-atualização (CEO 09/11/26): o GitHub Pages manda o navegador segurar o HTML por 10 min,
+   então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
+   voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
+   nunca no meio de um modal aberto. */
+const BUILD='20261109-102922';
+async function checaVersao(){
+  try{
+    const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
+    const v=(await r.json()).v;
+    if(!v || v===BUILD) return;
+    if(document.getElementById('mcModal') || document.querySelector('.aclov')) return; // não derruba modal
+    let feito=null; try{ feito=sessionStorage.getItem('bbhub_rl'); }catch(e){}
+    if(feito===v) return;
+    try{ sessionStorage.setItem('bbhub_rl', v); }catch(e){}
+    location.reload();
+  }catch(e){}
+}
+checaVersao();
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) checaVersao(); });
+
 async function tudo(tabela, filtros){ // paginação PostgREST (teto 1000/req) — 1ª página com count, resto em PARALELO
   const monta=(de, comCount)=>{
     let q = sb.from(tabela).select(filtros.select||'*', comCount?{count:'exact'}:undefined).range(de, de+999);
