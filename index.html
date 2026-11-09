@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-113032';
+const BUILD='20261109-113657';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5681,24 +5681,30 @@ async function renderBlackFriday(){
             dFin = Math.min(Math.max(d, dBat), dm, 25);
             if(dFin < dBat - 0.01) batNote = ' · ⚠ trava de margem segura ANTES do BGT';
           }
-          const fica = pv * (1 - dFin/100);
-          const naLojaAgora = b ? +b.real_novo : pv;             // o que o cliente vê AGORA
-          const efet = chk ? fica : pv;                          // posição PRETENDIDA (reage às caixinhas)
+          // preço PRETENDIDO = o que fica após o próximo envio (mesmo arredondamento ,90 do aplicador)
+          const porArr = av => { const br = av/0.95; const p = Math.round(br-0.90)+0.90; return p<1?br:p; };
+          const fica = dFin>0 ? +(porArr(pv*(1-dFin/100))*0.95).toFixed(2) : pv;
+          const naLojaAgora = b ? +b.real_novo : pv;             // o que o cliente vê AGORA (cofre de originais)
+          const pret = chk ? fica : pv;                          // segue as caixinhas na hora
+          const mexe = Math.abs(pret - naLojaAgora) > 0.03;      // próximo envio mudaria algo?
           let vs = '<span class=gr>sem<br>BGT</span>';
-          if(bgt > 0 && efet > 0){ const dd = (efet/bgt - 1) * 100, s = (dd>0?'+':'') + dd.toFixed(0) + '%';
+          if(bgt > 0 && pret > 0){ const dd = (pret/bgt - 1) * 100, s = (dd>0?'+':'') + dd.toFixed(0) + '%';
             vs = dd <= 0 ? `<b style="color:var(--good)">abaixo<br>${s}</b>`
                : dd <= 3 ? `<span style="color:var(--lar)">acima<br>${s}</span>`
                : `<b style="color:var(--crit)">acima<br>${s}</b>`; }
-          const stTxt = a?.status==='aplicado' ? `<b style="font-size:11px;color:var(--accent)" title="preço com desconto NA LOJA${a.aplicado_em?' desde '+new Date(a.aplicado_em).toLocaleDateString('pt-BR'):''}">NA LOJA</b>`
-                      : chk ? '<span style="font-size:11px;color:var(--good);font-weight:700" title="marcada — entra na próxima aplicação">✓ marcada</span>'
-                      : '<span class="gr" style="font-size:11px">sem desconto</span>';
+          let stTxt;
+          if(b && chk && !mexe) stTxt = `<b style="font-size:11px;color:var(--accent)" title="preço com desconto NA LOJA${b.aplicado_em?' desde '+new Date(b.aplicado_em).toLocaleDateString('pt-BR'):''}">NA LOJA</b>`;
+          else if(b && chk) stTxt = '<span style="font-size:11px;color:var(--lar);font-weight:700" title="está na loja, mas com preço diferente do pretendido — ajusta no próximo envio">NA LOJA · muda no envio</span>';
+          else if(b) stTxt = '<span style="font-size:11px;color:var(--lar);font-weight:700" title="AINDA está na loja com desconto — volta ao preço original no próximo envio">NA LOJA · sai no envio</span>';
+          else if(chk) stTxt = '<span style="font-size:11px;color:var(--good);font-weight:700" title="marcada — entra no próximo envio">✓ marcada</span>';
+          else stTxt = '<span class="gr" style="font-size:11px">sem desconto</span>';
           return `<tr>
           <td style="padding:5px 10px"><b>${esc(r.ref)}</b>${r.entupido?' <span title="entupido (≥12m de estoque) — desova">🔴</span>':''}${r.membros && r.membros !== r.ref ? ` <span class="gr" title="família: ${esc(r.membros)}">👨‍👦</span>`:''}<br><span class="gr" style="font-size:11px">${esc((r.descr||'').slice(0, 40))}</span></td>
           <td style="text-align:center;padding:5px 10px">${r.mc_real!=null?(+r.mc_real).toFixed(0)+'%':'—'}</td>
           <td style="text-align:center;padding:5px 10px">${r.cob!=null?(+r.cob).toFixed(1):'—'}</td>
           <td style="text-align:right;padding:5px 10px;color:var(--muted)">${r.gmv30!=null?Math.round(+r.gmv30).toLocaleString('pt-BR'):'—'}</td>
           <td style="text-align:center;padding:5px 8px;white-space:nowrap">${r.conv_m1!=null||r.conv_m0!=null?`${r.conv_m0!=null?(+r.conv_m0).toFixed(1)+'%':'—'} · ${r.conv_m1!=null?(+r.conv_m1).toFixed(1)+'%':'—'}`:'<span class=gr>—</span>'}<br>${(()=>{const cor=v=>v==null?'var(--muted)':v<3?'var(--crit)':v<5?'var(--lar)':'var(--good)';return r.roasmc_m1!=null||r.roasmc_m0!=null?`<span style="color:${cor(r.roasmc_m0!=null?+r.roasmc_m0:null)}">${r.roasmc_m0!=null?(+r.roasmc_m0).toFixed(1):'—'}</span> · <span style="color:${cor(r.roasmc_m1!=null?+r.roasmc_m1:null)}">${r.roasmc_m1!=null?(+r.roasmc_m1).toFixed(1):'—'}</span>`:'<span class=gr>—</span>';})()}</td>
-          <td style="text-align:right;padding:5px 8px;white-space:nowrap">${pv?pv.toFixed(2).replace('.',','):'—'}<br><span style="${b?'font-weight:700;color:var(--accent)':(chk?'font-weight:700;color:var(--accent)':'color:var(--muted)')}" title="${b?'preço NA LOJA agora (enviado)':chk?'como fica com o desconto do período (ainda não enviado)':'sem desconto (marque a caixinha para aplicar)'}">${pv?(b?naLojaAgora:(chk?fica:pv)).toFixed(2).replace('.',','):'—'}</span></td>
+          <td style="text-align:right;padding:5px 8px;white-space:nowrap">${pv?pv.toFixed(2).replace('.',','):'—'}<br><span style="${chk?'font-weight:700;color:var(--accent)':'color:var(--muted)'}" title="${mexe?(b?`na loja AGORA: R$ ${naLojaAgora.toFixed(2).replace('.',',')} — vira este preço no próximo envio`:'como fica após o envio'):(b?'preço NA LOJA (enviado)':'sem desconto (marque a caixinha para aplicar)')}">${pv?pret.toFixed(2).replace('.',','):'—'}${mexe?' <span style="font-weight:400;color:var(--lar)" title="diferente do que está na loja agora — pendente de envio">⏳</span>':''}</span></td>
           <td style="text-align:right;padding:5px 8px;color:var(--muted)">${bgt?bgt.toFixed(2).replace('.',','):'—'}</td>
           <td style="text-align:center;padding:5px 8px;line-height:1.25">${vs}</td>
           <td style="text-align:center;padding:5px 8px;font-weight:600" title="escada: ${['f1','f2','f3','f4','f5'].map((f,i)=>`F${i+1} ${r[f]||0}%`).join(' · ')}${batNote}">${dFin?(Number.isInteger(+dFin.toFixed(1))?dFin.toFixed(0):dFin.toFixed(1))+'%'+(a?.bater_bgt&&dFin>d?' 🎯':''):'<span class=gr>—</span>'}</td>
