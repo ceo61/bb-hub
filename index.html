@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261110-101841';
+const BUILD='20261110-121759';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -448,13 +448,22 @@ async function abreAcessos(){
   ov.className='aclov';
   ov.innerHTML='<div class="aclcard"><div class="carregando">Carregando grupos…</div></div>';
   ov.onclick=ev=>{ if(ev.target===ov) ov.remove(); };
-  const [{data:gs},{data:us}]=await Promise.all([
+  const [{data:gs},{data:us},{data:bfA}]=await Promise.all([
     sb.from('acl_grupos').select('*').order('grupo'),
-    sb.from('acl_usuarios').select('*').order('email')]);
+    sb.from('acl_usuarios').select('*').order('email'),
+    sb.from('bf_acesso').select('liberado').eq('id',1).maybeSingle()]);
   const pgs=Object.keys(TITULOS).filter(p=>p!=='config');
   ov.querySelector('.aclcard').innerHTML=`
     <div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0">👥 Acessos por grupo</h2><span id="aclFecha" style="margin-left:auto;cursor:pointer;font-size:20px">✕</span></div>
     <p class="gr">Você (${esc(ADMIN)}) sempre vê tudo. <b>Usuários sem grupo também veem tudo</b> — para restringir alguém, inclua o e-mail num grupo. Configurações fica visível para todos (tema/sair).</p>
+    <div class="aclgrp" style="border:2px solid var(--accent)">
+      <b style="text-transform:uppercase;letter-spacing:.06em">🖤 Black Friday — operação</b>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer">
+        <input type="checkbox" id="aclBfLib" ${bfA?.liberado?'checked':''}>
+        <span><b>liberada para todos os usuários</b> — marcar ✓ / 🎯 / 💰, ver a prévia 👁, confirmar o envio 📤 e salvar parâmetros 💾</span>
+      </label>
+      <p class="gr" style="margin:8px 0 0">Desligada, só você opera a aba 🖤 (os demais apenas visualizam). Vale na hora — quem já estiver com a aba aberta recarrega a página. Toda marcação e envio fica registrado com o e-mail de quem fez.</p>
+    </div>
     ${(gs||[]).map(g=>`
       <div class="aclgrp" data-g="${esc(g.grupo)}">
         <div style="display:flex;align-items:center;gap:8px"><b style="text-transform:uppercase;letter-spacing:.06em">${esc(g.grupo)}</b>
@@ -475,6 +484,14 @@ async function abreAcessos(){
       <p class="gr" style="margin:8px 0 0">Cria o login já confirmado — a pessoa entra na hora com este e-mail e senha em ceo61.github.io/bb-hub. Escolhendo um grupo, o e-mail já entra nele. Sem mais dashboard.</p>
     </div>`;
   ov.querySelector('#aclFecha').onclick=()=>ov.remove();
+  const bfChk=ov.querySelector('#aclBfLib');
+  if(bfChk) bfChk.onchange=async()=>{
+    bfChk.disabled=true;
+    const {error}=await sb.from('bf_acesso').update({liberado:bfChk.checked,por:st.email,em:new Date().toISOString()}).eq('id',1);
+    bfChk.disabled=false;
+    if(error){ bfChk.checked=!bfChk.checked; alert('Erro ao salvar a liberação: '+error.message); return; }
+    st.bfLib=bfChk.checked;
+  };
   ov.querySelectorAll('.aclSalva').forEach(b=>b.onclick=async()=>{
     const box=ov.querySelector(`.aclgrp[data-g="${CSS.escape(b.dataset.g)}"]`);
     const sel=[...box.querySelectorAll('input[data-p]:checked')].map(i=>i.dataset.p);
@@ -5616,6 +5633,9 @@ async function renderBlackFriday(){
     try{ (await tudo('bf_baseline', {eq: []})).forEach(b => bl[b.cod] = b); }catch(e){}
     let foraL = [];   // referências que o motor barrou (bf_fora) — aparecem em cinza no "mostrar todas"
     try{ foraL = await tudo('bf_fora', {eq: []}); }catch(e){}
+    // chave 👥: admin sempre opera; os demais só com a liberação ligada (bf_acesso — o banco valida de novo via RLS)
+    try{ const {data:ac} = await sb.from('bf_acesso').select('liberado').eq('id',1).maybeSingle(); st.bfLib = !!ac?.liberado; }catch(e){ st.bfLib = false; }
+    const podeBF = st.admin || !!st.bfLib;
     pl.sort((a, b) => (+b.gmv30 || 0) - (+a.gmv30 || 0));
     const totG = pl.reduce((s, r) => s + (+r.gmv30 || 0), 0);
     let acc = 0;
@@ -5678,9 +5698,9 @@ async function renderBlackFriday(){
         <th style="padding:6px 8px" title="menor preço à vista do concorrente (BGT), última coleta">BGT (R$)</th>
         <th style="padding:6px 8px" title="posição PRETENDIDA vs concorrente: reage na hora às caixinhas (marcada = preço com desconto/🎯; desmarcada = preço cheio). O envio torna real — o preço DE FATO na loja está na linha de baixo da coluna de preço">vs BGT</th>
         <th style="padding:6px 8px" title="desconto previsto pelo plano para a fase ATUAL (com travas de folga/margem). O balão mostra a escada completa">desc. F${fAtual+1}</th>
-        <th style="padding:6px 6px;color:var(--accent)" title="marcar = aplicar o desconto do período (F${fAtual+1}) nesta referência; desmarcar = voltar ao preço original. O check do cabeçalho marca/desmarca todas as visíveis">${st.admin?`<input type="checkbox" id="bfTodosChk" ${todasM?'checked':''}><br>`:''}aplicar<br>F${fAtual+1}</th>
+        <th style="padding:6px 6px;color:var(--accent)" title="marcar = aplicar o desconto do período (F${fAtual+1}) nesta referência; desmarcar = voltar ao preço original. O check do cabeçalho marca/desmarca todas as visíveis">${podeBF?`<input type="checkbox" id="bfTodosChk" ${todasM?'checked':''}><br>`:''}aplicar<br>F${fAtual+1}</th>
         <th style="padding:6px 6px" title="marcar = aprofundar o desconto até ficar ~1% ABAIXO do concorrente (nunca menos que o desconto do período; trava: MC pós-desconto ≥ piso e teto duro de 25%). Precisa da linha marcada em 'aplicar' e de preço BGT coletado">🎯 bater<br>BGT</th>
-        <th style="padding:6px 6px" title="marcar = NÃO aplicar o desconto quando o preço CHEIO já está 8% ou mais ABAIXO do BGT — a vantagem já existe, não queima margem à toa. Abaixo de 8% de folga (ou sem BGT coletado), o desconto sai normal. Se a referência já estava com desconto na loja, o envio RESTAURA o preço cheio">${st.admin?`<input type="checkbox" id="bfPprTodos" ${todasP?'checked':''}><br>`:''}💰 poupar<br>se BGT&gt;8%</th>
+        <th style="padding:6px 6px" title="marcar = NÃO aplicar o desconto quando o preço CHEIO já está 8% ou mais ABAIXO do BGT — a vantagem já existe, não queima margem à toa. Abaixo de 8% de folga (ou sem BGT coletado), o desconto sai normal. Se a referência já estava com desconto na loja, o envio RESTAURA o preço cheio">${podeBF?`<input type="checkbox" id="bfPprTodos" ${todasP?'checked':''}><br>`:''}💰 poupar<br>se BGT&gt;8%</th>
         <th style="padding:6px 10px">status</th>
         </tr></thead><tbody>
         ${corte.map(r => { const a = apr[r.ref]; const d = +r.hoje || 0;
@@ -5726,9 +5746,9 @@ async function renderBlackFriday(){
           <td style="text-align:right;padding:5px 8px;color:var(--muted)">${bgt?bgt.toFixed(2).replace('.',','):'—'}</td>
           <td style="text-align:center;padding:5px 8px;line-height:1.25">${vs}</td>
           <td style="text-align:center;padding:5px 8px;font-weight:600" title="escada: ${['f1','f2','f3','f4','f5'].map((f,i)=>`F${i+1} ${r[f]||0}%`).join(' · ')}${r.motivo_d?` — ${esc(r.motivo_d)}`:''}${batNote}">${dFin?(Number.isInteger(+dFin.toFixed(1))?dFin.toFixed(0):dFin.toFixed(1))+'%'+(a?.bater_bgt&&dFin>d?' 🎯':''):'<span class=gr>—</span>'}</td>
-          <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfChk" data-ref="${esc(r.ref)}" ${chk?'checked':''} ${st.admin?'':'disabled'}>` : ''}</td>
-          <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfBat" data-ref="${esc(r.ref)}" ${a.bater_bgt?'checked':''} ${st.admin&&bgt>0?'':'disabled'} ${bgt>0?'':'title="sem preço BGT coletado"'}>` : ''}</td>
-          <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfPpr" data-ref="${esc(r.ref)}" ${a.poupar?'checked':''} ${st.admin&&bgt>0?'':'disabled'} ${bgt>0?'':'title="sem preço BGT coletado"'}>` : ''}</td>
+          <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfChk" data-ref="${esc(r.ref)}" ${chk?'checked':''} ${podeBF?'':'disabled'}>` : ''}</td>
+          <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfBat" data-ref="${esc(r.ref)}" ${a.bater_bgt?'checked':''} ${podeBF&&bgt>0?'':'disabled'} ${bgt>0?'':'title="sem preço BGT coletado"'}>` : ''}</td>
+          <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfPpr" data-ref="${esc(r.ref)}" ${a.poupar?'checked':''} ${podeBF&&bgt>0?'':'disabled'} ${bgt>0?'':'title="sem preço BGT coletado"'}>` : ''}</td>
           <td style="text-align:center;padding:5px 10px">${stTxt}</td>
         </tr>`; }).join('')}
         ${foraCorte.map(f => `<tr style="opacity:.6">
@@ -5736,7 +5756,7 @@ async function renderBlackFriday(){
           <td colspan="12" style="padding:4px 10px;font-size:11.5px;color:var(--muted)"${f.motivo==='sem estoque'?' title="estoque útil abaixo de 5 unidades conta como ZERO (regra 28/10) — o saldo físico pode ser 1–4"':''}>fora do plano — <b>${esc(f.motivo||'')}</b> · estoque útil ${(+f.est||0).toLocaleString('pt-BR')} un · venda B2C 60d ${(+f.v60_b2c||0).toLocaleString('pt-BR')} un</td>
         </tr>`).join('')}
         </tbody></table></div></div>
-        <p class="gr" style="margin:6px 0 0">${sel.length} referências${gf?' do grupo '+esc(gf):(!q && !todas ? ' (95/5 — os maiores até 95% do faturamento)' : '')}${sel.length > 500 ? ' · mostrando 500, use o filtro' : ''}${foraCorte.length ? ` · <b>+${foraSel.length} fora do plano</b> em cinza (motor barrou — só leitura)${foraSel.length > 600 ? ', mostrando 600' : ''}` : ''}. "à vista" = preço final PIX (POR×0,95). ${st.admin?'':'Marcação restrita ao administrador.'}</p>`;
+        <p class="gr" style="margin:6px 0 0">${sel.length} referências${gf?' do grupo '+esc(gf):(!q && !todas ? ' (95/5 — os maiores até 95% do faturamento)' : '')}${sel.length > 500 ? ' · mostrando 500, use o filtro' : ''}${foraCorte.length ? ` · <b>+${foraSel.length} fora do plano</b> em cinza (motor barrou — só leitura)${foraSel.length > 600 ? ', mostrando 600' : ''}` : ''}. "à vista" = preço final PIX (POR×0,95). ${podeBF?'':'Operação restrita — o administrador libera em 👥 Acessos.'}</p>`;
       const sc1 = $('#bfPlano').querySelector('.tscroll');
       if(sc1){ sc1.scrollTop = sy; sc1.scrollLeft = sx; }
       window.scrollTo(window.scrollX, wy);
@@ -5796,7 +5816,7 @@ async function renderBlackFriday(){
       }, 4000);
     });
     const btnV = $('#bfVer');
-    if(st.admin) btnV.style.display = '';
+    if(podeBF) btnV.style.display = '';
     btnV.onclick = async () => {
       btnV.disabled = true; stE.textContent = 'calculando o que mudaria…'; $('#bfPreview').innerHTML = '';
       const escopo = visiveis.slice();   // congela o que está na tela — prévia e envio usam o MESMO escopo
