@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-224608';
+const BUILD='20261109-224737';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5626,6 +5626,7 @@ async function renderBlackFriday(){
       gsel.insertAdjacentHTML('beforeend', `<option value="${esc(g)}">${esc(g)}${n?' · ✓'+n:''}</option>`);
     });
     const marcado = a => !!a && (a.status === 'aprovado' || a.status === 'aplicado');
+    let ordRef = 0;   // 0 = padrão (GMV desc) · 1 = A→Z · -1 = Z→A (clique no cabeçalho "referência")
     const resumo = () => {
       const n = Object.values(apr).filter(marcado).length;
       const naLoja = Object.values(apr).filter(a => a.status === 'aplicado').length;
@@ -5652,6 +5653,7 @@ async function renderBlackFriday(){
       if(gf) sel = sel.filter(r => (r.grupo||'—') === gf);
       if(q) sel = sel.filter(r => r.ref.toUpperCase().includes(q) || (r.membros||'').toUpperCase().includes(q));
       else if(!gf && !todas) sel = sel.filter(r => r._n95);
+      if(ordRef) sel = sel.slice().sort((a, b) => String(a.ref).localeCompare(String(b.ref)) * ordRef);
       const corte = sel.slice(0, 500);
       visiveis = sel.map(r => r.ref);   // escopo do 👁/envio = o que o filtro mostra (fora do plano NUNCA entra)
       // fora do plano: com grupo + "mostrar todas" lista as barradas do grupo; busca acha em qualquer grupo
@@ -5665,7 +5667,7 @@ async function renderBlackFriday(){
       resumo();
       $('#bfPlano').innerHTML = `<div class="tablecard"><div class="tscroll"><table style="max-width:1180px">
         <thead><tr>
-        <th style="text-align:left;padding:6px 10px">referência</th>
+        <th id="bfThRef" style="text-align:left;padding:6px 10px;cursor:pointer;user-select:none" title="clique para ordenar: A→Z, depois Z→A, depois volta ao padrão (maior GMV primeiro)">referência${ordRef===1?' ▲':ordRef===-1?' ▼':''}</th>
         <th style="padding:6px 10px" title="MC real 60d no site (família)">MC 60d</th>
         <th style="padding:6px 10px" title="linha de cima: estoque útil da família (un). Linha de baixo: meses de cobertura (estoque ÷ média de venda); 99 = sem giro">estoque<br><span style="font-weight:400">cob. (m)</span></th>
         <th style="padding:6px 10px" title="faturamento B2C 30d da referência">GMV 30d</th>
@@ -5732,6 +5734,8 @@ async function renderBlackFriday(){
       const sc1 = $('#bfPlano').querySelector('.tscroll');
       if(sc1){ sc1.scrollTop = sy; sc1.scrollLeft = sx; }
       window.scrollTo(window.scrollX, wy);
+      const thR = document.getElementById('bfThRef');
+      if(thR) thR.onclick = () => { ordRef = ordRef === 0 ? 1 : ordRef === 1 ? -1 : 0; desenha(); };
       document.querySelectorAll('.bfChk').forEach(c => c.onchange = async () => {
         c.disabled = true;
         const ok = await grava([c.dataset.ref], c.checked);
