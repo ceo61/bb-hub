@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-230031';
+const BUILD='20261109-230203';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5664,6 +5664,8 @@ async function renderBlackFriday(){
       const foraCorte = foraSel.slice(0, 600);
       const comApr = corte.filter(r => apr[r.ref]);
       const todasM = comApr.length > 0 && comApr.every(r => marcado(apr[r.ref]));  // check-mestre espelha o estado
+      const comPpr = corte.filter(r => apr[r.ref] && (+r.bgt || 0) > 0);           // 💰 só faz sentido com BGT
+      const todasP = comPpr.length > 0 && comPpr.every(r => apr[r.ref].poupar);
       resumo();
       $('#bfPlano').innerHTML = `<div class="tablecard"><div class="tscroll"><table style="max-width:1180px">
         <thead><tr>
@@ -5677,7 +5679,7 @@ async function renderBlackFriday(){
         <th style="padding:6px 8px" title="posição PRETENDIDA vs concorrente: reage na hora às caixinhas (marcada = preço com desconto/🎯; desmarcada = preço cheio). O envio torna real — o preço DE FATO na loja está na linha de baixo da coluna de preço">vs BGT</th>
         <th style="padding:6px 8px" title="desconto previsto pelo plano para a fase ATUAL (com travas de folga/margem). O balão mostra a escada completa">desc. F${fAtual+1}</th>
         <th style="padding:6px 6px;color:var(--accent)" title="marcar = aplicar o desconto do período (F${fAtual+1}) nesta referência; desmarcar = voltar ao preço original. O check do cabeçalho marca/desmarca todas as visíveis">${st.admin?`<input type="checkbox" id="bfTodosChk" ${todasM?'checked':''}><br>`:''}aplicar<br>F${fAtual+1}</th>
-        <th style="padding:6px 6px" title="marcar = NÃO aplicar o desconto quando o preço CHEIO já está 8% ou mais ABAIXO do BGT — a vantagem já existe, não queima margem à toa. Abaixo de 8% de folga (ou sem BGT coletado), o desconto sai normal. Se a referência já estava com desconto na loja, o envio RESTAURA o preço cheio">💰 poupar<br>se BGT&gt;8%</th>
+        <th style="padding:6px 6px" title="marcar = NÃO aplicar o desconto quando o preço CHEIO já está 8% ou mais ABAIXO do BGT — a vantagem já existe, não queima margem à toa. Abaixo de 8% de folga (ou sem BGT coletado), o desconto sai normal. Se a referência já estava com desconto na loja, o envio RESTAURA o preço cheio">${st.admin?`<input type="checkbox" id="bfPprTodos" ${todasP?'checked':''}><br>`:''}💰 poupar<br>se BGT&gt;8%</th>
         <th style="padding:6px 6px" title="marcar = aprofundar o desconto até ficar ~1% ABAIXO do concorrente (nunca menos que o desconto do período; trava: MC pós-desconto ≥ piso e teto duro de 25%). Precisa da linha marcada em 'aplicar' e de preço BGT coletado">🎯 bater<br>BGT</th>
         <th style="padding:6px 10px">status</th>
         </tr></thead><tbody>
@@ -5762,6 +5764,16 @@ async function renderBlackFriday(){
         else if(apr[c.dataset.ref]) apr[c.dataset.ref].bater_bgt = c.checked;
         c.disabled = false; desenha();
       });
+      const pchk = document.getElementById('bfPprTodos');
+      if(pchk) pchk.onchange = async () => {
+        pchk.disabled = true;
+        const refs = corte.filter(r => apr[r.ref] && (+r.bgt || 0) > 0).map(r => r.ref);
+        const u = (await sb.auth.getUser()).data.user?.email || '?';
+        const {error} = await sb.from('bf_aprovacao').update({poupar: pchk.checked, decidido_por: u, decidido_em: new Date().toISOString()}).in('ref', refs);
+        if(error) $('#bfMsg').innerHTML = '<p style="color:var(--crit)">Erro: ' + esc(error.message) + '</p>';
+        else refs.forEach(ref => { if(apr[ref]) apr[ref].poupar = pchk.checked; });
+        pchk.disabled = false; desenha();
+      };
       const tchk = document.getElementById('bfTodosChk');
       if(tchk) tchk.onchange = async () => {
         tchk.disabled = true;
