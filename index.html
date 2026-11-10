@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261110-093717';
+const BUILD='20261110-094905';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5724,7 +5724,7 @@ async function renderBlackFriday(){
           <td style="text-align:right;padding:5px 8px;white-space:nowrap">${pv?pv.toFixed(2).replace('.',','):'—'}<br><span style="${chk?'font-weight:700;color:var(--accent)':'color:var(--muted)'}" title="${mexe?(b?`na loja AGORA: R$ ${naLojaAgora.toFixed(2).replace('.',',')} — vira este preço no próximo envio`:'como fica após o envio'):(b?'preço NA LOJA (enviado)':'sem desconto (marque a caixinha para aplicar)')}">${pv?pret.toFixed(2).replace('.',','):'—'}${mexe?' <span style="font-weight:400;color:var(--lar)" title="diferente do que está na loja agora — pendente de envio">⏳</span>':''}</span></td>
           <td style="text-align:right;padding:5px 8px;color:var(--muted)">${bgt?bgt.toFixed(2).replace('.',','):'—'}</td>
           <td style="text-align:center;padding:5px 8px;line-height:1.25">${vs}</td>
-          <td style="text-align:center;padding:5px 8px;font-weight:600" title="escada: ${['f1','f2','f3','f4','f5'].map((f,i)=>`F${i+1} ${r[f]||0}%`).join(' · ')}${batNote}">${dFin?(Number.isInteger(+dFin.toFixed(1))?dFin.toFixed(0):dFin.toFixed(1))+'%'+(a?.bater_bgt&&dFin>d?' 🎯':''):'<span class=gr>—</span>'}</td>
+          <td style="text-align:center;padding:5px 8px;font-weight:600" title="escada: ${['f1','f2','f3','f4','f5'].map((f,i)=>`F${i+1} ${r[f]||0}%`).join(' · ')}${r.motivo_d?` — ${esc(r.motivo_d)}`:''}${batNote}">${dFin?(Number.isInteger(+dFin.toFixed(1))?dFin.toFixed(0):dFin.toFixed(1))+'%'+(a?.bater_bgt&&dFin>d?' 🎯':''):'<span class=gr>—</span>'}</td>
           <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfChk" data-ref="${esc(r.ref)}" ${chk?'checked':''} ${st.admin?'':'disabled'}>` : ''}</td>
           <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfBat" data-ref="${esc(r.ref)}" ${a.bater_bgt?'checked':''} ${st.admin&&bgt>0?'':'disabled'} ${bgt>0?'':'title="sem preço BGT coletado"'}>` : ''}</td>
           <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfPpr" data-ref="${esc(r.ref)}" ${a.poupar?'checked':''} ${st.admin&&bgt>0?'':'disabled'} ${bgt>0?'':'title="sem preço BGT coletado"'}>` : ''}</td>
