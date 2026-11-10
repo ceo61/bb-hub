@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-215433';
+const BUILD='20261109-215755';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5642,6 +5642,9 @@ async function renderBlackFriday(){
       return true;
     };
     const desenha = () => {
+      // o redesenho recria o contêiner de rolagem — guarda e devolve a posição (CEO 09/11: clique não pode rolar a tela)
+      const sc0 = $('#bfPlano').querySelector('.tscroll');
+      const sy = sc0 ? sc0.scrollTop : 0, sx = sc0 ? sc0.scrollLeft : 0, wy = window.scrollY;
       const q = ($('#bfBusca').value || '').trim().toUpperCase();
       const todas = $('#bfTodas').checked;
       const gf = gsel.value;
@@ -5726,6 +5729,9 @@ async function renderBlackFriday(){
         </tr>`).join('')}
         </tbody></table></div></div>
         <p class="gr" style="margin:6px 0 0">${sel.length} referências${gf?' do grupo '+esc(gf):(!q && !todas ? ' (95/5 — os maiores até 95% do faturamento)' : '')}${sel.length > 500 ? ' · mostrando 500, use o filtro' : ''}${foraCorte.length ? ` · <b>+${foraSel.length} fora do plano</b> em cinza (motor barrou — só leitura)${foraSel.length > 600 ? ', mostrando 600' : ''}` : ''}. "à vista" = preço final PIX (POR×0,95). ${st.admin?'':'Marcação restrita ao administrador.'}</p>`;
+      const sc1 = $('#bfPlano').querySelector('.tscroll');
+      if(sc1){ sc1.scrollTop = sy; sc1.scrollLeft = sx; }
+      window.scrollTo(window.scrollX, wy);
       document.querySelectorAll('.bfChk').forEach(c => c.onchange = async () => {
         c.disabled = true;
         const ok = await grava([c.dataset.ref], c.checked);
