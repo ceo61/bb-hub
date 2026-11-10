@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-125342';
+const BUILD='20261109-215433';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5598,7 +5598,7 @@ async function renderBlackFriday(){
     <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
       <select id="bfGrupo" style="padding:6px 10px"><option value="">— grupo: todos —</option></select>
       <input id="bfBusca" placeholder="filtrar por código… (ex.: DE040)" style="padding:6px 12px;min-width:220px">
-      <label style="font-size:12.5px;color:var(--muted)"><input id="bfTodas" type="checkbox"> mostrar todas (cauda inclusa)</label>
+      <label style="font-size:12.5px;color:var(--muted)" title="sem grupo escolhido: abre a cauda 5% do faturamento (95/5). Com grupo escolhido o grupo já aparece INTEIRO — aí a caixinha acrescenta, em cinza, os produtos que o motor deixou FORA do plano (sem venda B2C, sem estoque útil, sem SKU VTEX…), cada um com o motivo. A busca também acha os fora do plano"><input id="bfTodas" type="checkbox"> mostrar todas (cauda inclusa)</label>
       <span class="gr" id="bfResumoChk" style="font-weight:600"></span>
     </div>
     <div style="display:flex;gap:12px;align-items:center;margin:0 0 10px;flex-wrap:wrap">
@@ -5614,6 +5614,8 @@ async function renderBlackFriday(){
     try{ pl = await tudo('bf_plano', {eq: []}); }catch(e){ $('#bfPlano').innerHTML = '<p class="gr">bf_plano indisponível: ' + esc(e.message||e) + '</p>'; return; }
     try{ (await tudo('bf_aprovacao', {eq: []})).forEach(a => apr[a.ref] = a); }catch(e){}
     try{ (await tudo('bf_baseline', {eq: []})).forEach(b => bl[b.cod] = b); }catch(e){}
+    let foraL = [];   // referências que o motor barrou (bf_fora) — aparecem em cinza no "mostrar todas"
+    try{ foraL = await tudo('bf_fora', {eq: []}); }catch(e){}
     pl.sort((a, b) => (+b.gmv30 || 0) - (+a.gmv30 || 0));
     const totG = pl.reduce((s, r) => s + (+r.gmv30 || 0), 0);
     let acc = 0;
@@ -5648,7 +5650,13 @@ async function renderBlackFriday(){
       if(q) sel = sel.filter(r => r.ref.toUpperCase().includes(q) || (r.membros||'').toUpperCase().includes(q));
       else if(!gf && !todas) sel = sel.filter(r => r._n95);
       const corte = sel.slice(0, 500);
-      visiveis = sel.map(r => r.ref);   // escopo do 👁/envio = o que o filtro mostra
+      visiveis = sel.map(r => r.ref);   // escopo do 👁/envio = o que o filtro mostra (fora do plano NUNCA entra)
+      // fora do plano: com grupo + "mostrar todas" lista as barradas do grupo; busca acha em qualquer grupo
+      let foraSel = [];
+      if(todas && gf) foraSel = foraL.filter(f => (f.grupo||'—') === gf);
+      else if(q) foraSel = foraL.filter(f => f.ref.toUpperCase().includes(q) || (f.membros||'').toUpperCase().includes(q));
+      foraSel.sort((a, b) => (+b.est||0) - (+a.est||0));
+      const foraCorte = foraSel.slice(0, 600);
       const comApr = corte.filter(r => apr[r.ref]);
       const todasM = comApr.length > 0 && comApr.every(r => marcado(apr[r.ref]));  // check-mestre espelha o estado
       resumo();
@@ -5712,8 +5720,12 @@ async function renderBlackFriday(){
           <td style="text-align:center;padding:5px 8px">${a ? `<input type="checkbox" class="bfBat" data-ref="${esc(r.ref)}" ${a.bater_bgt?'checked':''} ${st.admin&&bgt>0?'':'disabled'} ${bgt>0?'':'title="sem preço BGT coletado"'}>` : ''}</td>
           <td style="text-align:center;padding:5px 10px">${stTxt}</td>
         </tr>`; }).join('')}
+        ${foraCorte.map(f => `<tr style="opacity:.6">
+          <td style="padding:4px 10px"><span style="font-weight:600">${esc(f.ref)}</span><br><span class="gr" style="font-size:11px">${esc((f.descr||'').slice(0, 40))}</span></td>
+          <td colspan="11" style="padding:4px 10px;font-size:11.5px;color:var(--muted)"${f.motivo==='sem estoque'?' title="estoque útil abaixo de 5 unidades conta como ZERO (regra 28/10) — o saldo físico pode ser 1–4"':''}>fora do plano — <b>${esc(f.motivo||'')}</b> · estoque útil ${(+f.est||0).toLocaleString('pt-BR')} un · venda B2C 60d ${(+f.v60_b2c||0).toLocaleString('pt-BR')} un</td>
+        </tr>`).join('')}
         </tbody></table></div></div>
-        <p class="gr" style="margin:6px 0 0">${sel.length} referências${gf?' do grupo '+esc(gf):(!q && !todas ? ' (95/5 — os maiores até 95% do faturamento)' : '')}${sel.length > 500 ? ' · mostrando 500, use o filtro' : ''}. "à vista" = preço final PIX (POR×0,95). ${st.admin?'':'Marcação restrita ao administrador.'}</p>`;
+        <p class="gr" style="margin:6px 0 0">${sel.length} referências${gf?' do grupo '+esc(gf):(!q && !todas ? ' (95/5 — os maiores até 95% do faturamento)' : '')}${sel.length > 500 ? ' · mostrando 500, use o filtro' : ''}${foraCorte.length ? ` · <b>+${foraSel.length} fora do plano</b> em cinza (motor barrou — só leitura)${foraSel.length > 600 ? ', mostrando 600' : ''}` : ''}. "à vista" = preço final PIX (POR×0,95). ${st.admin?'':'Marcação restrita ao administrador.'}</p>`;
       document.querySelectorAll('.bfChk').forEach(c => c.onchange = async () => {
         c.disabled = true;
         const ok = await grava([c.dataset.ref], c.checked);
