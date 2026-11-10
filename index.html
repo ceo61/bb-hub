@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261110-091505';
+const BUILD='20261110-093717';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5807,15 +5807,16 @@ async function renderBlackFriday(){
       if(!prev){ stE.textContent = 'não consegui ler a prévia — chame o Claude'; return; }
       const ms = prev.mudancas || [];
       if(!ms.length){ $('#bfPreview').innerHTML = `<p style="margin:4px 0 12px;color:var(--good);font-weight:600">✅ Nada a mudar nas ${escopo.length} referências do filtro atual — loja igual às marcações e ao plano de hoje.</p>`; return; }
-      const TL = {novo: 'novo desconto', repreco: 're-preço (fase/BGT/🎯)', restaura: '↩ volta ao original'};
+      const TL = {novo: 'novo desconto', repreco: 're-preço', restaura: '↩ volta ao padrão'};
       const nN = ms.filter(m => m.tipo === 'novo').length, nR = ms.filter(m => m.tipo === 'repreco').length, nV = ms.filter(m => m.tipo === 'restaura').length;
+      const nOrfa = ms.filter(m => (m.mot || '').includes('saiu do plano')).length;
       $('#bfPreview').innerHTML = `<div class="tablecard" style="padding:14px 18px;margin:0 0 14px;border:2px solid var(--accent)">
-        <b style="font-size:14px">${ms.length} alteração(ões) de preço ao enviar</b> <span class="gr">— ${nN} descontos novos · ${nR} re-preços · ${nV} restaurações · escopo: as ${escopo.length} referências do filtro atual (o resto da loja não é tocado)</span>
-        <div class="tscroll" style="max-height:320px;margin:10px 0"><table style="width:auto">
-          <thead><tr><th style="text-align:left;padding:4px 12px">produto</th><th style="text-align:left;padding:4px 12px">o que é</th><th style="text-align:right;padding:4px 12px" title="preço final PIX que está na loja agora (POR×0,95)">à vista na loja hoje</th><th style="text-align:right;padding:4px 12px" title="preço final PIX depois do envio">à vista novo</th><th style="text-align:right;padding:4px 12px" title="variação sobre o preço de hoje na loja">Δ</th></tr></thead>
+        <b style="font-size:14px">${ms.length} alteração(ões) de preço ao enviar</b> <span class="gr">— ${nN} descontos novos · ${nR} re-preços · ${nV} restaurações · escopo: as ${escopo.length} referências do filtro atual (o resto da loja não é tocado${nOrfa ? `, exceto ${nOrfa} restauração(ões) obrigatória(s) de quem saiu do plano` : ''})</span>
+        <div class="tscroll" style="max-height:340px;margin:10px 0"><table style="width:auto">
+          <thead><tr><th style="text-align:left;padding:4px 12px">produto</th><th style="text-align:left;padding:4px 12px" title="o tipo da mudança e o porquê — de onde veio o novo desconto (fase do plano, 🎯 bater, 💰 poupar, padrão alterado) ou por que o preço volta ao padrão">o que muda · motivo</th><th style="text-align:right;padding:4px 12px" title="preço final PIX que está na loja agora (POR×0,95)">à vista na loja hoje</th><th style="text-align:right;padding:4px 12px" title="preço final PIX depois do envio">à vista novo</th><th style="text-align:right;padding:4px 12px" title="variação sobre o preço de hoje na loja">Δ</th></tr></thead>
           <tbody>${ms.slice(0, 200).map(m => `<tr title="POR na tabela 002: ${(+m.de).toFixed(2).replace('.', ',')} → ${(+m.para).toFixed(2).replace('.', ',')}">
             <td style="padding:3px 12px"><b>${esc(m.cod)}</b>${m.ref && m.ref !== m.cod ? ` <span class="gr">(${esc(m.ref)})</span>` : ''}</td>
-            <td style="padding:3px 12px">${TL[m.tipo] || esc(m.tipo)}</td>
+            <td style="padding:3px 12px">${TL[m.tipo] || esc(m.tipo)}${m.mot ? `<br><span class="gr" style="font-size:11px">${esc(m.mot)}</span>` : ''}</td>
             <td style="text-align:right;padding:3px 12px">${(m.de * 0.95).toFixed(2).replace('.', ',')}</td>
             <td style="text-align:right;padding:3px 12px;font-weight:700">${(m.para * 0.95).toFixed(2).replace('.', ',')}</td>
             <td style="text-align:right;padding:3px 12px;color:${m.para < m.de ? 'var(--accent)' : 'var(--lar)'}">${((m.para / m.de - 1) * 100).toFixed(1)}%</td>
