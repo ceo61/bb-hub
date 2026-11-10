@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-224737';
+const BUILD='20261109-225302';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5834,8 +5834,19 @@ async function renderBlackFriday(){
         atualizado_em: agora, atualizado_por: u});
       const {error} = await sb.from('bf_params').upsert(linhas);
       if(error) throw error;
-      btn.textContent = '✅ salvo';
-      setTimeout(() => renderBlackFriday(), 800);
+      // grade salva → dispara o MOTOR no executor do Mac: recalcula o desconto de TODAS as
+      // referências com os parâmetros novos (CEO 09/11: mudar a grade tem que mudar os descontos)
+      btn.textContent = '⚙️ recalculando descontos…';
+      const {data: cmd, error: e2} = await sb.from('bf_comandos').insert({acao: 'motor', solicitado_por: u}).select().single();
+      if(e2){ btn.textContent = '✅ salvo (recálculo na próxima rodada)'; setTimeout(() => renderBlackFriday(), 1000); return; }
+      const t0 = Date.now();
+      const timer = setInterval(async () => {
+        const {data: c2} = await sb.from('bf_comandos').select('status,resumo').eq('id', cmd.id).single();
+        if(c2?.status === 'concluido'){ clearInterval(timer); btn.textContent = '✅ salvo e recalculado'; setTimeout(() => renderBlackFriday(), 600); }
+        else if(c2?.status === 'erro'){ clearInterval(timer); btn.disabled = false; btn.textContent = '💾 SALVAR';
+          $('#bfMsg').innerHTML = '<p style="color:var(--crit)">Grade salva, mas o recálculo falhou — chame o Claude. ' + esc((c2.resumo||'').slice(-200)) + '</p>'; }
+        else if(Date.now() - t0 > 180000){ clearInterval(timer); btn.textContent = '✅ salvo (executor sem resposta — recálculo fica p/ a rodada diária)'; setTimeout(() => renderBlackFriday(), 1500); }
+      }, 3000);
     }catch(e){ btn.disabled = false; btn.textContent = '💾 SALVAR'; $('#bfMsg').innerHTML = '<p style="color:var(--crit)">Erro ao salvar: ' + esc(e.message||e) + '</p>'; }
   };
 }
