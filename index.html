@@ -316,7 +316,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261109-215755';
+const BUILD='20261109-221929';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -5667,7 +5667,7 @@ async function renderBlackFriday(){
         <thead><tr>
         <th style="text-align:left;padding:6px 10px">referência</th>
         <th style="padding:6px 10px" title="MC real 60d no site (família)">MC 60d</th>
-        <th style="padding:6px 10px" title="meses de estoque sobrando">cob.</th>
+        <th style="padding:6px 10px" title="linha de cima: estoque útil da família (un). Linha de baixo: meses de cobertura (estoque ÷ média de venda); 99 = sem giro">estoque<br><span style="font-weight:400">cob. (m)</span></th>
         <th style="padding:6px 10px" title="faturamento B2C 30d da referência">GMV 30d</th>
         <th style="padding:6px 8px" title="linha de cima: taxa de conversão do site (compras GA4 ÷ views, família somada), mês atual (parcial) · mês anterior. Linha de baixo: ROAS MC (lucro bruto 002 ÷ Ads), mesmos meses — régua: <3 vermelho · 3–5 laranja · ≥5 verde">conv. m0·m1<br>ROAS MC m0·m1</th>
         <th style="padding:6px 8px" title="nosso preço à vista (PIX) na 002 — linha de cima: tabela CHEIA (pré-BF); linha de baixo: o que está NA LOJA (enviado) ou como fica se marcada">à vista cheio<br><span style="font-weight:400">na loja (R$)</span></th>
@@ -5712,7 +5712,7 @@ async function renderBlackFriday(){
           return `<tr>
           <td style="padding:5px 10px"><b>${esc(r.ref)}</b>${r.entupido?' <span title="entupido (≥12m de estoque) — desova">🔴</span>':''}${r.membros && r.membros !== r.ref ? ` <span class="gr" title="família: ${esc(r.membros)}">👨‍👦</span>`:''}<br><span class="gr" style="font-size:11px">${esc((r.descr||'').slice(0, 40))}</span></td>
           <td style="text-align:center;padding:5px 10px">${r.mc_real!=null?(+r.mc_real).toFixed(0)+'%':'—'}</td>
-          <td style="text-align:center;padding:5px 10px">${r.cob!=null?(+r.cob).toFixed(1):'—'}</td>
+          <td style="text-align:center;padding:5px 10px;line-height:1.3">${r.est!=null?Math.round(+r.est).toLocaleString('pt-BR'):'—'}<br><span class="gr" style="font-size:11px">${r.cob!=null?(+r.cob).toFixed(1):'—'}</span></td>
           <td style="text-align:right;padding:5px 10px;color:var(--muted)">${r.gmv30!=null?Math.round(+r.gmv30).toLocaleString('pt-BR'):'—'}</td>
           <td style="text-align:center;padding:5px 8px;white-space:nowrap">${r.conv_m1!=null||r.conv_m0!=null?`${r.conv_m0!=null?(+r.conv_m0).toFixed(1)+'%':'—'} · ${r.conv_m1!=null?(+r.conv_m1).toFixed(1)+'%':'—'}`:'<span class=gr>—</span>'}<br>${(()=>{const cor=v=>v==null?'var(--muted)':v<3?'var(--crit)':v<5?'var(--lar)':'var(--good)';return r.roasmc_m1!=null||r.roasmc_m0!=null?`<span style="color:${cor(r.roasmc_m0!=null?+r.roasmc_m0:null)}">${r.roasmc_m0!=null?(+r.roasmc_m0).toFixed(1):'—'}</span> · <span style="color:${cor(r.roasmc_m1!=null?+r.roasmc_m1:null)}">${r.roasmc_m1!=null?(+r.roasmc_m1).toFixed(1):'—'}</span>`:'<span class=gr>—</span>';})()}</td>
           <td style="text-align:right;padding:5px 8px;white-space:nowrap">${pv?pv.toFixed(2).replace('.',','):'—'}<br><span style="${chk?'font-weight:700;color:var(--accent)':'color:var(--muted)'}" title="${mexe?(b?`na loja AGORA: R$ ${naLojaAgora.toFixed(2).replace('.',',')} — vira este preço no próximo envio`:'como fica após o envio'):(b?'preço NA LOJA (enviado)':'sem desconto (marque a caixinha para aplicar)')}">${pv?pret.toFixed(2).replace('.',','):'—'}${mexe?' <span style="font-weight:400;color:var(--lar)" title="diferente do que está na loja agora — pendente de envio">⏳</span>':''}</span></td>
