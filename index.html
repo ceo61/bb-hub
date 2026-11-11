@@ -317,7 +317,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261111-123255';
+const BUILD='20261111-173425';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -2609,11 +2609,12 @@ function mdBiCsv(linhas){ // uma linha por campanha × mês; separador ';', deci
 }
 async function renderMidiaBI(out,tok=st.mdTok){
   try{
+    const mes12=(()=>{ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-11); return mdIso(d).slice(0,7); })(); // só os últimos 12 meses ficam em memória (CEO 11/11/26)
     const [dim,fontes,am,sm,ev,rv]=await Promise.all([
       tudo('midia_campanha',{mod:q=>q.order('camp_id')}),
       sb.from('midia_fontes').select('*').then(r=>r.data||[]),
-      mdBiCarrega('fato_ads_campanha_mes',q=>q.order('mes').order('camp_id')),
-      mdBiCarrega('fato_ss_campanha_mes',q=>q.order('mes').order('camp_id')),
+      mdBiCarrega('fato_ads_campanha_mes',q=>q.gte('mes',mes12).order('mes').order('camp_id')),
+      mdBiCarrega('fato_ss_campanha_mes',q=>q.gte('mes',mes12).order('mes').order('camp_id')),
       mdBiCarrega('ads_change_event',q=>q.order('quando',{ascending:false}).order('id')), // 2ª chave p/ paginação determinística (>1000 eventos)
       mdBiCarrega('ads_revisao',q=>q.order('mes'))]);
     if(tok!==st.mdTok) return;
@@ -2633,14 +2634,15 @@ async function renderMidiaBI(out,tok=st.mdTok){
       dimDe[id]={camp_id:id,nome:r.nome||id,canal:r.canal||'',status:'REMOVED',formato:FMT_CANAL[r.canal]||r.canal||'',linha:'Outros',foraDim:true}; });
     const diasMes=m=>new Date(+m.slice(0,4),+m.slice(5,7),0).getDate();
     const diasDec=m=>m<mesAtual?diasMes(m):Math.max(1,ssAte.slice(0,7)===m?+ssAte.slice(8,10):+hoje.slice(8,10)-1); // dias decorridos do mês (p/ cobertura SharpSpring)
-    const fechadas=new Set(); const LNK='color:inherit;text-decoration:underline dotted;text-underline-offset:3px';
+    const fechadas=new Set(); let fechInit=localStorage.getItem('bbhub-bi-recolhido')==='1'; // 'recolher tudo' persiste: campanhas abrem recolhidas na próxima visita
+    const LNK='color:inherit;text-decoration:underline dotted;text-underline-offset:3px';
     const f1=v=>(v!=null&&isFinite(v))?nf1.format(v):'—';
     const lerF=()=>{ const g=k=>localStorage.getItem(k)||''; const s=g('bbhub-bi-status'), m=g('bbhub-bi-meses'); // valor persistido fora das opções → padrão (senão o select mostra uma coisa e o filtro aplica outra)
-      return {linha:g('bbhub-bi-linha'),fmt:g('bbhub-bi-fmt'),status:['ativas','pausadas','todas'].includes(s)?s:'ativas',meses:['6','12','24','todos'].includes(m)?m:'12',busca:g('bbhub-bi-busca')}; };
+      return {linha:g('bbhub-bi-linha'),fmt:g('bbhub-bi-fmt'),status:['ativas','pausadas','todas'].includes(s)?s:'ativas',meses:['1','2','3','6','12'].includes(m)?m:'12',busca:g('bbhub-bi-busca')}; };
     const fmtEv=e=>`${String(e.d.getDate()).padStart(2,'0')}/${String(e.d.getMonth()+1).padStart(2,'0')} · ${e.resumo||e.campos||'?'} · ${(e.usuario||'').split('@')[0]||'?'} (${e.origem||'Ads'})`;
     const desenha=()=>{
       const F=lerF();
-      const mesIni=(()=>{ if(F.meses==='todos') return '0000-00'; const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-(+F.meses-1)); return mdIso(d).slice(0,7); })();
+      const mesIni=(()=>{ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-(+F.meses-1)); return mdIso(d).slice(0,7); })();
       const meses=[...mesesSet].filter(m=>m>=mesIni&&m<=mesAtual&&!MD_BI_MESES_EXCL.includes(m)).sort();
       const mesesFracos=meses.filter(m=>(diasSS[m]||0)<0.6*diasDec(m));
       /* ---- ticket médio Google: campanha-mês → campanha no intervalo → conta no mês ---- */
@@ -2665,6 +2667,7 @@ async function renderMidiaBI(out,tok=st.mdTok){
       const q=F.busca.trim().toLowerCase();
       const vis=camps.filter(c=>(!F.linha||c.linhaEf===F.linha)&&(!F.fmt||(c.formato||'')===F.fmt)&&(F.status==='todas'||c.status==='ENABLED'||(F.status==='pausadas'&&c.status==='PAUSED'))&&(!q||c.nome.toLowerCase().includes(q)||c.camp_id.includes(q)))
         .sort((a,b)=>(ordL[a.linhaEf]-ordL[b.linhaEf])||(b.T.custo-a.T.custo)||(a.nome<b.nome?-1:1));
+      if(fechInit){ vis.forEach(c=>fechadas.add(c.camp_id)); fechInit=false; }
       const TT=soma(vis.flatMap(c=>c.ms)); const nLM=vis.reduce((s,c)=>s+c.ms.length,0);
       /* ---- células ---- */
       const celsTot=(T,unid)=>{ const R='text-align:right'; const fr=T.n>0&&T.nFraco===T.n; const ssS=fr?'color:var(--muted)':''; const cor=v=>fr?'color:var(--muted)':mdCorRoas(v);
@@ -2713,10 +2716,11 @@ async function renderMidiaBI(out,tok=st.mdTok){
         <div class="toolbar" style="margin-top:0">
           ${sel('biLinha',linhaOpts,F.linha,'linha de produto (ordem: custo no intervalo)')}${sel('biFmt',fmtOpts,F.fmt,'formato da campanha')}
           ${sel('biStatus',[['ativas','ativas'],['pausadas','ativas + pausadas'],['todas','todas (incl. removidas)']],F.status,'status da campanha')}
-          ${sel('biMeses',[['6','6 meses'],['12','12 meses'],['24','24 meses'],['todos','todos os meses']],F.meses,'intervalo (meses até o atual)')}
+          ${sel('biMeses',[['1','1 mês'],['2','2 meses'],['3','3 meses'],['6','6 meses'],['12','12 meses']],F.meses,'intervalo (meses até o atual, incluindo o parcial)')}
           <input type="search" id="biBusca" placeholder="nome ou id da campanha…" value="${esc(F.busca)}" style="flex:1;min-width:150px;padding:6px 10px;font-size:12.5px">
           <button class="btn" id="biCsv" title="exporta a tabela filtrada (uma linha por campanha × mês; ; e vírgula decimal)" style="padding:6px 12px;font-size:12px">⬇ CSV</button>
           <span class="count">${vis.length} campanhas · ${nLM} linhas-mês · ${rf.format(TT.custo)}</span>
+          <span class="gr" style="white-space:nowrap"><a href="javascript:void(0)" id="biRecolhe" style="${LNK}" title="recolhe os meses de todas as campanhas (fica salvo)">recolher tudo</a> · <a href="javascript:void(0)" id="biAbre" style="${LNK}" title="abre os meses de todas as campanhas">abrir tudo</a></span>
         </div>
         <div class="banner" style="background:var(--surface2);color:var(--ink2);font-weight:400;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
           <span>📡 Google até <b>${esc(gAte)||'—'}</b></span><span>🛒 SharpSpring até <b>${esc(ssAte)||'—'}</b></span>
@@ -2728,6 +2732,11 @@ async function renderMidiaBI(out,tok=st.mdTok){
         ${faltam.length?`<div class="banner ambar">⏳ ${faltam.map(t=>'tabela <b>'+t+'</b> ainda não publicada').join(' · ')} — a aba mostra o que já existe; o resto entra quando o ETL rodar.</div>`:''}
         ${MD_BI_CSS}<div class="tablecard"><div class="tscroll"><table class="mdBiTab">${cab}<tbody>${corpo||`<tr><td colspan="13" class="gr" style="text-align:center;padding:24px">sem campanhas para os filtros atuais</td></tr>`}
           ${vis.length?`<tr style="font-weight:700;border-top:2px solid var(--hair)"><td colspan="2">Σ filtro <span class="gr" style="font-weight:400">${vis.length} camp.</span></td>${celsTot(TT,'linha(s)-mês')}</tr>`:''}</tbody></table></div></div>
+        ${vis.length?`<h3 style="margin:18px 2px 6px;font-size:14px">Σ Todas as campanhas do filtro · mês a mês <span class="gr" style="font-weight:400">${vis.length} campanhas${F.linha?' · '+esc(F.linha):''}${F.fmt?' · '+esc(F.fmt):''}${F.status!=='todas'?' · '+(F.status==='ativas'?'ativas':'ativas + pausadas'):''}</span></h3>
+        <div class="tablecard"><div class="tscroll"><table class="mdBiTab">${cab.replace(/<th style="min-width:92px">Mês<\/th><th style="min-width:220px"[^>]*>Revisão<\/th>/,'<th colspan="2" style="text-align:left;min-width:150px">Mês · campanhas somadas</th>')}<tbody>
+          ${meses.map(m=>{ const rs=vis.flatMap(c=>c.ms.filter(r=>r.mes===m)); if(!rs.length) return ''; const T=soma(rs); const fr=(diasSS[m]||0)<0.6*diasDec(m);
+            return `<tr class="mdBiCons" data-mes="${m}"><td colspan="2" title="${m}"><b>${mdBiMesRot(m)}</b>${m===mesAtual&&gAte?` <span class="gr">(parcial até ${gAte.slice(8,10)}/${gAte.slice(5,7)})</span>`:''}${fr?` <span class="gr" title="cobertura SharpSpring ${diasSS[m]||0}/${diasDec(m)} dias">⚠ SS ${diasSS[m]||0}/${diasDec(m)}d</span>`:''} <span class="gr">${rs.length} camp.</span></td>${celsTot(T,'campanha(s)')}</tr>`; }).join('')}
+          <tr style="font-weight:700;border-top:2px solid var(--hair)"><td colspan="2">Σ ${meses.length} mês(es)</td>${celsTot(TT,'linha(s)-mês')}</tr></tbody></table></div></div>`:''}
         <p class="gr" style="margin:8px 2px 0"><b>Leads visitantes</b> = só leads já identificados na SharpSpring (≈25% dos cliques do Google; a identificação ocorre quase sempre no checkout) — não é o tráfego da campanha. Abaixo deles, <i>compr. mês</i> = régua da tabela do marketing (Tableau): lead com visita da campanha e compra no mesmo mês, em qualquer ordem. <b>Qualquer toque 30d</b> = teto (a compra conta para todas as campanhas tocadas). <b>Último clique 30d</b> = régua do HUB; <i>piso</i> = exclusivas (única campanha tocada). <b>Compradores Google</b> = conversões declaradas pelo Google (inclui modeladas e cross-device). <b>ROAS</b> = compradores × ticket médio Google da campanha no mês ÷ custo (sem conversão Google no mês: ticket da campanha no intervalo; depois, da conta no mês). Verde ≥3 · laranja 2,2–3 · vermelho <2,2. Células em cinza = mês com cobertura SharpSpring <60% dos dias; out/26 não aparece (rastreio parado, excluído da análise). Compradores por último clique podem ser fracionários: cliques de campanhas diferentes no mesmo instante dividem a compra. <b>Revisão</b>: mudanças vêm do histórico do Google Ads (acumulado dia a dia pelo ETL); o texto manual (✎) é da equipe.</p>`;
       /* ---- handlers ---- */
       mdBiAbasBind();
@@ -2738,6 +2747,8 @@ async function renderMidiaBI(out,tok=st.mdTok){
           L.push({linha:c.linhaEf,nome:c.nome,camp_id:c.camp_id,formato:c.formato||'',papel:c.papel||'',status:c.status,mes:r.mes,revisao:[...evs.map(fmtEv),rev].filter(Boolean).join(' | '),leads:r.leads,compradores_mes:r.cm,visitas:r.visitas,any:r.any,last:r.last,excl:r.excl,conv:r.conv,roasAny:r.roasAny,roasLast:r.roasLast,roasG:r.roasG,custo:r.custo,cpa:r.cpa,razao:r.razao,cliques:r.cliques,cpc:r.cpc,ticket:r.ticket,dias_ss:r.dss}); }));
         const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+mdBiCsv(L)],{type:'text/csv;charset=utf-8'})); a.download=`bi_campanhas_mes_${hoje}.csv`; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1000); };
       document.querySelectorAll('.mdBiCamp').forEach(tr=>tr.onclick=e=>{ if(e.target.closest('a,button,input,select,textarea')) return; const id=tr.dataset.camp; if(fechadas.has(id)) fechadas.delete(id); else fechadas.add(id); desenha(); });
+      const bR=el('biRecolhe'); if(bR) bR.onclick=()=>{ vis.forEach(c=>fechadas.add(c.camp_id)); localStorage.setItem('bbhub-bi-recolhido','1'); desenha(); };
+      const bA=el('biAbre'); if(bA) bA.onclick=()=>{ fechadas.clear(); localStorage.setItem('bbhub-bi-recolhido','0'); desenha(); };
       document.querySelectorAll('.mdBiEd').forEach(b=>b.onclick=()=>{ const td=b.closest('td'); const id=b.dataset.c, m=b.dataset.m; const atual=RV[id]?.[m]?.texto||'';
         td.innerHTML=`<textarea rows="3" placeholder="o que foi feito / o que observar neste mês…" style="width:100%;min-width:230px;resize:vertical;font:inherit;font-size:12px;padding:6px 8px;color:var(--ink);background:var(--surface);border:1px solid var(--hair);border-radius:8px">${esc(atual)}</textarea>
           <div style="display:flex;gap:6px;margin-top:4px"><button class="btn mdBiSalvar" style="padding:3px 10px;font-size:11px">salvar</button><button class="btn mdBiCanc" style="padding:3px 10px;font-size:11px;background:var(--surface2);color:var(--ink)">cancelar</button></div>`;
