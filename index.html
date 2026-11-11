@@ -317,7 +317,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261111-001656';
+const BUILD='20261111-002226';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -2452,6 +2452,11 @@ async function renderMidia(){
     const diasP=Math.round((mdDe(P.fim)-mdDe(P.ini))/864e5)+1;
     const ssParcial=ssAte&&P.fim>ssAte;
     const buraco=MD_SEM_SS.some(([a,b])=>!(P.fim<a||P.ini>b));
+    const gAte=fonteG?.dado_ate||'';
+    const gParcial=gAte&&P.fim>gAte;
+    const ssDiasSet=new Set(); ss.forEach(r=>{ if(em(r.dia,P.ini,P.fim)&&(+r.compras_last||0)>0) ssDiasSet.add(r.dia); });
+    const ssDias=ssDiasSet.size, ssCob=diasP>0?ssDias/diasP:0, ssFraco=ssCob<0.6;
+    const cR=v=>ssFraco?'color:var(--muted)':mdCorRoas(v);
     const pend=alvos.filter(a=>a.status==='proposto'), fila=alvos.filter(a=>a.status==='autorizado'), erros=alvos.filter(a=>a.status==='erro');
     const g2c={}; cfg.forEach(c=>{ (c.grupos||[]).forEach(g=>{ g2c[g.id]=c.camp_id; }); });
     const alvoUrl=a=>a.nivel==='grupo'?adsUrl(g2c[a.alvo_id]||'',a.alvo_id):adsUrl(a.alvo_id);
@@ -2472,7 +2477,7 @@ async function renderMidia(){
       const tr=`<tr style="${paus?'opacity:.55':''}" data-camp="${c.camp_id}">
         <td style="text-align:left;max-width:260px"><a href="${adsUrl(c.camp_id)}" target="_blank" rel="noopener" title="${esc(c.nome)} — abrir no Google Ads" style="${LNK}">${esc(c.nome.slice(0,40))}${c.nome.length>40?'…':''}</a> <span style="font-size:10px;opacity:.55">↗</span>
           <button class="btn mdExt" data-id="${c.camp_id}" title="extrato semanal (Google)" style="padding:0 6px;font-size:10.5px">📊</button>${paus?' <span class="gr">pausada</span>':''}<br>${mdSpark(c.sem)}</td>
-        <td><span class="gr" style="font-size:11px">${esc(c.formato||'')}</span></td>
+        <td><span class="gr" style="font-size:11px">${esc(c.formato||'')}</span><br><select class="mdLinhaSel" data-id="${c.camp_id}" title="linha de produto (sobrescreve a automática: ${esc(c.linha||'')})" style="font-size:10px;padding:1px 2px;max-width:92px;color:var(--muted)">${['',...ordemL.filter(x=>x!==c.linha)].map(x=>`<option value="${esc(x)}" ${(c.linha_manual||'')===x?'selected':''}>${x?'→ '+esc(x):'auto'}</option>`).join('')}</select></td>
         <td><select class="mdPapel" data-id="${c.camp_id}" style="font-size:11px;padding:2px 4px;max-width:96px">${MD_PAPEIS.map(x=>`<option value="${x}" ${(c.papel||'')===x?'selected':''}>${x||'—'}</option>`).join('')}</select></td>
         <td style="font-weight:700">${c.troas?nf1.format(c.troas):(c.tcpa?'<span class="gr" title="CPA alvo">CPA '+nf.format(c.tcpa)+'</span>':'—')}</td>
         <td>${c.orcamento_dia?rf.format(c.orcamento_dia):'—'}${uso!=null?`<br><small style="${uso>=0.85?'color:var(--crit);font-weight:700':'color:var(--muted)'}">${nf.format(Math.round(uso*100))}% uso</small>`:''}</td>
@@ -2480,7 +2485,7 @@ async function renderMidia(){
         <td>${nf.format(Math.round(p.k))}<br><small class="gr">${p.cpc?rf2.format(p.cpc):'—'}</small></td>
         <td title="último clique: ${nf.format(p.last)} · qualquer toque: ${nf.format(p.any)} · exclusivas: ${nf.format(p.excl)} · visitas cpc identificadas: ${nf.format(p.vis)}"><b>${nf.format(p.last)}</b>${mdDelta(p.last,p0.last)}<br><small class="gr">${nf.format(p.any)} · ${nf.format(p.excl)}</small></td>
         <td style="${p.cpa!=null&&p0.cpa!=null?(p.cpa<=p0.cpa?'color:var(--good)':'color:var(--crit)'):''}">${p.cpa!=null?rf.format(p.cpa):'—'}</td>
-        <td style="${mdCorRoas(p.roas)}" title="receita real = compras × ticket Google ${rf.format(p.tk)} · piso (exclusiva) ${p.roasExcl!=null?nf1.format(p.roasExcl):'—'} · teto (qualquer toque) ${p.roasAny!=null?nf1.format(p.roasAny):'—'}">${p.roas!=null?nf1.format(p.roas):'—'}${p0.roas!=null&&p.roas!=null?`<br><small class="gr">antes ${nf1.format(p0.roas)}</small>`:''}</td>
+        <td style="${cR(p.roas)}" title="receita real = compras × ticket Google ${rf.format(p.tk)} · piso (exclusiva) ${p.roasExcl!=null?nf1.format(p.roasExcl):'—'} · teto (qualquer toque) ${p.roasAny!=null?nf1.format(p.roasAny):'—'}">${p.roas!=null?nf1.format(p.roas):'—'}${p0.roas!=null&&p.roas!=null?`<br><small class="gr">antes ${nf1.format(p0.roas)}</small>`:''}</td>
         <td>${p.roasG!=null?nf1.format(p.roasG):'—'}<br><small class="gr" title="conversões Google ÷ compras reais">${p.razao!=null?'G÷SS '+nf1.format(p.razao):''}</small></td>
         <td>${mud.txt}</td>
         <td style="white-space:nowrap"><input type="number" step="0.1" placeholder="tROAS" data-tr="${c.camp_id}" style="width:54px;font-size:11px;padding:2px 4px"><input type="number" step="10" placeholder="R$/d" data-bg="${c.camp_id}" style="width:62px;font-size:11px;padding:2px 4px;margin-left:3px">
@@ -2496,21 +2501,21 @@ async function renderMidia(){
       <th title="receita real ÷ custo (compras × ticket Google). Verde ≥3 · laranja 2,2–3 · vermelho <2,2">ROAS real</th><th title="o que o Google declara">ROAS Google</th><th title="dias desde a última mudança de alvo/orçamento (⏳ <14d)">mudou</th><th>propor</th></tr></thead>`;
     const tabCamp=ordemL.map(L=>{ const cs=linhas[L].sort((a,b)=>b.p.c-a.p.c); const t=soma(cs,'p'), t0=soma(cs,'p0'); const fechado=!!fech[L];
       const porF={}; cs.forEach(c=>{ const o=porF[c.formato]=porF[c.formato]||{c:0,last:0,rec:0}; o.c+=c.p.c; o.last+=c.p.last; o.rec+=c.p.rec; });
-      const fmts=Object.entries(porF).filter(([,o])=>o.c>0).sort((a,b)=>b[1].c-a[1].c).map(([f,o])=>`${esc(f)} ${nf.format(Math.round(o.c/Math.max(1,t.c)*100))}% <span style="${mdCorRoas(o.c?o.rec/o.c:null)}">${o.c?nf1.format(o.rec/o.c):'—'}</span>`).join(' · ');
+      const fmts=Object.entries(porF).filter(([,o])=>o.c>0).sort((a,b)=>b[1].c-a[1].c).map(([f,o])=>`${esc(f)} ${nf.format(Math.round(o.c/Math.max(1,t.c)*100))}% <span style="${cR(o.c?o.rec/o.c:null)}">${o.c?nf1.format(o.rec/o.c):'—'}</span>`).join(' · ');
       return `<tr class="mdLinha" data-l="${esc(L)}" style="background:rgba(168,85,247,.09);font-weight:700;cursor:pointer;border-top:2px solid rgba(168,85,247,.35)">
         <td style="text-align:left">${fechado?'▸':'▾'} ${esc(L)} <span class="gr" style="font-weight:400">${cs.length} camp. · ${nf.format(Math.round(t.c/Math.max(1,T.c)*100))}% do gasto</span><br><span class="gr" style="font-weight:400;font-size:10.5px">${fmts}</span></td>
         <td></td><td></td><td></td><td>${rf.format(cs.reduce((s,c)=>s+(c.status==='ENABLED'?(+c.orcamento_dia||0):0),0))}</td>
         <td>${rf.format(t.c)}${mdDelta(t.c,t0.c,true)}</td><td>${nf.format(Math.round(t.k))}</td><td>${nf.format(t.last)}${mdDelta(t.last,t0.last)}</td>
-        <td>${t.cpa!=null?rf.format(t.cpa):'—'}</td><td style="${mdCorRoas(t.roas)}">${t.roas!=null?nf1.format(t.roas):'—'}</td><td>${t.roasG!=null?nf1.format(t.roasG):'—'}</td><td></td><td></td></tr>`
+        <td>${t.cpa!=null?rf.format(t.cpa):'—'}</td><td style="${cR(t.roas)}">${t.roas!=null?nf1.format(t.roas):'—'}</td><td>${t.roasG!=null?nf1.format(t.roasG):'—'}</td><td></td><td></td></tr>`
         +(fechado?'':cs.map(linhaCamp).join('')); }).join('');
     /* ---- visão por formato (linha × formato) ---- */
     const tabFmt=(()=>{ const M={}; const Fs=new Set();
       camps.forEach(c=>{ const o=(M[c.linhaEf]=M[c.linhaEf]||{})[c.formato]=(M[c.linhaEf]||{})[c.formato]||novo(); Fs.add(c.formato);
         const x=c.p; o.c+=x.c; o.last+=x.last; o.rec=(o.rec||0)+x.rec; o.v+=x.v; o.n+=x.n; o.excl+=x.excl; o.any+=x.any; });
       const fs=[...Fs].sort((a,b)=>camps.filter(c=>c.formato===b).reduce((s,c)=>s+c.p.c,0)-camps.filter(c=>c.formato===a).reduce((s,c)=>s+c.p.c,0));
-      const cel=o=>!o||!(o.c>0)?'<td class="gr">—</td>':`<td style="white-space:nowrap"><b style="${mdCorRoas(o.rec/o.c)}">${nf1.format(o.rec/o.c)}</b> <span class="gr">G ${nf1.format(o.v/o.c)}</span><br><small class="gr">${rf.format(o.c)} · ${nf.format(o.last)} c · CPA ${o.last?rf.format(o.c/o.last):'—'}</small></td>`;
+      const cel=o=>!o||!(o.c>0)?'<td class="gr">—</td>':`<td style="white-space:nowrap"><b style="${cR(o.rec/o.c)}">${nf1.format(o.rec/o.c)}</b> <span class="gr">G ${nf1.format(o.v/o.c)}</span><br><small class="gr">${rf.format(o.c)} · ${nf.format(o.last)} c · CPA ${o.last?rf.format(o.c/o.last):'—'}</small></td>`;
       return `<div class="tablecard"><div class="tscroll"><table><thead><tr><th style="text-align:left">Linha × formato</th>${fs.map(f=>`<th>${esc(f)}</th>`).join('')}<th>Σ linha</th></tr></thead><tbody>
-        ${ordemL.map(L=>{ const t=soma(linhas[L],'p'); return `<tr><td style="text-align:left;font-weight:700">${esc(L)}</td>${fs.map(f=>cel(M[L]?.[f])).join('')}<td style="white-space:nowrap"><b style="${mdCorRoas(t.roas)}">${t.roas!=null?nf1.format(t.roas):'—'}</b> <span class="gr">G ${t.roasG!=null?nf1.format(t.roasG):'—'}</span><br><small class="gr">${rf.format(t.c)} · ${nf.format(t.last)} c</small></td></tr>`; }).join('')}
+        ${ordemL.map(L=>{ const t=soma(linhas[L],'p'); return `<tr><td style="text-align:left;font-weight:700">${esc(L)}</td>${fs.map(f=>cel(M[L]?.[f])).join('')}<td style="white-space:nowrap"><b style="${cR(t.roas)}">${t.roas!=null?nf1.format(t.roas):'—'}</b> <span class="gr">G ${t.roasG!=null?nf1.format(t.roasG):'—'}</span><br><small class="gr">${rf.format(t.c)} · ${nf.format(t.last)} c</small></td></tr>`; }).join('')}
         <tr style="font-weight:700;border-top:2px solid var(--hair)"><td style="text-align:left">Σ conta</td>${fs.map(f=>{ const cs=camps.filter(c=>c.formato===f); return cel(soma(cs,'p')); }).join('')}${cel(T)}</tr>
       </tbody></table></div><p class="gr" style="margin:6px 14px 10px">Célula = <b>ROAS real</b> (compras SharpSpring × ticket Google ÷ custo) e <b>G</b> = ROAS declarado pelo Google. A razão entre os dois é a inflação da medição do Google naquele formato — é por ela que o alvo de tROAS declarado precisa ser calibrado.</p></div>`; })();
     out.innerHTML=`
@@ -2525,15 +2530,17 @@ async function renderMidia(){
       </div>
       <div class="banner" style="background:var(--surface2);color:var(--ink2);font-weight:400;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
         <span>📡 Google até <b>${fonteG?.dado_ate||'—'}</b></span><span>🛒 SharpSpring até <b>${ssAte||'—'}</b> <span class="gr">(${fonteS?.detalhes?esc(fonteS.detalhes.split('·')[0]):'—'})</span></span>
-        ${ssParcial?'<span style="color:#b45309;font-weight:700">⚠ período termina depois do último dia com SharpSpring — compras reais parciais</span>':''}
+        ${gParcial?'<span style="color:#b45309;font-weight:700">⚠ Google: o último dia do período ainda é parcial (ETL das 6h fecha o dia anterior)</span>':''}
+        ${ssParcial?'<span style="color:#b45309;font-weight:700">⚠ SharpSpring: o último dia do período ainda é parcial (extrato das ~15h)</span>':''}
+        <span class="gr" title="dias do período com ao menos 1 compra SharpSpring">SharpSpring cobriu <b style="${ssFraco?'color:var(--crit)':''}">${ssDias}/${diasP}</b> dias${ssFraco?' — <b style="color:var(--crit)">métricas reais não confiáveis neste período</b>':''}</span>
         ${buraco?'<span style="color:var(--crit);font-weight:700">⚠ período cruza janela sem SharpSpring (06–12/08 e 30/09–31/10): CPA/ROAS real subestimados ali</span>':''}
         <span class="gr">compras sem clique pago no período: <b>${nf.format(semClique.last)}</b></span>
       </div>
       <div class="kpis">
         ${kpi('Custo',rf.format(T.c),(T0.c?('antes '+rf.format(T0.c)):'')+mdDelta(T.c,T0.c,true))}
         ${kpi('Compras reais',nf.format(T.last),(T0.last?'antes '+nf.format(T0.last):'')+mdDelta(T.last,T0.last))}
-        ${kpi('CPA real',T.cpa!=null?rf.format(T.cpa):'—',(T0.cpa!=null?'antes '+rf.format(T0.cpa):'')+mdDelta(T.cpa,T0.cpa,true))}
-        ${kpi('ROAS real','<span style="'+mdCorRoas(T.roas)+'">'+(T.roas!=null?nf1.format(T.roas):'—')+'</span>',T0.roas!=null?'antes '+nf1.format(T0.roas):'')}
+        ${kpi('CPA real',ssFraco?'<span class="gr">⚠ sem SS</span>':(T.cpa!=null?rf.format(T.cpa):'—'),(T0.cpa!=null?'antes '+rf.format(T0.cpa):'')+mdDelta(T.cpa,T0.cpa,true))}
+        ${kpi('ROAS real',ssFraco?'<span class="gr">⚠ sem SS</span>':('<span style="'+cR(T.roas)+'">'+(T.roas!=null?nf1.format(T.roas):'—')+'</span>'),T0.roas!=null?'antes '+nf1.format(T0.roas):'')}
         ${kpi('ROAS Google',T.roasG!=null?nf1.format(T.roasG):'—','G÷SS '+(T.razao!=null?nf1.format(T.razao):'—')+' · ticket '+rf.format(TK.p))}
         ${kpi('Receita real',rf.format(T.rec||0),T0.rec?'antes '+rf.format(T0.rec):'')}
       </div>
@@ -2552,6 +2559,7 @@ async function renderMidia(){
     document.querySelectorAll('.mdLinha').forEach(tr=>tr.onclick=ev=>{ if(ev.target.closest('button,input,select,a')) return; const L=tr.dataset.l; fech[L]=!fech[L]; localStorage.setItem('bbhub-md-fech',JSON.stringify(fech)); renderMidia(); });
     document.querySelectorAll('.mdExt').forEach(b=>b.onclick=()=>abreExtratoCamp(b.dataset.id));
     document.querySelectorAll('.mdPct').forEach(b=>b.onclick=()=>{ const c=camps.find(x=>x.camp_id===b.dataset.id); const el=document.querySelector(`input[data-bg="${b.dataset.id}"]`); if(c&&el&&c.orcamento_dia) el.value=Math.round(c.orcamento_dia*(+b.dataset.f)/10)*10; });
+    document.querySelectorAll('.mdLinhaSel').forEach(sl=>sl.onchange=async()=>{ const {error}=await sb.from('midia_campanha').update({linha_manual:sl.value||null}).eq('camp_id',sl.dataset.id); if(error){ alert('Erro: '+error.message); return; } renderMidia(); });
     document.querySelectorAll('.mdPapel').forEach(s=>s.onchange=async()=>{ const {error}=await sb.from('midia_campanha').update({papel:s.value||null}).eq('camp_id',s.dataset.id); if(error) alert('Erro: '+error.message); });
     document.querySelectorAll('.mdProp').forEach(b=>b.onclick=async()=>{
       const tr=+document.querySelector(`input[data-tr="${b.dataset.id}"]`)?.value||null;
