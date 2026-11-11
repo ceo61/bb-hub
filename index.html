@@ -244,6 +244,7 @@ tr.emcurso td{opacity:.55}
     <a href="#manha" data-pg="manha">🌅 Manhã</a>
     <a href="#global" data-pg="global">🌐 Visão Global</a>
     <a href="#adscentral" data-pg="adscentral">📡 Central de Ads</a>
+    <a href="#midia" data-pg="midia">🎛️ HUB Mídia</a>
     <a href="#painel" data-pg="painel">📈 Painel do produto</a>
     <a href="#skus" data-pg="skus">🧩 SKUs</a>
     <a href="#diario" data-pg="diario">📆 Diário</a>
@@ -316,7 +317,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261110-121759';
+const BUILD='20261111-001656';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -590,7 +591,7 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {manha:'Manhã — o dia do seu grupo', radar:'Radar (legado)', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', blackfriday:'Black Friday — descontos por grupo', importacoes:'Importações urgentes — 80/20 rompendo antes do lead', lotoes:'Distribuidores — lotões × estoque', logistica:'Logística UF — cobertura % por estado', serial:'Serial — histórico da peça (vendas e devoluções)', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {midia:'HUB Mídia — campanhas por linha de produto (resultado real SharpSpring)', manha:'Manhã — o dia do seu grupo', radar:'Radar (legado)', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', blackfriday:'Black Friday — descontos por grupo', importacoes:'Importações urgentes — 80/20 rompendo antes do lead', lotoes:'Distribuidores — lotões × estoque', logistica:'Logística UF — cobertura % por estado', serial:'Serial — histórico da peça (vendas e devoluções)', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -619,6 +620,7 @@ function navega(pg){
   else if(pg==='concorrencia') renderConcorrencia();
   else if(pg==='equipe') renderEquipe();
   else if(pg==='adscentral') renderAdsCentral();
+  else if(pg==='midia') renderMidia();
   else if(pg==='importacoes') renderImportUrg();
   else if(pg==='lotoes') renderLotoes();
   else if(pg==='logistica') renderLogisticaUf();
@@ -2355,6 +2357,221 @@ async function abreExtratoCamp(cid){
       <th>Cliques</th><th>CPC</th><th>Conv</th><th>Valor conv</th><th>ROAS</th></tr></thead>
       <tbody>${linhas}</tbody></table></div>
     <p class="gr" style="margin:8px 0 0;font-size:11px">% orç usa o orçamento ATUAL (semanas antigas podem ter tido outro teto). ROAS = valor conv ÷ custo, lado Google; verde ≥ alvo, laranja ≥ 80% do alvo. * = semana em curso.</p>`;
+}
+
+/* ---------- 🎛️ HUB MÍDIA (11/11/2026) — campanhas Google por LINHA DE PRODUTO com o resultado REAL (SharpSpring)
+   Fontes: midia_campanha (dimensão: linha/formato/papel/alvo/orçamento, ETL midia_etl.py) · fato_ads_campanha (Google, diário)
+   · fato_ss_campanha (SharpSpring: compras por último clique/any/exclusiva + visitas cpc, ss_diario.py) · ads_campanha_cfg (grupos c/ alvo)
+   · ads_alvos (fila proposto→✔→executor). Mudar alvo/orçamento SÓ pela fila — nunca direto no Ads. ---------- */
+const MD_SEM_SS=[['2026-08-06','2026-08-12'],['2026-09-30','2026-10-31']]; // janelas em que a SharpSpring não gravou compras
+const MD_PAPEIS=['','base','hero','marca','sem marca','cauda longa','exposição/teste','remarketing','institucional'];
+const mdIso=d=>d.toLocaleDateString('sv-SE');
+const mdAdd=(d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+const mdDe=s=>new Date(s+'T12:00:00');
+function mdPeriodo(per){
+  const hoje=new Date(); const ontem=mdAdd(hoje,-1); const oI=mdIso(ontem);
+  const prim=d=>mdIso(new Date(d.getFullYear(),d.getMonth(),1));
+  const ultDia=(y,m)=>mdIso(new Date(y,m+1,0));
+  if(per==='ontem') return {ini:oI,fim:oI,ini0:mdIso(mdAdd(ontem,-7)),fim0:mdIso(mdAdd(ontem,-7)),rot:'ontem '+oI.slice(8,10)+'/'+oI.slice(5,7),rot0:'mesmo dia da semana passada'};
+  if(per==='7d') return {ini:mdIso(mdAdd(ontem,-6)),fim:oI,ini0:mdIso(mdAdd(ontem,-13)),fim0:mdIso(mdAdd(ontem,-7)),rot:'últimos 7 dias',rot0:'7 dias anteriores'};
+  if(per==='sem'){ let seg=mdAdd(ontem,-((ontem.getDay()+6)%7)); // segunda da semana de ontem
+    const n=Math.round((ontem-seg)/864e5);
+    return {ini:mdIso(seg),fim:oI,ini0:mdIso(mdAdd(seg,-7)),fim0:mdIso(mdAdd(seg,-7+n)),rot:'semana atual (seg→ontem)',rot0:'mesmos dias da semana passada'}; }
+  if(per==='mes'){ const ini=prim(ontem); const n=ontem.getDate();
+    const pm=new Date(ontem.getFullYear(),ontem.getMonth()-1,1); const fim0=new Date(pm.getFullYear(),pm.getMonth(),Math.min(n,new Date(pm.getFullYear(),pm.getMonth()+1,0).getDate()));
+    return {ini,fim:oI,ini0:mdIso(pm),fim0:mdIso(fim0),rot:'mês atual (1→ontem)',rot0:'mesmos dias do mês passado'}; }
+  // mês fechado: se ontem é o último dia do mês, é esse mês; senão o anterior
+  let y=ontem.getFullYear(), m=ontem.getMonth();
+  if(oI!==ultDia(y,m)){ m-=1; if(m<0){ m=11; y-=1; } }
+  const y0=m===0?y-1:y, m0=m===0?11:m-1;
+  return {ini:mdIso(new Date(y,m,1)),fim:ultDia(y,m),ini0:mdIso(new Date(y0,m0,1)),fim0:ultDia(y0,m0),rot:'mês fechado '+String(m+1).padStart(2,'0')+'/'+y,rot0:'mês anterior'};
+}
+const mdCorRoas=v=>(v==null||!isFinite(v))?'':v<2.2?'color:var(--crit);font-weight:700':v<3?'color:var(--lar,#b45309);font-weight:700':'color:var(--good);font-weight:700';
+const mdDelta=(a,b,inv)=>{ if(!(b>0)||a==null) return ''; const p=Math.round((a/b-1)*100); if(!isFinite(p)) return '';
+  const bom=inv?p<=0:p>=0; return ` <small style="color:${bom?'var(--good)':'var(--crit)'};font-weight:600">${p>=0?'+':''}${nf.format(p)}%</small>`; };
+function mdSpark(sem){ // 8 semanas: barra = custo, cor = ROAS real
+  if(!sem.length) return '';
+  const mx=Math.max(1,...sem.map(s=>s.c)); const W=8*9, H=18;
+  return `<svg width="${W}" height="${H}" style="vertical-align:middle" title="${sem.map(s=>s.w.slice(8,10)+'/'+s.w.slice(5,7)+' R$'+nf.format(Math.round(s.c))+' · ROAS real '+(s.r!=null?nf1.format(s.r):'—')).join('&#10;')}">${sem.map((s,i)=>{
+    const h=Math.max(1,Math.round(s.c/mx*(H-2))); const cor=s.r==null?'var(--muted)':s.r<2.2?'var(--crit)':s.r<3?'#b45309':'var(--good)';
+    return `<rect x="${i*9}" y="${H-h}" width="7" height="${h}" rx="1.5" fill="${cor}" opacity=".85"></rect>`; }).join('')}</svg>`;
+}
+async function renderMidia(){
+  const out=$('#conteudo'); out.innerHTML='<div class="carregando">Carregando HUB Mídia…</div>';
+  try{
+    const per=localStorage.getItem('bbhub-md-per')||'7d';
+    const vis=localStorage.getItem('bbhub-md-vis')||'camp';
+    const mostraPaus=localStorage.getItem('bbhub-md-paus')==='1';
+    let fech={}; try{ fech=JSON.parse(localStorage.getItem('bbhub-md-fech')||'{}'); }catch(e){}
+    const P=mdPeriodo(per);
+    const d8s=(()=>{ const d=mdAdd(new Date(),-70); return mdIso(mdAdd(d,-((d.getDay()+6)%7))); })(); // 10 semanas p/ sparkline
+    const iniCarga=[P.ini0,d8s,'2026-01-01'].sort()[0];
+    const [dim,fato,ss,cfg,alvos,fontes,mud]=await Promise.all([
+      tudo('midia_campanha',{mod:q=>q.order('camp_id')}),
+      tudo('fato_ads_campanha',{mod:q=>q.gte('data',iniCarga).order('data').order('camp_id')}),
+      tudo('fato_ss_campanha',{mod:q=>q.gte('dia',iniCarga).order('dia').order('camp_id')}),
+      tudo('ads_campanha_cfg',{mod:q=>q.order('camp_id')}),
+      tudo('ads_alvos',{mod:q=>q.in('status',['proposto','autorizado','erro']).order('id',{ascending:false})}),
+      sb.from('midia_fontes').select('*').then(r=>r.data||[]),
+      sb.from('ads_alvos').select('alvo_id,nivel,troas_novo,budget_novo,aplicado_em,autorizado_por').eq('status','aplicado').order('aplicado_em',{ascending:false}).limit(400).then(r=>r.data||[])]);
+    const hoje=mdIso(new Date());
+    const cfgDe={}; cfg.forEach(c=>cfgDe[c.camp_id]=c);
+    const mudDe={}; mud.forEach(m=>{ if(m.nivel==='campanha'&&!mudDe[m.alvo_id]) mudDe[m.alvo_id]=m; });
+    const fonteG=fontes.find(f=>f.fonte==='google_ads'), fonteS=fontes.find(f=>f.fonte==='sharpspring');
+    const ssAte=fonteS?.dado_ate||'';
+    /* ---- agregação por campanha: período P, período anterior P0, semanas p/ sparkline ---- */
+    const A={}; const wk=s=>{ const d=mdDe(s); d.setDate(d.getDate()-((d.getDay()+6)%7)); return mdIso(d); };
+    const novo=()=>({c:0,k:0,n:0,v:0,last:0,any:0,excl:0,vis:0});
+    const get=(id)=>A[id]=A[id]||{p:novo(),p0:novo(),w:{}};
+    const em=(d,i,f)=>d>=i&&d<=f;
+    fato.forEach(r=>{ if(r.data>=hoje) return; const a=get(r.camp_id);
+      const add=o=>{ o.c+=+r.custo||0; o.k+=+r.cliques||0; o.n+=+r.conv||0; o.v+=+r.valor_conv||0; };
+      if(em(r.data,P.ini,P.fim)) add(a.p); if(em(r.data,P.ini0,P.fim0)) add(a.p0);
+      if(r.data>=d8s){ const w=wk(r.data); const o=a.w[w]=a.w[w]||novo(); add(o); } });
+    ss.forEach(r=>{ if(r.dia>=hoje) return; const a=get(r.camp_id||'');
+      const add=o=>{ o.last+=+r.compras_last||0; o.any+=+r.compras_any||0; o.excl+=+r.compras_excl||0; o.vis+=+r.visitas||0; };
+      if(em(r.dia,P.ini,P.fim)) add(a.p); if(em(r.dia,P.ini0,P.fim0)) add(a.p0);
+      if(r.dia>=d8s){ const w=wk(r.dia); const o=a.w[w]=a.w[w]||novo(); add(o); } });
+    const tkGlobal=(o)=>{ let v=0,n=0; Object.values(A).forEach(a=>{ v+=a[o].v; n+=a[o].n; }); return n>0?v/n:0; };
+    const TK={p:tkGlobal('p'),p0:tkGlobal('p0')};
+    const fin=(o,tk)=>{ const t=o.n>0?o.v/o.n:tk; const rec=o.last*t; return {...o,tk:t,rec,roas:o.c>0?rec/o.c:null,cpa:o.last>0?o.c/o.last:null,roasG:o.c>0?o.v/o.c:null,cpc:o.k>0?o.c/o.k:null,razao:o.last>0?o.n/o.last:null,
+      roasAny:o.c>0?o.any*t/o.c:null,roasExcl:o.c>0?o.excl*t/o.c:null}; };
+    /* ---- campanhas visíveis ---- */
+    const camps=dim.filter(c=>c.status!=='REMOVED').map(c=>{ const a=get(c.camp_id);
+      const semanas=Object.keys(a.w).filter(w=>w<wk(hoje)).sort().slice(-8).map(w=>{ const o=fin(a.w[w],TK.p); return {w,c:o.c,r:o.roas}; });
+      return {...c,linhaEf:c.linha_manual||c.linha||'Outros',p:fin(a.p,TK.p),p0:fin(a.p0,TK.p0),sem:semanas,cfg:cfgDe[c.camp_id]}; })
+      .filter(c=>c.status==='ENABLED'||mostraPaus||c.p.c>0||c.p0.c>0);
+    st.adsCamps=camps.map(c=>({camp_id:c.camp_id,nome:c.nome,canal:c.canal,troas:c.troas,budget:c.orcamento_dia})); // p/ abreExtratoCamp
+    const semClique=A['']?fin(A[''].p,TK.p):novo();
+    /* ---- totais e linhas ---- */
+    const soma=(arr,o)=>{ const t=novo(); arr.forEach(c=>{ const x=c[o]; t.c+=x.c; t.k+=x.k; t.n+=x.n; t.v+=x.v; t.last+=x.last; t.any+=x.any; t.excl+=x.excl; t.vis+=x.vis; t.rec=(t.rec||0)+x.rec; });
+      return {...t,roas:t.c>0?t.rec/t.c:null,cpa:t.last>0?t.c/t.last:null,roasG:t.c>0?t.v/t.c:null,cpc:t.k>0?t.c/t.k:null,razao:t.last>0?t.n/t.last:null}; };
+    const T=soma(camps,'p'), T0=soma(camps,'p0');
+    const linhas={}; camps.forEach(c=>(linhas[c.linhaEf]=linhas[c.linhaEf]||[]).push(c));
+    const ordemL=Object.keys(linhas).sort((a,b)=>soma(linhas[b],'p').c-soma(linhas[a],'p').c);
+    const diasP=Math.round((mdDe(P.fim)-mdDe(P.ini))/864e5)+1;
+    const ssParcial=ssAte&&P.fim>ssAte;
+    const buraco=MD_SEM_SS.some(([a,b])=>!(P.fim<a||P.ini>b));
+    const pend=alvos.filter(a=>a.status==='proposto'), fila=alvos.filter(a=>a.status==='autorizado'), erros=alvos.filter(a=>a.status==='erro');
+    const g2c={}; cfg.forEach(c=>{ (c.grupos||[]).forEach(g=>{ g2c[g.id]=c.camp_id; }); });
+    const alvoUrl=a=>a.nivel==='grupo'?adsUrl(g2c[a.alvo_id]||'',a.alvo_id):adsUrl(a.alvo_id);
+    const LNK='color:inherit;text-decoration:underline dotted;text-underline-offset:3px';
+    const fmtMud=c=>{ const h=mudDe[c.camp_id]; const g=c.ultima_mudanca; let d=null,quem='';
+      if(h&&h.aplicado_em){ d=h.aplicado_em.slice(0,10); quem='HUB'; }
+      if(g&&(!d||g.slice(0,10)>d)){ d=g.slice(0,10); quem=(c.ultima_mudanca_por||'').split('@')[0]||'Ads'; }
+      if(!d) return {txt:'<span class="gr">—</span>',dias:null};
+      const dias=Math.round((new Date()-mdDe(d))/864e5);
+      return {txt:`<span title="última mudança de alvo/orçamento: ${d} (${quem})" style="${dias<14?'color:#b45309;font-weight:600':''}">${dias===0?'hoje':dias+'d'}${dias<14?' ⏳':''}</span>`,dias}; };
+    const kpi=(lab,val,sub)=>`<div class="kpi"><div class="lab">${lab}</div><div class="val" style="font-size:21px">${val}</div><div class="sub">${sub||''}</div></div>`;
+    const chip=(id,txt,ativo)=>`<button class="btn mdPer" data-per="${id}" style="padding:4px 11px;font-size:12px;${ativo?'':'background:var(--surface2);color:var(--ink)'}">${txt}</button>`;
+    /* ---- tabela por campanha ---- */
+    const linhaCamp=c=>{ const p=c.p, p0=c.p0, mud=fmtMud(c);
+      const uso=c.orcamento_dia>0?p.c/diasP/c.orcamento_dia:null;
+      const grupos=(c.cfg?.grupos||[]).filter(g=>g.troas);
+      const paus=c.status!=='ENABLED';
+      const tr=`<tr style="${paus?'opacity:.55':''}" data-camp="${c.camp_id}">
+        <td style="text-align:left;max-width:260px"><a href="${adsUrl(c.camp_id)}" target="_blank" rel="noopener" title="${esc(c.nome)} — abrir no Google Ads" style="${LNK}">${esc(c.nome.slice(0,40))}${c.nome.length>40?'…':''}</a> <span style="font-size:10px;opacity:.55">↗</span>
+          <button class="btn mdExt" data-id="${c.camp_id}" title="extrato semanal (Google)" style="padding:0 6px;font-size:10.5px">📊</button>${paus?' <span class="gr">pausada</span>':''}<br>${mdSpark(c.sem)}</td>
+        <td><span class="gr" style="font-size:11px">${esc(c.formato||'')}</span></td>
+        <td><select class="mdPapel" data-id="${c.camp_id}" style="font-size:11px;padding:2px 4px;max-width:96px">${MD_PAPEIS.map(x=>`<option value="${x}" ${(c.papel||'')===x?'selected':''}>${x||'—'}</option>`).join('')}</select></td>
+        <td style="font-weight:700">${c.troas?nf1.format(c.troas):(c.tcpa?'<span class="gr" title="CPA alvo">CPA '+nf.format(c.tcpa)+'</span>':'—')}</td>
+        <td>${c.orcamento_dia?rf.format(c.orcamento_dia):'—'}${uso!=null?`<br><small style="${uso>=0.85?'color:var(--crit);font-weight:700':'color:var(--muted)'}">${nf.format(Math.round(uso*100))}% uso</small>`:''}</td>
+        <td>${rf.format(p.c)}${mdDelta(p.c,p0.c,true)}</td>
+        <td>${nf.format(Math.round(p.k))}<br><small class="gr">${p.cpc?rf2.format(p.cpc):'—'}</small></td>
+        <td title="último clique: ${nf.format(p.last)} · qualquer toque: ${nf.format(p.any)} · exclusivas: ${nf.format(p.excl)} · visitas cpc identificadas: ${nf.format(p.vis)}"><b>${nf.format(p.last)}</b>${mdDelta(p.last,p0.last)}<br><small class="gr">${nf.format(p.any)} · ${nf.format(p.excl)}</small></td>
+        <td style="${p.cpa!=null&&p0.cpa!=null?(p.cpa<=p0.cpa?'color:var(--good)':'color:var(--crit)'):''}">${p.cpa!=null?rf.format(p.cpa):'—'}</td>
+        <td style="${mdCorRoas(p.roas)}" title="receita real = compras × ticket Google ${rf.format(p.tk)} · piso (exclusiva) ${p.roasExcl!=null?nf1.format(p.roasExcl):'—'} · teto (qualquer toque) ${p.roasAny!=null?nf1.format(p.roasAny):'—'}">${p.roas!=null?nf1.format(p.roas):'—'}${p0.roas!=null&&p.roas!=null?`<br><small class="gr">antes ${nf1.format(p0.roas)}</small>`:''}</td>
+        <td>${p.roasG!=null?nf1.format(p.roasG):'—'}<br><small class="gr" title="conversões Google ÷ compras reais">${p.razao!=null?'G÷SS '+nf1.format(p.razao):''}</small></td>
+        <td>${mud.txt}</td>
+        <td style="white-space:nowrap"><input type="number" step="0.1" placeholder="tROAS" data-tr="${c.camp_id}" style="width:54px;font-size:11px;padding:2px 4px"><input type="number" step="10" placeholder="R$/d" data-bg="${c.camp_id}" style="width:62px;font-size:11px;padding:2px 4px;margin-left:3px">
+          <button class="btn mdPct" data-id="${c.camp_id}" data-f="0.8" title="orçamento −20%" style="padding:2px 6px;font-size:10.5px;background:var(--surface2);color:var(--ink)">−20%</button><button class="btn mdPct" data-id="${c.camp_id}" data-f="1.2" title="orçamento +20%" style="padding:2px 6px;font-size:10.5px;background:var(--surface2);color:var(--ink)">+20%</button>
+          <button class="btn mdProp" data-id="${c.camp_id}" data-nivel="campanha" data-nome="${esc(c.nome.slice(0,60))}" data-dias="${mud.dias??''}" data-tr0="${c.troas||''}" data-bg0="${c.orcamento_dia||''}" style="padding:2px 9px;font-size:11px">propor</button></td></tr>`;
+      const subs=grupos.map(g=>`<tr style="opacity:.85"><td style="text-align:left;padding-left:26px"><span class="gr">└ grupo:</span> <a href="${adsUrl(c.camp_id,g.id)}" target="_blank" rel="noopener" style="${LNK}">${esc(g.nome.slice(0,34))}</a></td><td></td><td></td>
+        <td style="font-weight:700;color:var(--accent)">${nf1.format(g.troas)}</td><td></td><td>${g.c7?rf.format(g.c7)+'<br><small class="gr">7d</small>':''}</td><td>${g.k7?nf.format(g.k7):''}</td><td></td><td></td><td></td>
+        <td>${g.c7>0?nf1.format(g.v7/g.c7):''}<br><small class="gr">Google 7d</small></td><td></td>
+        <td style="white-space:nowrap"><input type="number" step="0.1" placeholder="tROAS" data-tr="${g.id}" style="width:54px;font-size:11px;padding:2px 4px"><button class="btn mdProp" data-id="${g.id}" data-nivel="grupo" data-nome="${esc((c.nome+' › '+g.nome).slice(0,60))}" data-dias="" data-tr0="${g.troas}" data-bg0="" style="padding:2px 9px;font-size:11px">propor</button></td></tr>`).join('');
+      return tr+subs; };
+    const cab=`<thead><tr><th style="text-align:left">Campanha</th><th>formato</th><th title="papel na estrutura (editável)">papel</th><th title="tROAS vigente (campanha)">alvo</th><th>orç/dia</th>
+      <th>custo</th><th>cliques · CPC</th><th title="compras reais (SharpSpring, último clique) · abaixo: qualquer toque · exclusivas">compras reais</th><th title="custo ÷ compras reais">CPA real</th>
+      <th title="receita real ÷ custo (compras × ticket Google). Verde ≥3 · laranja 2,2–3 · vermelho <2,2">ROAS real</th><th title="o que o Google declara">ROAS Google</th><th title="dias desde a última mudança de alvo/orçamento (⏳ <14d)">mudou</th><th>propor</th></tr></thead>`;
+    const tabCamp=ordemL.map(L=>{ const cs=linhas[L].sort((a,b)=>b.p.c-a.p.c); const t=soma(cs,'p'), t0=soma(cs,'p0'); const fechado=!!fech[L];
+      const porF={}; cs.forEach(c=>{ const o=porF[c.formato]=porF[c.formato]||{c:0,last:0,rec:0}; o.c+=c.p.c; o.last+=c.p.last; o.rec+=c.p.rec; });
+      const fmts=Object.entries(porF).filter(([,o])=>o.c>0).sort((a,b)=>b[1].c-a[1].c).map(([f,o])=>`${esc(f)} ${nf.format(Math.round(o.c/Math.max(1,t.c)*100))}% <span style="${mdCorRoas(o.c?o.rec/o.c:null)}">${o.c?nf1.format(o.rec/o.c):'—'}</span>`).join(' · ');
+      return `<tr class="mdLinha" data-l="${esc(L)}" style="background:rgba(168,85,247,.09);font-weight:700;cursor:pointer;border-top:2px solid rgba(168,85,247,.35)">
+        <td style="text-align:left">${fechado?'▸':'▾'} ${esc(L)} <span class="gr" style="font-weight:400">${cs.length} camp. · ${nf.format(Math.round(t.c/Math.max(1,T.c)*100))}% do gasto</span><br><span class="gr" style="font-weight:400;font-size:10.5px">${fmts}</span></td>
+        <td></td><td></td><td></td><td>${rf.format(cs.reduce((s,c)=>s+(c.status==='ENABLED'?(+c.orcamento_dia||0):0),0))}</td>
+        <td>${rf.format(t.c)}${mdDelta(t.c,t0.c,true)}</td><td>${nf.format(Math.round(t.k))}</td><td>${nf.format(t.last)}${mdDelta(t.last,t0.last)}</td>
+        <td>${t.cpa!=null?rf.format(t.cpa):'—'}</td><td style="${mdCorRoas(t.roas)}">${t.roas!=null?nf1.format(t.roas):'—'}</td><td>${t.roasG!=null?nf1.format(t.roasG):'—'}</td><td></td><td></td></tr>`
+        +(fechado?'':cs.map(linhaCamp).join('')); }).join('');
+    /* ---- visão por formato (linha × formato) ---- */
+    const tabFmt=(()=>{ const M={}; const Fs=new Set();
+      camps.forEach(c=>{ const o=(M[c.linhaEf]=M[c.linhaEf]||{})[c.formato]=(M[c.linhaEf]||{})[c.formato]||novo(); Fs.add(c.formato);
+        const x=c.p; o.c+=x.c; o.last+=x.last; o.rec=(o.rec||0)+x.rec; o.v+=x.v; o.n+=x.n; o.excl+=x.excl; o.any+=x.any; });
+      const fs=[...Fs].sort((a,b)=>camps.filter(c=>c.formato===b).reduce((s,c)=>s+c.p.c,0)-camps.filter(c=>c.formato===a).reduce((s,c)=>s+c.p.c,0));
+      const cel=o=>!o||!(o.c>0)?'<td class="gr">—</td>':`<td style="white-space:nowrap"><b style="${mdCorRoas(o.rec/o.c)}">${nf1.format(o.rec/o.c)}</b> <span class="gr">G ${nf1.format(o.v/o.c)}</span><br><small class="gr">${rf.format(o.c)} · ${nf.format(o.last)} c · CPA ${o.last?rf.format(o.c/o.last):'—'}</small></td>`;
+      return `<div class="tablecard"><div class="tscroll"><table><thead><tr><th style="text-align:left">Linha × formato</th>${fs.map(f=>`<th>${esc(f)}</th>`).join('')}<th>Σ linha</th></tr></thead><tbody>
+        ${ordemL.map(L=>{ const t=soma(linhas[L],'p'); return `<tr><td style="text-align:left;font-weight:700">${esc(L)}</td>${fs.map(f=>cel(M[L]?.[f])).join('')}<td style="white-space:nowrap"><b style="${mdCorRoas(t.roas)}">${t.roas!=null?nf1.format(t.roas):'—'}</b> <span class="gr">G ${t.roasG!=null?nf1.format(t.roasG):'—'}</span><br><small class="gr">${rf.format(t.c)} · ${nf.format(t.last)} c</small></td></tr>`; }).join('')}
+        <tr style="font-weight:700;border-top:2px solid var(--hair)"><td style="text-align:left">Σ conta</td>${fs.map(f=>{ const cs=camps.filter(c=>c.formato===f); return cel(soma(cs,'p')); }).join('')}${cel(T)}</tr>
+      </tbody></table></div><p class="gr" style="margin:6px 14px 10px">Célula = <b>ROAS real</b> (compras SharpSpring × ticket Google ÷ custo) e <b>G</b> = ROAS declarado pelo Google. A razão entre os dois é a inflação da medição do Google naquele formato — é por ela que o alvo de tROAS declarado precisa ser calibrado.</p></div>`; })();
+    out.innerHTML=`
+      <div class="toolbar" style="margin-top:0">
+        ${chip('ontem','ontem',per==='ontem')}${chip('7d','7 dias',per==='7d')}${chip('sem','semana',per==='sem')}${chip('mes','mês',per==='mes')}${chip('mesf','mês fechado',per==='mesf')}
+        <span class="gr" style="margin-left:4px"><b>${P.rot}</b> (${P.ini.slice(8,10)}/${P.ini.slice(5,7)}→${P.fim.slice(8,10)}/${P.fim.slice(5,7)}) × ${P.rot0}</span>
+        <span style="margin-left:auto;display:inline-flex;gap:4px">
+          <button class="btn mdVis" data-v="camp" style="padding:4px 11px;font-size:12px;${vis==='camp'?'':'background:var(--surface2);color:var(--ink)'}">por campanha</button>
+          <button class="btn mdVis" data-v="fmt" style="padding:4px 11px;font-size:12px;${vis==='fmt'?'':'background:var(--surface2);color:var(--ink)'}">linha × formato</button>
+          <label class="gr" style="margin-left:8px;display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="mdPaus" ${mostraPaus?'checked':''}> pausadas</label>
+        </span>
+      </div>
+      <div class="banner" style="background:var(--surface2);color:var(--ink2);font-weight:400;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+        <span>📡 Google até <b>${fonteG?.dado_ate||'—'}</b></span><span>🛒 SharpSpring até <b>${ssAte||'—'}</b> <span class="gr">(${fonteS?.detalhes?esc(fonteS.detalhes.split('·')[0]):'—'})</span></span>
+        ${ssParcial?'<span style="color:#b45309;font-weight:700">⚠ período termina depois do último dia com SharpSpring — compras reais parciais</span>':''}
+        ${buraco?'<span style="color:var(--crit);font-weight:700">⚠ período cruza janela sem SharpSpring (06–12/08 e 30/09–31/10): CPA/ROAS real subestimados ali</span>':''}
+        <span class="gr">compras sem clique pago no período: <b>${nf.format(semClique.last)}</b></span>
+      </div>
+      <div class="kpis">
+        ${kpi('Custo',rf.format(T.c),(T0.c?('antes '+rf.format(T0.c)):'')+mdDelta(T.c,T0.c,true))}
+        ${kpi('Compras reais',nf.format(T.last),(T0.last?'antes '+nf.format(T0.last):'')+mdDelta(T.last,T0.last))}
+        ${kpi('CPA real',T.cpa!=null?rf.format(T.cpa):'—',(T0.cpa!=null?'antes '+rf.format(T0.cpa):'')+mdDelta(T.cpa,T0.cpa,true))}
+        ${kpi('ROAS real','<span style="'+mdCorRoas(T.roas)+'">'+(T.roas!=null?nf1.format(T.roas):'—')+'</span>',T0.roas!=null?'antes '+nf1.format(T0.roas):'')}
+        ${kpi('ROAS Google',T.roasG!=null?nf1.format(T.roasG):'—','G÷SS '+(T.razao!=null?nf1.format(T.razao):'—')+' · ticket '+rf.format(TK.p))}
+        ${kpi('Receita real',rf.format(T.rec||0),T0.rec?'antes '+rf.format(T0.rec):'')}
+      </div>
+      ${(pend.length||fila.length||erros.length)?`<div class="banner ambar" style="display:grid;gap:5px;font-weight:400">
+        ${pend.map(a=>`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">⏳ <b><a href="${alvoUrl(a)}" target="_blank" rel="noopener" style="${LNK}">${esc(a.nome)}</a></b> ${a.troas_novo?'tROAS→'+nf1.format(a.troas_novo):''} ${a.budget_novo?'orç→R$'+nf.format(a.budget_novo)+'/d':''} <span class="gr">por ${esc((a.proposto_por||'').split('@')[0])}</span>
+          ${st.admin?`<button class="btn mdAut" data-id="${a.id}" style="padding:2px 10px;font-size:11px">✔ autorizar</button>`:'<span class="gr">aguarda ✔</span>'}<button class="btn mdDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px;background:var(--surface2);color:var(--ink)">✖</button></div>`).join('')}
+        ${fila.map(a=>`<div>⚙️ <b>${esc(a.nome)}</b> autorizado — o executor aplica em ≤2 min…</div>`).join('')}
+        ${erros.map(a=>`<div>⚠ <b>${esc(a.nome)}</b>: <span class="gr">${esc(a.obs||'')}</span> <button class="btn mdDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">limpar</button></div>`).join('')}
+      </div>`:''}
+      ${vis==='fmt'?tabFmt:`<div class="tablecard"><div class="tscroll"><table>${cab}<tbody>${tabCamp}</tbody></table></div></div>`}
+      <p class="gr" style="margin:8px 2px 0"><b>Compras reais</b> = SharpSpring (orderPlaced) por último clique pago em 30d; abaixo delas, <i>qualquer toque · exclusivas</i>. <b>ROAS real</b> = compras × ticket médio Google da campanha ÷ custo. <b>G÷SS</b> = conversões Google ÷ compras reais (inflação da medição). Barras = 8 semanas de custo, cor = ROAS real. Regras: uma mudança por campanha a cada 14 dias (⏳ avisa), degraus ≤20%, sempre pela fila (analista propõe, admin ✔, executor aplica em ≤2 min).</p>`;
+    /* ---- handlers ---- */
+    document.querySelectorAll('.mdPer').forEach(b=>b.onclick=()=>{ localStorage.setItem('bbhub-md-per',b.dataset.per); renderMidia(); });
+    document.querySelectorAll('.mdVis').forEach(b=>b.onclick=()=>{ localStorage.setItem('bbhub-md-vis',b.dataset.v); renderMidia(); });
+    const cbP=document.getElementById('mdPaus'); if(cbP) cbP.onchange=()=>{ localStorage.setItem('bbhub-md-paus',cbP.checked?'1':'0'); renderMidia(); };
+    document.querySelectorAll('.mdLinha').forEach(tr=>tr.onclick=ev=>{ if(ev.target.closest('button,input,select,a')) return; const L=tr.dataset.l; fech[L]=!fech[L]; localStorage.setItem('bbhub-md-fech',JSON.stringify(fech)); renderMidia(); });
+    document.querySelectorAll('.mdExt').forEach(b=>b.onclick=()=>abreExtratoCamp(b.dataset.id));
+    document.querySelectorAll('.mdPct').forEach(b=>b.onclick=()=>{ const c=camps.find(x=>x.camp_id===b.dataset.id); const el=document.querySelector(`input[data-bg="${b.dataset.id}"]`); if(c&&el&&c.orcamento_dia) el.value=Math.round(c.orcamento_dia*(+b.dataset.f)/10)*10; });
+    document.querySelectorAll('.mdPapel').forEach(s=>s.onchange=async()=>{ const {error}=await sb.from('midia_campanha').update({papel:s.value||null}).eq('camp_id',s.dataset.id); if(error) alert('Erro: '+error.message); });
+    document.querySelectorAll('.mdProp').forEach(b=>b.onclick=async()=>{
+      const tr=+document.querySelector(`input[data-tr="${b.dataset.id}"]`)?.value||null;
+      const bgEl=document.querySelector(`input[data-bg="${b.dataset.id}"]`); const bg=bgEl?(+bgEl.value||null):null;
+      if(!tr&&!bg){ alert('Preencha tROAS e/ou orçamento.'); return; }
+      const avisos=[]; const d=b.dataset.dias!==''?+b.dataset.dias:null;
+      if(d!=null&&d<14) avisos.push(`esta campanha mudou há ${d} dia(s) — a regra é esperar 14 dias (aprendizado)`);
+      const tr0=+b.dataset.tr0||0, bg0=+b.dataset.bg0||0;
+      if(tr&&tr0&&Math.abs(tr/tr0-1)>0.2) avisos.push(`alvo ${nf1.format(tr0)}→${nf1.format(tr)} é um degrau de ${Math.round(Math.abs(tr/tr0-1)*100)}% (regra: ≤20%)`);
+      if(bg&&bg0&&Math.abs(bg/bg0-1)>0.2) avisos.push(`orçamento R$${nf.format(bg0)}→R$${nf.format(bg)} é um degrau de ${Math.round(Math.abs(bg/bg0-1)*100)}% (regra: ≤20%)`);
+      if(avisos.length&&!confirm('⚠ '+avisos.join('\n⚠ ')+'\n\nPropor mesmo assim?')) return;
+      let em='?'; try{ em=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e){}
+      const {error}=await sb.from('ads_alvos').insert({nivel:b.dataset.nivel, alvo_id:b.dataset.id, nome:b.dataset.nome, troas_novo:tr, budget_novo:bg, proposto_por:em});
+      if(error){ alert('Erro: '+error.message); return; }
+      renderMidia();
+    });
+    document.querySelectorAll('.mdAut').forEach(b=>b.onclick=async()=>{ let em='?'; try{ em=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e){}
+      b.disabled=true; await sb.from('ads_alvos').update({status:'autorizado', autorizado_por:em, autorizado_em:new Date().toISOString()}).eq('id',b.dataset.id); renderMidia(); });
+    document.querySelectorAll('.mdDesc').forEach(b=>b.onclick=async()=>{ b.disabled=true; await sb.from('ads_alvos').update({status:'descartado'}).eq('id',b.dataset.id); renderMidia(); });
+  }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; console.error(e); }
 }
 
 async function renderImportUrg(){
