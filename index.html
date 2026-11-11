@@ -317,7 +317,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261111-002226';
+const BUILD='20261111-123255';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -2362,7 +2362,8 @@ async function abreExtratoCamp(cid){
 /* ---------- 🎛️ HUB MÍDIA (11/11/2026) — campanhas Google por LINHA DE PRODUTO com o resultado REAL (SharpSpring)
    Fontes: midia_campanha (dimensão: linha/formato/papel/alvo/orçamento, ETL midia_etl.py) · fato_ads_campanha (Google, diário)
    · fato_ss_campanha (SharpSpring: compras por último clique/any/exclusiva + visitas cpc, ss_diario.py) · ads_campanha_cfg (grupos c/ alvo)
-   · ads_alvos (fila proposto→✔→executor). Mudar alvo/orçamento SÓ pela fila — nunca direto no Ads. ---------- */
+   · ads_alvos (fila proposto→✔→executor). Mudar alvo/orçamento SÓ pela fila — nunca direto no Ads.
+   Abas: 🎛 Controle (renderMidia, abaixo) · 📊 BI campanhas × mês (renderMidiaBI, fim do arquivo); chave 'bbhub-md-aba'. ---------- */
 const MD_SEM_SS=[['2026-08-06','2026-08-12'],['2026-09-30','2026-10-31']]; // janelas em que a SharpSpring não gravou compras
 const MD_PAPEIS=['','base','hero','marca','sem marca','cauda longa','exposição/teste','remarketing','institucional'];
 const mdIso=d=>d.toLocaleDateString('sv-SE');
@@ -2397,7 +2398,10 @@ function mdSpark(sem){ // 8 semanas: barra = custo, cor = ROAS real
     return `<rect x="${i*9}" y="${H-h}" width="7" height="${h}" rx="1.5" fill="${cor}" opacity=".85"></rect>`; }).join('')}</svg>`;
 }
 async function renderMidia(){
-  const out=$('#conteudo'); out.innerHTML='<div class="carregando">Carregando HUB Mídia…</div>';
+  const out=$('#conteudo'); const aba=localStorage.getItem('bbhub-md-aba')||'ctrl'; // 'ctrl' = Controle (esta função) · 'bi' = BI campanhas × mês (renderMidiaBI)
+  st.mdTok=(st.mdTok||0)+1; const tok=st.mdTok; // se o usuário trocar de aba durante a carga, a carga antiga não sobrescreve a tela
+  out.innerHTML=mdBiAbas(aba)+'<div class="carregando">Carregando HUB Mídia…</div>'; mdBiAbasBind();
+  if(aba==='bi'){ await renderMidiaBI(out,tok); return; }
   try{
     const per=localStorage.getItem('bbhub-md-per')||'7d';
     const vis=localStorage.getItem('bbhub-md-vis')||'camp';
@@ -2414,6 +2418,7 @@ async function renderMidia(){
       tudo('ads_alvos',{mod:q=>q.in('status',['proposto','autorizado','erro']).order('id',{ascending:false})}),
       sb.from('midia_fontes').select('*').then(r=>r.data||[]),
       sb.from('ads_alvos').select('alvo_id,nivel,troas_novo,budget_novo,aplicado_em,autorizado_por').eq('status','aplicado').order('aplicado_em',{ascending:false}).limit(400).then(r=>r.data||[])]);
+    if(tok!==st.mdTok) return;
     const hoje=mdIso(new Date());
     const cfgDe={}; cfg.forEach(c=>cfgDe[c.camp_id]=c);
     const mudDe={}; mud.forEach(m=>{ if(m.nivel==='campanha'&&!mudDe[m.alvo_id]) mudDe[m.alvo_id]=m; });
@@ -2483,7 +2488,7 @@ async function renderMidia(){
         <td>${c.orcamento_dia?rf.format(c.orcamento_dia):'—'}${uso!=null?`<br><small style="${uso>=0.85?'color:var(--crit);font-weight:700':'color:var(--muted)'}">${nf.format(Math.round(uso*100))}% uso</small>`:''}</td>
         <td>${rf.format(p.c)}${mdDelta(p.c,p0.c,true)}</td>
         <td>${nf.format(Math.round(p.k))}<br><small class="gr">${p.cpc?rf2.format(p.cpc):'—'}</small></td>
-        <td title="último clique: ${nf.format(p.last)} · qualquer toque: ${nf.format(p.any)} · exclusivas: ${nf.format(p.excl)} · visitas cpc identificadas: ${nf.format(p.vis)}"><b>${nf.format(p.last)}</b>${mdDelta(p.last,p0.last)}<br><small class="gr">${nf.format(p.any)} · ${nf.format(p.excl)}</small></td>
+        <td title="último clique: ${nf.format(Math.round(p.last))} · qualquer toque: ${nf.format(p.any)} · exclusivas: ${nf.format(p.excl)} · visitas cpc identificadas: ${nf.format(p.vis)}"><b>${nf.format(Math.round(p.last))}</b>${mdDelta(p.last,p0.last)}<br><small class="gr">${nf.format(p.any)} · ${nf.format(p.excl)}</small></td>
         <td style="${p.cpa!=null&&p0.cpa!=null?(p.cpa<=p0.cpa?'color:var(--good)':'color:var(--crit)'):''}">${p.cpa!=null?rf.format(p.cpa):'—'}</td>
         <td style="${cR(p.roas)}" title="receita real = compras × ticket Google ${rf.format(p.tk)} · piso (exclusiva) ${p.roasExcl!=null?nf1.format(p.roasExcl):'—'} · teto (qualquer toque) ${p.roasAny!=null?nf1.format(p.roasAny):'—'}">${p.roas!=null?nf1.format(p.roas):'—'}${p0.roas!=null&&p.roas!=null?`<br><small class="gr">antes ${nf1.format(p0.roas)}</small>`:''}</td>
         <td>${p.roasG!=null?nf1.format(p.roasG):'—'}<br><small class="gr" title="conversões Google ÷ compras reais">${p.razao!=null?'G÷SS '+nf1.format(p.razao):''}</small></td>
@@ -2505,7 +2510,7 @@ async function renderMidia(){
       return `<tr class="mdLinha" data-l="${esc(L)}" style="background:rgba(168,85,247,.09);font-weight:700;cursor:pointer;border-top:2px solid rgba(168,85,247,.35)">
         <td style="text-align:left">${fechado?'▸':'▾'} ${esc(L)} <span class="gr" style="font-weight:400">${cs.length} camp. · ${nf.format(Math.round(t.c/Math.max(1,T.c)*100))}% do gasto</span><br><span class="gr" style="font-weight:400;font-size:10.5px">${fmts}</span></td>
         <td></td><td></td><td></td><td>${rf.format(cs.reduce((s,c)=>s+(c.status==='ENABLED'?(+c.orcamento_dia||0):0),0))}</td>
-        <td>${rf.format(t.c)}${mdDelta(t.c,t0.c,true)}</td><td>${nf.format(Math.round(t.k))}</td><td>${nf.format(t.last)}${mdDelta(t.last,t0.last)}</td>
+        <td>${rf.format(t.c)}${mdDelta(t.c,t0.c,true)}</td><td>${nf.format(Math.round(t.k))}</td><td>${nf.format(Math.round(t.last))}${mdDelta(t.last,t0.last)}</td>
         <td>${t.cpa!=null?rf.format(t.cpa):'—'}</td><td style="${cR(t.roas)}">${t.roas!=null?nf1.format(t.roas):'—'}</td><td>${t.roasG!=null?nf1.format(t.roasG):'—'}</td><td></td><td></td></tr>`
         +(fechado?'':cs.map(linhaCamp).join('')); }).join('');
     /* ---- visão por formato (linha × formato) ---- */
@@ -2513,12 +2518,12 @@ async function renderMidia(){
       camps.forEach(c=>{ const o=(M[c.linhaEf]=M[c.linhaEf]||{})[c.formato]=(M[c.linhaEf]||{})[c.formato]||novo(); Fs.add(c.formato);
         const x=c.p; o.c+=x.c; o.last+=x.last; o.rec=(o.rec||0)+x.rec; o.v+=x.v; o.n+=x.n; o.excl+=x.excl; o.any+=x.any; });
       const fs=[...Fs].sort((a,b)=>camps.filter(c=>c.formato===b).reduce((s,c)=>s+c.p.c,0)-camps.filter(c=>c.formato===a).reduce((s,c)=>s+c.p.c,0));
-      const cel=o=>!o||!(o.c>0)?'<td class="gr">—</td>':`<td style="white-space:nowrap"><b style="${cR(o.rec/o.c)}">${nf1.format(o.rec/o.c)}</b> <span class="gr">G ${nf1.format(o.v/o.c)}</span><br><small class="gr">${rf.format(o.c)} · ${nf.format(o.last)} c · CPA ${o.last?rf.format(o.c/o.last):'—'}</small></td>`;
+      const cel=o=>!o||!(o.c>0)?'<td class="gr">—</td>':`<td style="white-space:nowrap"><b style="${cR(o.rec/o.c)}">${nf1.format(o.rec/o.c)}</b> <span class="gr">G ${nf1.format(o.v/o.c)}</span><br><small class="gr">${rf.format(o.c)} · ${nf.format(Math.round(o.last))} c · CPA ${o.last?rf.format(o.c/o.last):'—'}</small></td>`;
       return `<div class="tablecard"><div class="tscroll"><table><thead><tr><th style="text-align:left">Linha × formato</th>${fs.map(f=>`<th>${esc(f)}</th>`).join('')}<th>Σ linha</th></tr></thead><tbody>
-        ${ordemL.map(L=>{ const t=soma(linhas[L],'p'); return `<tr><td style="text-align:left;font-weight:700">${esc(L)}</td>${fs.map(f=>cel(M[L]?.[f])).join('')}<td style="white-space:nowrap"><b style="${cR(t.roas)}">${t.roas!=null?nf1.format(t.roas):'—'}</b> <span class="gr">G ${t.roasG!=null?nf1.format(t.roasG):'—'}</span><br><small class="gr">${rf.format(t.c)} · ${nf.format(t.last)} c</small></td></tr>`; }).join('')}
+        ${ordemL.map(L=>{ const t=soma(linhas[L],'p'); return `<tr><td style="text-align:left;font-weight:700">${esc(L)}</td>${fs.map(f=>cel(M[L]?.[f])).join('')}<td style="white-space:nowrap"><b style="${cR(t.roas)}">${t.roas!=null?nf1.format(t.roas):'—'}</b> <span class="gr">G ${t.roasG!=null?nf1.format(t.roasG):'—'}</span><br><small class="gr">${rf.format(t.c)} · ${nf.format(Math.round(t.last))} c</small></td></tr>`; }).join('')}
         <tr style="font-weight:700;border-top:2px solid var(--hair)"><td style="text-align:left">Σ conta</td>${fs.map(f=>{ const cs=camps.filter(c=>c.formato===f); return cel(soma(cs,'p')); }).join('')}${cel(T)}</tr>
       </tbody></table></div><p class="gr" style="margin:6px 14px 10px">Célula = <b>ROAS real</b> (compras SharpSpring × ticket Google ÷ custo) e <b>G</b> = ROAS declarado pelo Google. A razão entre os dois é a inflação da medição do Google naquele formato — é por ela que o alvo de tROAS declarado precisa ser calibrado.</p></div>`; })();
-    out.innerHTML=`
+    out.innerHTML=mdBiAbas('ctrl')+`
       <div class="toolbar" style="margin-top:0">
         ${chip('ontem','ontem',per==='ontem')}${chip('7d','7 dias',per==='7d')}${chip('sem','semana',per==='sem')}${chip('mes','mês',per==='mes')}${chip('mesf','mês fechado',per==='mesf')}
         <span class="gr" style="margin-left:4px"><b>${P.rot}</b> (${P.ini.slice(8,10)}/${P.ini.slice(5,7)}→${P.fim.slice(8,10)}/${P.fim.slice(5,7)}) × ${P.rot0}</span>
@@ -2534,11 +2539,11 @@ async function renderMidia(){
         ${ssParcial?'<span style="color:#b45309;font-weight:700">⚠ SharpSpring: o último dia do período ainda é parcial (extrato das ~15h)</span>':''}
         <span class="gr" title="dias do período com ao menos 1 compra SharpSpring">SharpSpring cobriu <b style="${ssFraco?'color:var(--crit)':''}">${ssDias}/${diasP}</b> dias${ssFraco?' — <b style="color:var(--crit)">métricas reais não confiáveis neste período</b>':''}</span>
         ${buraco?'<span style="color:var(--crit);font-weight:700">⚠ período cruza janela sem SharpSpring (06–12/08 e 30/09–31/10): CPA/ROAS real subestimados ali</span>':''}
-        <span class="gr">compras sem clique pago no período: <b>${nf.format(semClique.last)}</b></span>
+        <span class="gr">compras sem clique pago no período: <b>${nf.format(Math.round(semClique.last))}</b></span>
       </div>
       <div class="kpis">
         ${kpi('Custo',rf.format(T.c),(T0.c?('antes '+rf.format(T0.c)):'')+mdDelta(T.c,T0.c,true))}
-        ${kpi('Compras reais',nf.format(T.last),(T0.last?'antes '+nf.format(T0.last):'')+mdDelta(T.last,T0.last))}
+        ${kpi('Compras reais',nf.format(Math.round(T.last)),(T0.last?'antes '+nf.format(Math.round(T0.last)):'')+mdDelta(T.last,T0.last))}
         ${kpi('CPA real',ssFraco?'<span class="gr">⚠ sem SS</span>':(T.cpa!=null?rf.format(T.cpa):'—'),(T0.cpa!=null?'antes '+rf.format(T0.cpa):'')+mdDelta(T.cpa,T0.cpa,true))}
         ${kpi('ROAS real',ssFraco?'<span class="gr">⚠ sem SS</span>':('<span style="'+cR(T.roas)+'">'+(T.roas!=null?nf1.format(T.roas):'—')+'</span>'),T0.roas!=null?'antes '+nf1.format(T0.roas):'')}
         ${kpi('ROAS Google',T.roasG!=null?nf1.format(T.roasG):'—','G÷SS '+(T.razao!=null?nf1.format(T.razao):'—')+' · ticket '+rf.format(TK.p))}
@@ -2553,6 +2558,7 @@ async function renderMidia(){
       ${vis==='fmt'?tabFmt:`<div class="tablecard"><div class="tscroll"><table>${cab}<tbody>${tabCamp}</tbody></table></div></div>`}
       <p class="gr" style="margin:8px 2px 0"><b>Compras reais</b> = SharpSpring (orderPlaced) por último clique pago em 30d; abaixo delas, <i>qualquer toque · exclusivas</i>. <b>ROAS real</b> = compras × ticket médio Google da campanha ÷ custo. <b>G÷SS</b> = conversões Google ÷ compras reais (inflação da medição). Barras = 8 semanas de custo, cor = ROAS real. Regras: uma mudança por campanha a cada 14 dias (⏳ avisa), degraus ≤20%, sempre pela fila (analista propõe, admin ✔, executor aplica em ≤2 min).</p>`;
     /* ---- handlers ---- */
+    mdBiAbasBind();
     document.querySelectorAll('.mdPer').forEach(b=>b.onclick=()=>{ localStorage.setItem('bbhub-md-per',b.dataset.per); renderMidia(); });
     document.querySelectorAll('.mdVis').forEach(b=>b.onclick=()=>{ localStorage.setItem('bbhub-md-vis',b.dataset.v); renderMidia(); });
     const cbP=document.getElementById('mdPaus'); if(cbP) cbP.onchange=()=>{ localStorage.setItem('bbhub-md-paus',cbP.checked?'1':'0'); renderMidia(); };
@@ -2579,9 +2585,172 @@ async function renderMidia(){
     document.querySelectorAll('.mdAut').forEach(b=>b.onclick=async()=>{ let em='?'; try{ em=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e){}
       b.disabled=true; await sb.from('ads_alvos').update({status:'autorizado', autorizado_por:em, autorizado_em:new Date().toISOString()}).eq('id',b.dataset.id); renderMidia(); });
     document.querySelectorAll('.mdDesc').forEach(b=>b.onclick=async()=>{ b.disabled=true; await sb.from('ads_alvos').update({status:'descartado'}).eq('id',b.dataset.id); renderMidia(); });
-  }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; console.error(e); }
+  }catch(e){ out.innerHTML=mdBiAbas('ctrl')+'<p class="gr">Erro: '+esc(e.message||e)+'</p>'; mdBiAbasBind(); console.error(e); }
 }
-
+/* ---------- 📊 aba BI · campanhas × mês (11/11/2026) — "classificação das campanhas e seus resultados com distribuição mensal" (tabela do Tableau do marketing, com as réguas do HUB)
+   Fontes: fato_ads_campanha_mes (Google por campanha × mês, midia_etl.py) · fato_ss_campanha_mes (SharpSpring por campanha × mês, ss_diario.py)
+   · ads_change_event (histórico de mudanças do Google Ads, midia_etl.py) · ads_revisao (texto manual da equipe, editável aqui com ✎)
+   Barra de abas (mdBiAbas) é compartilhada com a aba Controle; chave localStorage 'bbhub-md-aba'. Filtros da aba BI em 'bbhub-bi-*'. ---------- */
+const MD_BI_ABAS=[['ctrl','🎛 Controle'],['bi','📊 BI · campanhas × mês']];
+const mdBiAbas=aba=>`<div class="toolbar" style="margin:0 0 10px;gap:6px">${MD_BI_ABAS.map(([id,txt])=>`<button class="btn mdAba" data-aba="${id}" style="padding:6px 14px;font-size:13px;${aba===id?'':'background:var(--surface2);color:var(--ink)'}">${txt}</button>`).join('')}</div>`;
+const mdBiAbasBind=()=>document.querySelectorAll('.mdAba').forEach(b=>b.onclick=()=>{ localStorage.setItem('bbhub-md-aba',b.dataset.aba); renderMidia(); });
+const MD_BI_MES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const MD_BI_MESES_EXCL=['2026-10']; // fora da análise por decisão do CEO (11/11/26): rastreio web do site parado em out/26 — o mês não entra em linhas, Σ, ticket nem CSV
+const mdBiMesRot=m=>(MD_BI_MES[+m.slice(5,7)-1]||'?')+'/'+m.slice(2,4);
+const MD_BI_CSS='<style>table.mdBiTab thead th{white-space:normal;line-height:1.2;vertical-align:bottom;padding:8px 8px;min-width:62px} table.mdBiTab thead th:nth-child(2){min-width:220px} table.mdBiTab tbody td{padding:7px 8px;font-size:12.5px;white-space:normal}</style>'; // só a tabela BI: os 13 cabeçalhos longos quebram linha e as células compactam (com o nowrap global a tabela passava de 2.100 px e ROAS/custo ficavam fora da tela no laptop)
+const mdBiFalta=e=>{ const m=String(e?.message||e||''); return e?.code==='PGRST205'||/PGRST205|Could not find the table|schema cache/i.test(m); }; // tabela ainda não publicada no PostgREST
+async function mdBiCarrega(tabela,mod){ try{ return {rows:await tudo(tabela,{mod}),falta:false}; }catch(e){ if(mdBiFalta(e)) return {rows:[],falta:true}; throw e; } }
+const MD_BI_CSV=[['Linha','linha'],['Campanha','nome'],['ID','camp_id'],['Formato','formato'],['Papel','papel'],['Status','status'],['Mês','mes'],['Revisão','revisao'],
+  ['Leads visitantes','leads'],['Compradores no mês (régua Tableau)','compradores_mes'],['Visitas','visitas'],['Compradores qualquer toque 30d','any'],['Compradores último clique 30d','last'],['Exclusivas (piso)','excl'],['Compradores Google','conv'],
+  ['ROAS qualquer toque','roasAny'],['ROAS último clique','roasLast'],['ROAS Google','roasG'],['Custo Ads','custo'],['CPA real','cpa'],['G÷SS','razao'],['Cliques','cliques'],['CPC','cpc'],['Ticket Google','ticket'],['Dias SharpSpring','dias_ss']];
+function mdBiCsv(linhas){ // uma linha por campanha × mês; separador ';', decimais com vírgula (Excel pt-BR); quem chama põe o BOM
+  const cel=v=>{ if(v==null||v==='') return ''; if(typeof v==='number') return (Number.isInteger(v)?String(v):v.toFixed(2)).replace('.',','); const s=String(v).replace(/"/g,'""'); return /[;"\n\r]/.test(s)?`"${s}"`:s; };
+  return MD_BI_CSV.map(c=>c[0]).join(';')+'\n'+linhas.map(l=>MD_BI_CSV.map(c=>cel(l[c[1]])).join(';')).join('\n');
+}
+async function renderMidiaBI(out,tok=st.mdTok){
+  try{
+    const [dim,fontes,am,sm,ev,rv]=await Promise.all([
+      tudo('midia_campanha',{mod:q=>q.order('camp_id')}),
+      sb.from('midia_fontes').select('*').then(r=>r.data||[]),
+      mdBiCarrega('fato_ads_campanha_mes',q=>q.order('mes').order('camp_id')),
+      mdBiCarrega('fato_ss_campanha_mes',q=>q.order('mes').order('camp_id')),
+      mdBiCarrega('ads_change_event',q=>q.order('quando',{ascending:false}).order('id')), // 2ª chave p/ paginação determinística (>1000 eventos)
+      mdBiCarrega('ads_revisao',q=>q.order('mes'))]);
+    if(tok!==st.mdTok) return;
+    const hoje=mdIso(new Date()), mesAtual=hoje.slice(0,7);
+    const fonteG=fontes.find(f=>f.fonte==='google_ads'), fonteS=fontes.find(f=>f.fonte==='sharpspring');
+    const gAte=fonteG?.dado_ate||'', ssAte=fonteS?.dado_ate||'';
+    /* ---- índices camp_id × mês ---- */
+    const AM={}, SM={}, EV={}, RV={}, diasSS={}, mesesSet=new Set();
+    am.rows.forEach(r=>{ (AM[r.camp_id]=AM[r.camp_id]||{})[r.mes]=r; mesesSet.add(r.mes); });
+    sm.rows.forEach(r=>{ (SM[r.camp_id]=SM[r.camp_id]||{})[r.mes]=r; mesesSet.add(r.mes); diasSS[r.mes]=Math.max(diasSS[r.mes]||0,+r.dias_ss||0); });
+    ev.rows.forEach(e=>{ const d=e.quando?new Date(e.quando):null; if(!d||isNaN(d)) return; const m=mdIso(d).slice(0,7); const c=EV[e.camp_id]=EV[e.camp_id]||{}; (c[m]=c[m]||[]).push({...e,d}); });
+    Object.values(EV).forEach(c=>Object.values(c).forEach(a=>a.sort((x,y)=>x.d-y.d))); // dentro do mês, em ordem cronológica
+    rv.rows.forEach(r=>{ (RV[r.camp_id]=RV[r.camp_id]||{})[r.mes]=r; });
+    const FMT_CANAL={SEARCH:'Search',PERFORMANCE_MAX:'P.Max',SHOPPING:'Shopping',DISPLAY:'Display',VIDEO:'Vídeo',DEMAND_GEN:'Geração de Demanda'};
+    const dimDe={}; dim.forEach(c=>dimDe[c.camp_id]=c);
+    Object.keys(AM).forEach(id=>{ if(dimDe[id]) return; const r=Object.values(AM[id]).sort((a,b)=>a.mes<b.mes?1:-1)[0]; // campanha fora da dimensão (removida antes da foto): só aparece em "todas"
+      dimDe[id]={camp_id:id,nome:r.nome||id,canal:r.canal||'',status:'REMOVED',formato:FMT_CANAL[r.canal]||r.canal||'',linha:'Outros',foraDim:true}; });
+    const diasMes=m=>new Date(+m.slice(0,4),+m.slice(5,7),0).getDate();
+    const diasDec=m=>m<mesAtual?diasMes(m):Math.max(1,ssAte.slice(0,7)===m?+ssAte.slice(8,10):+hoje.slice(8,10)-1); // dias decorridos do mês (p/ cobertura SharpSpring)
+    const fechadas=new Set(); const LNK='color:inherit;text-decoration:underline dotted;text-underline-offset:3px';
+    const f1=v=>(v!=null&&isFinite(v))?nf1.format(v):'—';
+    const lerF=()=>{ const g=k=>localStorage.getItem(k)||''; const s=g('bbhub-bi-status'), m=g('bbhub-bi-meses'); // valor persistido fora das opções → padrão (senão o select mostra uma coisa e o filtro aplica outra)
+      return {linha:g('bbhub-bi-linha'),fmt:g('bbhub-bi-fmt'),status:['ativas','pausadas','todas'].includes(s)?s:'ativas',meses:['6','12','24','todos'].includes(m)?m:'12',busca:g('bbhub-bi-busca')}; };
+    const fmtEv=e=>`${String(e.d.getDate()).padStart(2,'0')}/${String(e.d.getMonth()+1).padStart(2,'0')} · ${e.resumo||e.campos||'?'} · ${(e.usuario||'').split('@')[0]||'?'} (${e.origem||'Ads'})`;
+    const desenha=()=>{
+      const F=lerF();
+      const mesIni=(()=>{ if(F.meses==='todos') return '0000-00'; const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-(+F.meses-1)); return mdIso(d).slice(0,7); })();
+      const meses=[...mesesSet].filter(m=>m>=mesIni&&m<=mesAtual&&!MD_BI_MESES_EXCL.includes(m)).sort();
+      const mesesFracos=meses.filter(m=>(diasSS[m]||0)<0.6*diasDec(m));
+      /* ---- ticket médio Google: campanha-mês → campanha no intervalo → conta no mês ---- */
+      const tkConta={}; meses.forEach(m=>{ let v=0,n=0; Object.values(AM).forEach(c=>{ const r=c[m]; if(r){ v+=+r.valor_conv||0; n+=+r.conv||0; } }); tkConta[m]=n>0?v/n:0; });
+      const tkCamp={}; Object.entries(AM).forEach(([id,c])=>{ let v=0,n=0; meses.forEach(m=>{ const r=c[m]; if(r){ v+=+r.valor_conv||0; n+=+r.conv||0; } }); tkCamp[id]=n>0?v/n:0; });
+      const ticket=(id,m)=>{ const r=AM[id]?.[m]; if(r&&+r.conv>0&&+r.valor_conv>0) return {t:+r.valor_conv/+r.conv,src:'ticket Google da campanha no mês'}; // conv sem valor (ex.: Search B2B 2025) → cai no ticket da campanha/conta em vez de ROAS 0
+        if(tkCamp[id]>0) return {t:tkCamp[id],src:'sem conversão Google com valor no mês → ticket da campanha no intervalo'}; if(tkConta[m]>0) return {t:tkConta[m],src:'sem conversão Google na campanha → ticket da conta no mês'}; return {t:null,src:'sem ticket'}; };
+      const calc=(id,m)=>{ const a=AM[id]?.[m], s=SM[id]?.[m]; if(!a&&!s) return null;
+        const custo=+a?.custo||0, cliques=+a?.cliques||0, conv=+a?.conv||0, vconv=+a?.valor_conv||0;
+        const leads=+s?.leads||0, visitas=+s?.visitas||0, cm=+s?.compradores_mes||0, any=+s?.compras_any||0, last=+s?.compras_last||0, excl=+s?.compras_excl||0;
+        const tk=ticket(id,m), t=tk.t; const recAny=t!=null?any*t:null, recLast=t!=null?last*t:null, recExcl=t!=null?excl*t:null;
+        const D=diasDec(m), dss=diasSS[m]||0;
+        return {mes:m,custo,cliques,conv,vconv,leads,visitas,cm,any,last,excl,ticket:t,tkSrc:tk.src,recAny,recLast,recExcl,recG:vconv,
+          roasAny:custo>0&&recAny!=null?recAny/custo:null,roasLast:custo>0&&recLast!=null?recLast/custo:null,roasExcl:custo>0&&recExcl!=null?recExcl/custo:null,roasG:custo>0?vconv/custo:null,
+          cpa:last>0?custo/last:null,razao:last>0?conv/last:null,cpc:cliques>0?custo/cliques:null,D,dss,fraco:dss<0.6*D}; };
+      const soma=rows=>{ const t={custo:0,cliques:0,conv:0,vconv:0,leads:0,visitas:0,cm:0,any:0,last:0,excl:0,recAny:0,recLast:0,recExcl:0,recG:0,n:0,nFraco:0};
+        rows.forEach(r=>{ for(const k of ['custo','cliques','conv','vconv','leads','visitas','cm','any','last','excl']) t[k]+=r[k]; t.recAny+=r.recAny||0; t.recLast+=r.recLast||0; t.recExcl+=r.recExcl||0; t.recG+=r.recG||0; t.n++; if(r.fraco) t.nFraco++; });
+        return {...t,roasAny:t.custo>0?t.recAny/t.custo:null,roasLast:t.custo>0?t.recLast/t.custo:null,roasExcl:t.custo>0?t.recExcl/t.custo:null,roasG:t.custo>0?t.recG/t.custo:null,cpa:t.last>0?t.custo/t.last:null,razao:t.last>0?t.conv/t.last:null,cpc:t.cliques>0?t.custo/t.cliques:null,ticket:t.conv>0?t.vconv/t.conv:null}; };
+      const camps=Object.values(dimDe).map(c=>{ const ms=meses.map(m=>calc(c.camp_id,m)).filter(Boolean); return {...c,nome:String(c.nome||c.camp_id),linhaEf:c.linha_manual||c.linha||'Outros',ms,T:soma(ms)}; }).filter(c=>c.ms.length);
+      const custoPor=k=>{ const o={}; camps.forEach(c=>{ const x=c[k]||''; o[x]=(o[x]||0)+c.T.custo; }); return Object.entries(o).sort((a,b)=>b[1]-a[1]).map(e=>e[0]); };
+      const linhasOpt=custoPor('linhaEf'), fmtOpt=custoPor('formato'); const ordL={}; linhasOpt.forEach((l,i)=>ordL[l]=i);
+      const q=F.busca.trim().toLowerCase();
+      const vis=camps.filter(c=>(!F.linha||c.linhaEf===F.linha)&&(!F.fmt||(c.formato||'')===F.fmt)&&(F.status==='todas'||c.status==='ENABLED'||(F.status==='pausadas'&&c.status==='PAUSED'))&&(!q||c.nome.toLowerCase().includes(q)||c.camp_id.includes(q)))
+        .sort((a,b)=>(ordL[a.linhaEf]-ordL[b.linhaEf])||(b.T.custo-a.T.custo)||(a.nome<b.nome?-1:1));
+      const TT=soma(vis.flatMap(c=>c.ms)); const nLM=vis.reduce((s,c)=>s+c.ms.length,0);
+      /* ---- células ---- */
+      const celsTot=(T,unid)=>{ const R='text-align:right'; const fr=T.n>0&&T.nFraco===T.n; const ssS=fr?'color:var(--muted)':''; const cor=v=>fr?'color:var(--muted)':mdCorRoas(v);
+        const av=T.nFraco>0?`<span class="gr" title="⚠ ${T.nFraco}/${T.n} ${unid} sem cobertura SharpSpring (<60% dos dias) — compras e ROAS reais subestimados no Σ">⚠</span>&nbsp;`:'';
+        return `<td style="${R};${ssS}" title="Σ dos leads de cada mês (um lead ativo em vários meses conta em cada um)">${nf.format(T.leads)}<br><small class="gr" style="white-space:nowrap">${nf.format(T.cm)} compr. mês<br>${nf.format(T.visitas)} vis.</small></td><td style="${R};${ssS}">${nf.format(T.any)}</td><td style="${R};${ssS}"><b>${nf.format(Math.round(T.last))}</b><br><small class="gr">piso ${nf.format(T.excl)}</small></td><td style="${R}">${nf.format(Math.round(T.conv))}</td>
+          <td style="${R};${cor(T.roasAny)}">${f1(T.roasAny)}</td><td style="${R};${cor(T.roasLast)}" title="piso (exclusivas) ${f1(T.roasExcl)} · ticket Σ ${T.ticket!=null?rf.format(T.ticket):'—'}">${av}${f1(T.roasLast)}</td><td style="${R};${mdCorRoas(T.roasG)}">${f1(T.roasG)}</td>
+          <td style="${R}">${rf.format(T.custo)}</td><td style="${R};${ssS}">${T.cpa!=null?rf.format(T.cpa):'—'}</td><td style="${R};${ssS}">${T.razao!=null?nf1.format(T.razao):'—'}</td><td style="${R}">${nf.format(T.cliques)}<br><small class="gr">${T.cpc!=null?rf2.format(T.cpc):'—'}</small></td>`; };
+      const linhaMes=(c,r)=>{ const m=r.mes; const evs=EV[c.camp_id]?.[m]||[]; const rev=RV[c.camp_id]?.[m]; const ssS=r.fraco?'color:var(--muted)':''; const cor=v=>r.fraco?'color:var(--muted)':mdCorRoas(v);
+        const cob=r.fraco?`⚠ SharpSpring cobriu ${r.dss}/${r.D} dias deste mês — compras reais subestimadas`:''; const tit=(...xs)=>{ const t=[cob,...xs].filter(Boolean).join(' · '); return t?` title="${esc(t)}"`:''; };
+        const tkTxt=`${r.tkSrc}: ${r.ticket!=null?rf.format(r.ticket):'—'}`;
+        const evHtml=evs.slice(0,8).map(e=>`<div title="${esc([e.campos,e.cliente].filter(Boolean).join(' · '))}">• ${esc(fmtEv(e))}</div>`).join('')+(evs.length>8?`<div class="gr" title="${esc(evs.slice(8).map(fmtEv).join('\n'))}">+${evs.length-8} mudança(s)…</div>`:'');
+        const revHtml=rev&&rev.texto?`<div style="white-space:pre-wrap${evs.length?';margin-top:3px':''}">${esc(rev.texto)}</div><div class="gr">✎ ${esc((rev.editado_por||'').split('@')[0])}${rev.editado_em?' · '+String(rev.editado_em).slice(8,10)+'/'+String(rev.editado_em).slice(5,7):''}</div>`:'';
+        const btn=rv.falta?'':`<button class="btn mdBiEd" data-c="${esc(c.camp_id)}" data-m="${m}" title="editar a revisão manual deste mês" style="padding:0 6px;font-size:10.5px;background:var(--surface2);color:var(--ink);margin-top:2px">✎</button>`;
+        return `<tr class="mdBiMes" data-camp="${esc(c.camp_id)}" data-mes="${m}"><td style="padding-left:24px" title="${m}">${mdBiMesRot(m)}${m===mesAtual&&gAte?` <span class="gr">(parcial até ${gAte.slice(8,10)}/${gAte.slice(5,7)})</span>`:''}${r.fraco?` <span class="gr" title="${esc(cob)}">⚠ SS ${r.dss}/${r.D}d</span>`:''}</td>
+          <td class="mdBiRev" style="white-space:normal;min-width:220px;max-width:380px;font-size:11.5px;line-height:1.35;vertical-align:top">${evHtml}${revHtml}${(evHtml||revHtml)?'':'<span class="gr">—</span> '}${btn}</td>
+          <td style="${ssS}"${tit()}><b>${nf.format(r.leads)}</b><br><small class="gr" style="white-space:nowrap">${nf.format(r.cm)} compr. mês<br>${nf.format(r.visitas)} vis.</small></td>
+          <td style="${ssS}"${tit()}>${nf.format(r.any)}</td>
+          <td style="${ssS}"${tit()}><b>${nf.format(Math.round(r.last))}</b><br><small class="gr">piso ${nf.format(r.excl)}</small></td>
+          <td>${nf.format(Math.round(r.conv))}</td>
+          <td style="${cor(r.roasAny)}"${tit(tkTxt)}>${f1(r.roasAny)}</td>
+          <td style="${cor(r.roasLast)}"${tit(tkTxt,'piso (exclusivas) '+f1(r.roasExcl))}>${f1(r.roasLast)}</td>
+          <td style="${mdCorRoas(r.roasG)}" title="valor de conversão declarado pelo Google ${rf.format(r.vconv)} ÷ custo">${f1(r.roasG)}</td>
+          <td>${rf.format(r.custo)}</td>
+          <td style="${ssS}"${tit()}>${r.cpa!=null?rf.format(r.cpa):'—'}</td>
+          <td style="${ssS}"${tit()}>${r.razao!=null?nf1.format(r.razao):'—'}</td>
+          <td>${nf.format(r.cliques)}<br><small class="gr">${r.cpc!=null?rf2.format(r.cpc):'—'}</small></td></tr>`; };
+      const cabCamp=c=>{ const nEv=c.ms.reduce((s,r)=>s+(EV[c.camp_id]?.[r.mes]||[]).length,0); const fech=fechadas.has(c.camp_id);
+        const alvo=c.troas?'tROAS '+nf1.format(c.troas):c.tcpa?'tCPA '+rf.format(c.tcpa):'sem alvo'; const stTxt=c.status==='ENABLED'?'ativa':c.status==='PAUSED'?'pausada':c.foraDim?'fora da dimensão':'removida';
+        return `<tr class="mdBiCamp" data-camp="${esc(c.camp_id)}" title="clique para ${fech?'abrir':'recolher'} os meses" style="background:var(--surface2);font-weight:600;cursor:pointer;border-top:2px solid var(--hair)${c.status==='ENABLED'?'':';opacity:.7'}"><td colspan="2" style="white-space:normal;max-width:440px">${fech?'▸':'▾'} <a href="${adsUrl(c.camp_id)}" target="_blank" rel="noopener" style="${LNK}" title="abrir no Google Ads">${esc(c.nome)}</a> <span style="font-size:10px;opacity:.55">↗</span> <span class="gr">${esc(c.camp_id)}</span><br>
+          <span class="gr" style="font-weight:400">${esc(c.formato||'—')} · ${esc(c.linhaEf)}${c.papel?' · '+esc(c.papel):''} · ${alvo} · ${c.orcamento_dia?rf.format(c.orcamento_dia)+'/dia':'sem orç.'} · ${stTxt} · Σ ${c.ms.length} mês(es)${nEv?' · '+nEv+' mudança(s)':''}</span></td>${celsTot(c.T,'mês(es)')}</tr>`+(fech?'':c.ms.map(r=>linhaMes(c,r)).join('')); };
+      const grupos=[]; vis.forEach(c=>{ const g=grupos.find(x=>x.L===c.linhaEf); if(g) g.cs.push(c); else grupos.push({L:c.linhaEf,cs:[c]}); });
+      const corpo=grupos.map(g=>{ const TL=soma(g.cs.flatMap(c=>c.ms)); return `<tr style="background:rgba(168,85,247,.09);font-weight:700;border-top:2px solid rgba(168,85,247,.35)"><td colspan="2">${esc(g.L)} <span class="gr" style="font-weight:400">${g.cs.length} camp. · ${nf.format(Math.round(TL.custo/Math.max(1,TT.custo)*100))}% do custo</span></td>${celsTot(TL,'linha(s)-mês')}</tr>`+g.cs.map(cabCamp).join(''); }).join('');
+      const cab=`<thead><tr><th style="min-width:92px">Mês</th><th style="min-width:220px" title="automático: mudanças de alvo/orçamento/status/nome/estratégia vindas do histórico do Google Ads (dd/mm · o quê · quem (origem)) · manual: texto da equipe (✎)">Revisão</th>
+        <th title="leads identificados na SharpSpring com ≥1 visita paga da campanha no mês (≈25% dos cliques) · abaixo: compradores no mês (régua Tableau) e visitas">Leads visitantes</th>
+        <th title="compradores com qualquer toque pago da campanha nos 30 dias antes da compra (teto)">Compradores · qualquer toque 30d</th>
+        <th title="compradores cujo último clique pago em 30 dias foi desta campanha (régua do HUB) · abaixo: exclusivas (piso)">Compradores · último clique 30d</th>
+        <th title="conversões declaradas pelo Google (inclui modeladas/cross-device)">Compradores · Google</th>
+        <th title="qualquer toque × ticket Google ÷ custo (teto). Verde ≥3 · laranja 2,2–3 · vermelho <2,2">ROAS qualquer toque</th><th title="último clique × ticket Google ÷ custo (régua do HUB)">ROAS último clique</th><th title="valor de conversão declarado pelo Google ÷ custo">ROAS Google</th>
+        <th>Custo Ads</th><th title="custo ÷ compradores último clique">CPA real</th><th title="conversões Google ÷ compradores último clique (inflação da medição)">G÷SS</th><th>cliques · CPC</th></tr></thead>`;
+      const faltam=[['fato_ads_campanha_mes',am.falta],['fato_ss_campanha_mes',sm.falta],['ads_change_event',ev.falta],['ads_revisao',rv.falta]].filter(x=>x[1]).map(x=>x[0]);
+      const sel=(id,opts,val,tit)=>`<select id="${id}" title="${tit}" style="padding:6px 10px;font-size:12.5px;max-width:200px">${opts.map(([v,t])=>`<option value="${esc(v)}" ${val===v?'selected':''}>${esc(t)}</option>`).join('')}</select>`;
+      const linhaOpts=[['','todas as linhas'],...linhasOpt.map(l=>[l,l]),...(F.linha&&!linhasOpt.includes(F.linha)?[[F.linha,F.linha+' (sem dados)']]:[])];
+      const fmtOpts=[['','todos os formatos'],...fmtOpt.map(f=>[f,f||'(sem formato)']),...(F.fmt&&!fmtOpt.includes(F.fmt)?[[F.fmt,F.fmt+' (sem dados)']]:[])];
+      const evDesde=ev.rows.length?String(ev.rows[ev.rows.length-1].quando||'').slice(0,10):'';
+      out.innerHTML=mdBiAbas('bi')+`
+        <div class="toolbar" style="margin-top:0">
+          ${sel('biLinha',linhaOpts,F.linha,'linha de produto (ordem: custo no intervalo)')}${sel('biFmt',fmtOpts,F.fmt,'formato da campanha')}
+          ${sel('biStatus',[['ativas','ativas'],['pausadas','ativas + pausadas'],['todas','todas (incl. removidas)']],F.status,'status da campanha')}
+          ${sel('biMeses',[['6','6 meses'],['12','12 meses'],['24','24 meses'],['todos','todos os meses']],F.meses,'intervalo (meses até o atual)')}
+          <input type="search" id="biBusca" placeholder="nome ou id da campanha…" value="${esc(F.busca)}" style="flex:1;min-width:150px;padding:6px 10px;font-size:12.5px">
+          <button class="btn" id="biCsv" title="exporta a tabela filtrada (uma linha por campanha × mês; ; e vírgula decimal)" style="padding:6px 12px;font-size:12px">⬇ CSV</button>
+          <span class="count">${vis.length} campanhas · ${nLM} linhas-mês · ${rf.format(TT.custo)}</span>
+        </div>
+        <div class="banner" style="background:var(--surface2);color:var(--ink2);font-weight:400;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+          <span>📡 Google até <b>${esc(gAte)||'—'}</b></span><span>🛒 SharpSpring até <b>${esc(ssAte)||'—'}</b></span>
+          <span class="gr">intervalo ${meses.length?mdBiMesRot(meses[0])+' → '+mdBiMesRot(meses[meses.length-1]):'—'}</span>
+          ${mesesFracos.length?`<span class="gr" title="meses com cobertura SharpSpring <60% dos dias decorridos (células em cinza)">⚠ sem cobertura SharpSpring: ${mesesFracos.map(mdBiMesRot).join(', ')}</span>`:''}
+          ${MD_BI_MESES_EXCL.some(m=>m>=mesIni&&m<=mesAtual)?`<span class="gr" title="rastreio do site parado de 30/09 a 31/10/26: dados furados — mês removido da análise por decisão do CEO (11/11/26)">∅ excluído da análise: ${MD_BI_MESES_EXCL.filter(m=>m>=mesIni&&m<=mesAtual).map(mdBiMesRot).join(', ')}</span>`:''}
+          ${ev.rows.length?`<span class="gr">${nf.format(ev.rows.length)} mudanças registradas no Google Ads${evDesde?' desde '+evDesde.slice(8,10)+'/'+evDesde.slice(5,7):''}</span>`:''}
+        </div>
+        ${faltam.length?`<div class="banner ambar">⏳ ${faltam.map(t=>'tabela <b>'+t+'</b> ainda não publicada').join(' · ')} — a aba mostra o que já existe; o resto entra quando o ETL rodar.</div>`:''}
+        ${MD_BI_CSS}<div class="tablecard"><div class="tscroll"><table class="mdBiTab">${cab}<tbody>${corpo||`<tr><td colspan="13" class="gr" style="text-align:center;padding:24px">sem campanhas para os filtros atuais</td></tr>`}
+          ${vis.length?`<tr style="font-weight:700;border-top:2px solid var(--hair)"><td colspan="2">Σ filtro <span class="gr" style="font-weight:400">${vis.length} camp.</span></td>${celsTot(TT,'linha(s)-mês')}</tr>`:''}</tbody></table></div></div>
+        <p class="gr" style="margin:8px 2px 0"><b>Leads visitantes</b> = só leads já identificados na SharpSpring (≈25% dos cliques do Google; a identificação ocorre quase sempre no checkout) — não é o tráfego da campanha. Abaixo deles, <i>compr. mês</i> = régua da tabela do marketing (Tableau): lead com visita da campanha e compra no mesmo mês, em qualquer ordem. <b>Qualquer toque 30d</b> = teto (a compra conta para todas as campanhas tocadas). <b>Último clique 30d</b> = régua do HUB; <i>piso</i> = exclusivas (única campanha tocada). <b>Compradores Google</b> = conversões declaradas pelo Google (inclui modeladas e cross-device). <b>ROAS</b> = compradores × ticket médio Google da campanha no mês ÷ custo (sem conversão Google no mês: ticket da campanha no intervalo; depois, da conta no mês). Verde ≥3 · laranja 2,2–3 · vermelho <2,2. Células em cinza = mês com cobertura SharpSpring <60% dos dias; out/26 não aparece (rastreio parado, excluído da análise). Compradores por último clique podem ser fracionários: cliques de campanhas diferentes no mesmo instante dividem a compra. <b>Revisão</b>: mudanças vêm do histórico do Google Ads (acumulado dia a dia pelo ETL); o texto manual (✎) é da equipe.</p>`;
+      /* ---- handlers ---- */
+      mdBiAbasBind();
+      const el=id=>document.getElementById(id);
+      [['biLinha','bbhub-bi-linha'],['biFmt','bbhub-bi-fmt'],['biStatus','bbhub-bi-status'],['biMeses','bbhub-bi-meses']].forEach(([id,k])=>{ const s=el(id); if(s) s.onchange=()=>{ localStorage.setItem(k,s.value); desenha(); }; });
+      const bq=el('biBusca'); if(bq){ let t; bq.oninput=()=>{ clearTimeout(t); t=setTimeout(()=>{ localStorage.setItem('bbhub-bi-busca',bq.value); desenha(); const n=el('biBusca'); if(n){ n.focus(); try{ n.setSelectionRange(n.value.length,n.value.length); }catch(e){} } },300); }; }
+      const bc=el('biCsv'); if(bc) bc.onclick=()=>{ const L=[]; vis.forEach(c=>c.ms.forEach(r=>{ const evs=EV[c.camp_id]?.[r.mes]||[]; const rev=RV[c.camp_id]?.[r.mes]?.texto||'';
+          L.push({linha:c.linhaEf,nome:c.nome,camp_id:c.camp_id,formato:c.formato||'',papel:c.papel||'',status:c.status,mes:r.mes,revisao:[...evs.map(fmtEv),rev].filter(Boolean).join(' | '),leads:r.leads,compradores_mes:r.cm,visitas:r.visitas,any:r.any,last:r.last,excl:r.excl,conv:r.conv,roasAny:r.roasAny,roasLast:r.roasLast,roasG:r.roasG,custo:r.custo,cpa:r.cpa,razao:r.razao,cliques:r.cliques,cpc:r.cpc,ticket:r.ticket,dias_ss:r.dss}); }));
+        const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+mdBiCsv(L)],{type:'text/csv;charset=utf-8'})); a.download=`bi_campanhas_mes_${hoje}.csv`; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1000); };
+      document.querySelectorAll('.mdBiCamp').forEach(tr=>tr.onclick=e=>{ if(e.target.closest('a,button,input,select,textarea')) return; const id=tr.dataset.camp; if(fechadas.has(id)) fechadas.delete(id); else fechadas.add(id); desenha(); });
+      document.querySelectorAll('.mdBiEd').forEach(b=>b.onclick=()=>{ const td=b.closest('td'); const id=b.dataset.c, m=b.dataset.m; const atual=RV[id]?.[m]?.texto||'';
+        td.innerHTML=`<textarea rows="3" placeholder="o que foi feito / o que observar neste mês…" style="width:100%;min-width:230px;resize:vertical;font:inherit;font-size:12px;padding:6px 8px;color:var(--ink);background:var(--surface);border:1px solid var(--hair);border-radius:8px">${esc(atual)}</textarea>
+          <div style="display:flex;gap:6px;margin-top:4px"><button class="btn mdBiSalvar" style="padding:3px 10px;font-size:11px">salvar</button><button class="btn mdBiCanc" style="padding:3px 10px;font-size:11px;background:var(--surface2);color:var(--ink)">cancelar</button></div>`;
+        const ta=td.querySelector('textarea'); ta.focus();
+        td.querySelector('.mdBiCanc').onclick=()=>desenha();
+        td.querySelector('.mdBiSalvar').onclick=async()=>{ const bs=td.querySelector('.mdBiSalvar'); bs.disabled=true; let em=st.email||''; if(!em){ try{ em=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e){ em='?'; } }
+          const row={camp_id:id,mes:m,texto:ta.value.trim(),editado_por:em,editado_em:new Date().toISOString()};
+          const {error}=await sb.from('ads_revisao').upsert(row,{onConflict:'camp_id,mes'}); if(error){ bs.disabled=false; alert('Erro ao salvar: '+error.message); return; }
+          (RV[id]=RV[id]||{})[m]=row; desenha(); }; });
+    };
+    desenha();
+  }catch(e){ out.innerHTML=mdBiAbas('bi')+'<p class="gr">Erro: '+esc(e.message||e)+'</p>'; mdBiAbasBind(); console.error(e); }
+}
 async function renderImportUrg(){
   // 🚨 Importações urgentes v4 (CEO 25/10): LEAD REAL POR BLOCO (telas 75d · baterias 90 · fontes 100 ·
   // teclados 110 · ssd/mem 45 · dsc/dv 120). Emergência = cobertura (estoque+trânsito, em dias) < lead do bloco
