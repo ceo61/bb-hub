@@ -317,7 +317,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261111-173425';
+const BUILD='20261111-212905';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -785,7 +785,7 @@ async function renderManha(){
           <td style="text-align:right">${rf.format(Math.round(x.mtd))}</td><td>${dlt(x.mtd,x.mtdAnt)}</td>
           <td style="text-align:right">${nr||'—'}</td></tr>`; }).join('')}</tbody>
     </table></div></div>
-    <p class="gr" style="font-size:11.5px;margin-top:8px">Venda/lucro = faturado (BASE BBDI, todas as unidades) · conversão = GA4 do site · ads = custo Google por produto do grupo. Ontem parcial? Confira o semáforo no topo.</p>`;
+    <p class="gr" style="font-size:11.5px;margin-top:8px">Venda/lucro = faturado da unidade 002 (B2C, BASE BBDI) — atacado e ML ficam fora · conversão = GA4 do site · ads = custo Google por produto do grupo. Ontem parcial? Confira o semáforo no topo.</p>`;
   document.querySelectorAll('.mhg,.mhrow').forEach(b=>b.onclick=()=>{ st.mhG=b.dataset.g; try{localStorage.setItem('bbhub-manha-g',st.mhG);}catch(e){} renderManha(); });
 }
 function renderRadar(modoProdutos){
