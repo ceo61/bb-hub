@@ -317,7 +317,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261111-212905';
+const BUILD='20261116-081402';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -1187,16 +1187,16 @@ function montaSugestoes(){
   const out=[];
   for(const m of st.markup){
     if(!m.custo||!m.p_site||!m.mk_site) continue;
-    const alvo=st.mkMed[m.grupo+'|'+m.geracao] ?? st.mkMed[m.grupo];
-    if(!alvo) continue;
-    const ratio=m.mk_site/alvo;
+    // grupo sem mediana (<8 amostras, ex. FCNN com 7 refs) — decisão CEO 16/11/26: NÃO corta mais;
+    // a linha entra na CTRL sem alvo (— na tela) e sem sugestão automática. A régua dos 8 fica como está.
+    const alvo=st.mkMed[m.grupo+'|'+m.geracao] ?? st.mkMed[m.grupo] ?? null;
+    const ratio=alvo?m.mk_site/alvo:null;
     let diag='ok';
     if(m.mk_site<1) diag='subir urgente';
-    else if(ratio>1.6) diag=(m._conv!=null&&m._conv>=medConv&&m._views>=50)?'caro mas converte':(m._views>=50?'reduzir':'sem trafego');
-    else if(ratio<0.55) diag='subir';
-    let por, avista;
-    if(diag==='ok'||diag==='caro mas converte'){ avista=m.p_site; por=+(m.p_site/0.95).toFixed(2); }  // manter
-    else ({por,avista}=porArred(alvo*m.custo));
+    else if(ratio!=null&&ratio>1.6) diag=(m._conv!=null&&m._conv>=medConv&&m._views>=50)?'caro mas converte':(m._views>=50?'reduzir':'sem trafego');
+    else if(ratio!=null&&ratio<0.55) diag='subir';
+    let avista=m.p_site, por=+(m.p_site/0.95).toFixed(2);  // manter (único caminho quando não há alvo)
+    if(alvo&&diag!=='ok'&&diag!=='caro mas converte') ({por,avista}=porArred(alvo*m.custo));
     const alvoA=st.mkMedA[m.grupo+'|'+m.geracao] ?? st.mkMedA[m.grupo] ?? null;
     const alvoM=st.mkMedM[m.grupo+'|'+m.geracao] ?? st.mkMedM[m.grupo] ?? null;
     let atacSug=m.p_atacado??null;
@@ -4562,7 +4562,7 @@ async function renderSugestoes(){
   const cOut={site:0,atac:0,ml:0}; lista.forEach(m=>{if(m._outS===2)cOut.site++;if(m._outA===2)cOut.atac++;if(m._outM===2)cOut.ml++;});
   st.sgSel=st.sgSel||new Set();
   $('#conteudo').innerHTML=`
-    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>A edição de preço acontece no extrato 📊 do produto</b> — os campos lá vêm sempre preenchidos com o preço ATUAL de cada canal (sem sugestão automática); o que você alterar e salvar entra na fila. <b>O DE é sempre manual</b> (eu não recalculo DE). Alvos = mediana do markup por canal (UN) × grupo × geração — referência informativa · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — a decisão é do analista. <b style="color:var(--crit)">Preço em vermelho</b> = markup daquele canal a mais de 2 desvios-padrão da distribuição do grupo×geração no mesmo canal; <b style="color:var(--lar)">laranja</b> = entre 1σ e 2σ. Clique nos títulos das colunas para ordenar (2º clique inverte). Clique no <b>código do produto</b> para o raio-X de MC: lucro bruto 365dd e o ritmo 90/60/30 dias e semanas, por canal — é ele que diz se o preço atual está entregando. Aprovar <b>não altera preço</b> — só entra na fila de execução. <b>👨‍👦 Pai/filho:</b> produto com variação (ex.: BB11-DE080 → DE080-H, a versão de 9 células vendida DENTRO da mesma página) aparece com o filho <b style="color:var(--lar)">↳ grudado e indentado</b> logo abaixo do pai, sempre — mesmo que um filtro escondesse o filho. O investimento de Ads concentra no pai (~80%; o Google escolhe qual variação servir), então o <b>ROAS MC vale na linha do pai</b>: lá MC 002 e Ads já somam a família inteira (👨‍👦); a linha do filho aponta "→ pai". Views e compras continuam individuais de cada um (a atribuição por SKU está correta — conferida 05/11/26).</p>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Canal: <b>site (002)</b>. Como funciona o preço no site: o produto é publicado com um preço <b>DE</b> (riscado, de vitrine) e um <b>POR</b>; quem paga no PIX leva <b>−5%</b> sobre o POR — então o que ele paga de verdade é POR×0,95. <b>Aqui você trabalha sempre com o preço final à vista</b> (o que o cliente paga); eu calculo sozinho o POR a publicar (arredondado para terminar em ,90). Markup ML é sobre o líquido (−16% comissão, −R$20 frete). <b>A edição de preço acontece no extrato 📊 do produto</b> — os campos lá vêm sempre preenchidos com o preço ATUAL de cada canal (sem sugestão automática); o que você alterar e salvar entra na fila. <b>O DE é sempre manual</b> (eu não recalculo DE). Alvos = mediana do markup por canal (UN) × grupo × geração — referência informativa; grupo com menos de 8 produtos não forma mediana e a linha aparece com alvo <b>—</b> (a referência é o seu julgamento) · "converte bem" = taxa ≥ ${nf1.format(medConv)}%. <b>Todos os produtos com regra aplicável estão listados</b> — a decisão é do analista. <b style="color:var(--crit)">Preço em vermelho</b> = markup daquele canal a mais de 2 desvios-padrão da distribuição do grupo×geração no mesmo canal; <b style="color:var(--lar)">laranja</b> = entre 1σ e 2σ. Clique nos títulos das colunas para ordenar (2º clique inverte). Clique no <b>código do produto</b> para o raio-X de MC: lucro bruto 365dd e o ritmo 90/60/30 dias e semanas, por canal — é ele que diz se o preço atual está entregando. Aprovar <b>não altera preço</b> — só entra na fila de execução. <b>👨‍👦 Pai/filho:</b> produto com variação (ex.: BB11-DE080 → DE080-H, a versão de 9 células vendida DENTRO da mesma página) aparece com o filho <b style="color:var(--lar)">↳ grudado e indentado</b> logo abaixo do pai, sempre — mesmo que um filtro escondesse o filho. O investimento de Ads concentra no pai (~80%; o Google escolhe qual variação servir), então o <b>ROAS MC vale na linha do pai</b>: lá MC 002 e Ads já somam a família inteira (👨‍👦); a linha do filho aponta "→ pai". Views e compras continuam individuais de cada um (a atribuição por SKU está correta — conferida 05/11/26).</p>
     ${(()=>{
       const anal=c=>{const t=out.filter(m=>m._classe===c);return {tot:t.length, falt:t.filter(m=>!pendSet.has(m.cod)&&!ocultosMov[m.cod]).length};};
       const dia=new Date().getDay();
@@ -4705,7 +4705,7 @@ async function renderSugestoes(){
         ${mcCell(m.cod,'002')}
         ${rmcCell(m)}
         <td>${m.p_site_de?rf2.format(m.p_site_de):'—'}</td>
-        <td><span data-ph="${esc(m.cod)}|002" title="clique: evolução de preço 90d — Site" style="cursor:pointer">${m.p_site_por?rf2.format(m.p_site_por):'—'}<br><b style="border-bottom:1px dotted var(--muted);${corOut(m._outS)}">${rf2.format(m.p_site)}</b> <span class="gr">PIX</span></span><br><span class="gr">mk ${nf1.format(m.mk_site)}× · alvo ${nf1.format(m._alvo)}×</span>${(bb=>bb&&bb.real_novo?`<br><span style="font-size:11.5px;font-weight:800;color:var(--accent)" title="o PIX acima é o preço PADRÃO (tabela cheia) — NA LOJA agora vale o BF: −${(+bb.desconto).toFixed(0)}% (gerido na página 🖤 — volta ao padrão após 05/12)">🖤 BF: ${rf2.format(+bb.real_novo)}</span>`:'')(st.bfBase?.[m.cod])}${(cc=>cc&&cc.cc_avista?`<br><span title="concorrente BGT (à vista B2C) em ${new Date(cc.data+'T12:00:00').toLocaleDateString('pt-BR')}" style="font-size:11px;font-weight:600;color:${m.p_site&&+m.p_site>+cc.cc_avista?'var(--crit)':'var(--good)'}">BGT ${rf2.format(cc.cc_avista)}</span>`:'')(st.ccMap[m.cod])}</td>
+        <td><span data-ph="${esc(m.cod)}|002" title="clique: evolução de preço 90d — Site" style="cursor:pointer">${m.p_site_por?rf2.format(m.p_site_por):'—'}<br><b style="border-bottom:1px dotted var(--muted);${corOut(m._outS)}">${rf2.format(m.p_site)}</b> <span class="gr">PIX</span></span><br><span class="gr">mk ${nf1.format(m.mk_site)}× · alvo ${m._alvo?nf1.format(m._alvo)+'×':'—'}</span>${(bb=>bb&&bb.real_novo?`<br><span style="font-size:11.5px;font-weight:800;color:var(--accent)" title="o PIX acima é o preço PADRÃO (tabela cheia) — NA LOJA agora vale o BF: −${(+bb.desconto).toFixed(0)}% (gerido na página 🖤 — volta ao padrão após 05/12)">🖤 BF: ${rf2.format(+bb.real_novo)}</span>`:'')(st.bfBase?.[m.cod])}${(cc=>cc&&cc.cc_avista?`<br><span title="concorrente BGT (à vista B2C) em ${new Date(cc.data+'T12:00:00').toLocaleDateString('pt-BR')}" style="font-size:11px;font-weight:600;color:${m.p_site&&+m.p_site>+cc.cc_avista?'var(--crit)':'var(--good)'}">BGT ${rf2.format(cc.cc_avista)}</span>`:'')(st.ccMap[m.cod])}</td>
         ${mcCell(m.cod,'005')}
         <td>${m.p_marketplace?`<span data-ph="${esc(m.cod)}|005" title="clique: evolução de preço 90d — ML" style="cursor:pointer;border-bottom:1px dotted var(--muted);${corOut(m._outM)}">${rf2.format(m.p_marketplace)}</span>`:'—'}<br><span class="gr">${m.mk_marketplace?'mk líq '+nf1.format(m.mk_marketplace)+'×':''}${m._alvoM?' · alvo '+nf1.format(m._alvoM)+'×':''}</span></td>`;
       tb.appendChild(tr);
