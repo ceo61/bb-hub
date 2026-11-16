@@ -318,7 +318,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261116-102920';
+const BUILD='20261116-103036';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -6044,7 +6044,8 @@ venda sem: R$ ${nf.format(Math.round(r.v1))} (${nf.format(Math.round(r.q1))} un)
 lucro sem: R$ ${nf.format(Math.round(r.l1))} · média 4 sem: R$ ${nf.format(Math.round(r.med))} → Δ ${r.delta>=0?'+':''}R$ ${nf.format(Math.round(r.delta))}
 Ads sem: R$ ${nf.format(Math.round(r.a1))} · ROAS MC: ${nf1.format(r.roas)}${r.fam?'\n👨‍👦 família somada no pai':''}</title></circle>`; }
       for(const r of plot.slice(0,8)){ const cx=X(r.roas), cy=Y(r.delta), rr=RB(r.v1);
-        g+=`<text x="${(cx+rr+3).toFixed(1)}" y="${(cy+3).toFixed(1)}" font-size="9.5" font-weight="700" fill="var(--ink2)">${esc(r.cod)}</text>`; }
+        const dir=cx+rr+75>W-P.r;  // perto da borda direita o rótulo vira pra dentro
+        g+=`<text x="${(dir?cx-rr-3:cx+rr+3).toFixed(1)}" y="${(cy+3).toFixed(1)}" ${dir?'text-anchor="end"':''} font-size="9.5" font-weight="700" fill="var(--ink2)">${esc(r.cod)}</text>`; }
       svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${g}</svg>`;
     } else svg='<p class="gr" style="margin:18px 0">Nenhum produto do grupo com Ads na semana fechada — veja a tabela abaixo.</p>';
     const badge=r=>r.roas==null?'<span class="gr">⚪ sem Ads</span>':r.roas>=3?(r.delta>=0?'🟢 escalar':'🟡 eficiente, caindo'):(r.delta>=0?'🟠 cresce caro':'🔴 caro e caindo');
