@@ -318,7 +318,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261116-103036';
+const BUILD='20261116-103721';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -6006,8 +6006,17 @@ async function renderQuadrantes(){
     if(!st.qdG){ try{ st.qdG=localStorage.getItem('bbhub-qd-g'); }catch(e){} }
     if(!st.qdG||(st.qdG!=='TODOS'&&!grupos.includes(st.qdG))) st.qdG=grupos[0]||'TODOS';
     const sel=rows.filter(r=>st.qdG==='TODOS'||r.grupo===st.qdG).sort((a,b)=>b.v1-a.v1);
-    const plot=sel.filter(r=>r.roas!=null);
-    const semAds=sel.length-plot.length;
+    // 🔍 zoom-pareto (pedido CEO 16/11): fatia do faturamento acumulado da semana vira filtro;
+    // os eixos re-escalam pra fatia (ymax/vmax saem do plot filtrado), então o zoom é de verdade.
+    const totV=sel.reduce((s,r)=>s+r.v1,0)||1;
+    let accV=0; for(const r of sel){ r.cumA=accV/totV; accV+=r.v1; }
+    const BANDAS=[['t30','até 30% do fatu',0,.30],['f3050','30–50%',.30,.50],['f5070','50–70%',.50,.70],['f7080','70–80%',.70,.80],['f80100','80–100% (cauda)',.80,1.01]];
+    const bandaDe=r=>BANDAS.find(b=>r.cumA>=b[2]&&r.cumA<b[3]);
+    if(!st.qdZ){ try{ st.qdZ=localStorage.getItem('bbhub-qd-z'); }catch(e){} st.qdZ=st.qdZ||'tudo'; }
+    const nB={}; sel.forEach(r=>{ const b=bandaDe(r); if(b) nB[b[0]]=(nB[b[0]]||0)+1; });
+    const selZ=st.qdZ==='tudo'?sel:sel.filter(r=>bandaDe(r)?.[0]===st.qdZ);
+    const plot=selZ.filter(r=>r.roas!=null);
+    const semAds=selZ.length-plot.length;
     const fmtD=s=>s.slice(8,10)+'/'+s.slice(5,7);
     /* ---- gráfico ---- */
     const W=980,H=520,P={l:66,r:22,t:26,b:40},RX=10;
@@ -6051,9 +6060,14 @@ Ads sem: R$ ${nf.format(Math.round(r.a1))} · ROAS MC: ${nf1.format(r.roas)}${r.
     const badge=r=>r.roas==null?'<span class="gr">⚪ sem Ads</span>':r.roas>=3?(r.delta>=0?'🟢 escalar':'🟡 eficiente, caindo'):(r.delta>=0?'🟠 cresce caro':'🔴 caro e caindo');
     out.innerHTML=`
       <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px">Só as <b>semanas da CTRL</b>, canal site (002). <b>X = ROAS MC</b> da última semana fechada (<b>seg ${fmtD(s1i)} – dom ${fmtD(s1f)}</b>: lucro bruto ÷ Ads do produto na mesma janela) · <b>Y = Δ de lucro</b> (sem fechada − média semanal das 4 anteriores, ${fmtD(s5i)}–${fmtD(s5f)}) · <b>tamanho da bolha ∝ venda</b> da semana. Cortes: ROAS 3 (régua da CTRL) e Δ 0. Clique na bolha ou no código para o raio-X de MC.</p>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px">${[...grupos,'TODOS'].map(g2=>`<button class="btn qdg" data-g="${esc(g2)}" style="padding:5px 12px;${g2===st.qdG?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${esc(g2)}</button>`).join('')}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px">${[...grupos,'TODOS'].map(g2=>`<button class="btn qdg" data-g="${esc(g2)}" style="padding:5px 12px;${g2===st.qdG?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${esc(g2)}</button>`).join('')}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;align-items:center">
+        <span class="gr" style="font-size:11.5px;font-weight:700">🔍 Zoom — fatia da venda da semana (pareto do grupo):</span>
+        <button class="btn qdz" data-z="tudo" style="padding:4px 11px;font-size:12px;${st.qdZ==='tudo'?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">Tudo (${nf.format(sel.length)})</button>
+        ${BANDAS.map(([id,lb])=>`<button class="btn qdz" data-z="${id}" style="padding:4px 11px;font-size:12px;${id===st.qdZ?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${lb} (${nf.format(nB[id]||0)})</button>`).join('')}
+      </div>
       <div class="tablecard" style="padding:10px 14px;margin-bottom:12px">${svg}
-        <p class="gr" style="margin:6px 0 0;font-size:11px">${semAds?semAds+' produto(s) sem Ads na semana ficam só na tabela (sem ROAS). ':''}ROAS acima de ${RX} desenha na borda direita · 👨‍👦 = família somada no pai (doutrina da CTRL).</p></div>
+        <p class="gr" style="margin:6px 0 0;font-size:11px">${st.qdZ!=='tudo'?`<b>Zoom ativo — ${(BANDAS.find(b=>b[0]===st.qdZ)||[])[1]}</b>: ${nf.format(selZ.length)} produto(s), R$ ${nf.format(Math.round(selZ.reduce((s,r)=>s+r.v1,0)))} da semana; eixos e bolhas re-escalados pra faixa. `:''}${semAds?semAds+' produto(s) sem Ads na semana ficam só na tabela (sem ROAS). ':''}ROAS acima de ${RX} desenha na borda direita · 👨‍👦 = família somada no pai (doutrina da CTRL).</p></div>
       <div class="tablecard"><div class="tscroll"><table><thead><tr>
         <th style="text-align:left">Produto</th><th>Situação</th>
         <th title="venda 002 na semana fechada">Venda sem</th><th>un</th>
@@ -6062,7 +6076,7 @@ Ads sem: R$ ${nf.format(Math.round(r.a1))} · ROAS MC: ${nf1.format(r.roas)}${r.
         <th title="lucro da semana − média semanal">Δ R$</th><th>Δ %</th>
         <th title="custo Google atribuído ao produto na mesma semana">Ads sem</th>
         <th title="lucro sem ÷ Ads sem — régua: <3 vermelho · 3-5 laranja · ≥5 verde">ROAS MC</th></tr></thead>
-      <tbody>${sel.slice(0,200).map(r=>{
+      <tbody>${selZ.slice(0,200).map(r=>{
         const dpct=r.med>0?r.delta/r.med*100:null;
         return `<tr>
         <td style="text-align:left;white-space:nowrap"><b class="qdCod" data-cod="${esc(r.cod)}" style="cursor:pointer;border-bottom:1px dotted var(--muted)">${esc(r.cod)}</b>${r.fam?' <span title="família somada no pai">👨‍👦</span>':''}<br><span class="gr" style="font-size:11px">${esc((r.descricao||'').slice(0,36))}</span></td>
@@ -6075,8 +6089,9 @@ Ads sem: R$ ${nf.format(Math.round(r.a1))} · ROAS MC: ${nf1.format(r.roas)}${r.
         <td style="color:${dpct==null?'var(--muted)':dpct>=0?'var(--good)':'var(--crit)'}">${dpct!=null?(dpct>=0?'+':'')+nf.format(Math.round(dpct))+'%':'—'}</td>
         <td>${r.a1?rf.format(Math.round(r.a1)):'—'}</td>
         <td style="${corRmcFix(r.roas)}">${r.roas!=null?nf1.format(r.roas):'—'}</td></tr>`;}).join('')}</tbody>
-      </table></div>${sel.length>200?`<p class="gr" style="margin:6px 14px 10px;font-size:11px">exibindo os 200 maiores por venda de ${nf.format(sel.length)} produtos</p>`:''}</div>`;
+      </table></div>${selZ.length>200?`<p class="gr" style="margin:6px 14px 10px;font-size:11px">exibindo os 200 maiores por venda de ${nf.format(selZ.length)} produtos</p>`:''}</div>`;
     document.querySelectorAll('.qdg').forEach(b=>b.onclick=()=>{ st.qdG=b.dataset.g; try{localStorage.setItem('bbhub-qd-g',st.qdG);}catch(e){} renderQuadrantes(); });
+    document.querySelectorAll('.qdz').forEach(b=>b.onclick=()=>{ st.qdZ=b.dataset.z; try{localStorage.setItem('bbhub-qd-z',st.qdZ);}catch(e){} renderQuadrantes(); });
     document.querySelectorAll('.qdB,.qdCod').forEach(el=>el.onclick=()=>abreMC(el.dataset.cod,null));
   }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
 }
