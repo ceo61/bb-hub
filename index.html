@@ -45,12 +45,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,tr:focus-visible,a
 
 /* ---------- shell ---------- */
 .shell{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
-aside.nav{background:var(--surface);border-right:1px solid var(--hair);padding:16px 10px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh}
+aside.nav{background:var(--surface);border-right:1px solid var(--hair);padding:16px 10px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh;overflow-y:auto;overscroll-behavior:contain}
 .mark{display:flex;align-items:center;gap:10px;padding:6px 10px 16px}
 .mark svg{flex:none}
 .mark .name{font-size:16px;font-weight:700}
 .mark .name small{display:block;font-size:10.5px;font-weight:500;color:var(--muted)}
-.nav a{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:9px;color:var(--ink2);text-decoration:none;font-size:13.5px}
+.nav a{display:flex;align-items:center;gap:9px;padding:7px 12px;border-radius:9px;color:var(--ink2);text-decoration:none;font-size:13.5px}
 .nav a:hover{background:var(--surface2);color:var(--ink)}
 .nav a.ativo{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .nav a .soon{margin-left:auto;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;background:var(--surface2);color:var(--muted);border-radius:99px;padding:2px 7px}
@@ -318,7 +318,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261119-105459';
+const BUILD='20261119-111657';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -2150,7 +2150,7 @@ async function renderAdsCentral(){
     /* ---- 📋 ata de testes e mudanças (19/11/2026, pedido do CEO: o que mudou, o que olhar e quando conferir; tabela ads_ata) ---- */
     let ataHtml='';
     try{
-      const A=Array.isArray(ata)?ata:[];
+      const A=(Array.isArray(ata)?ata:[]).filter(a=>a.status!=='ignorado');
       const fdA=s=>s?String(s).slice(8,10)+'/'+String(s).slice(5,7):'—';
       const CATN={BNOT:'Bateria',LCD:'Tela',FONTES:'Fonte',TECL:'Teclado',CAM:'Câmera',GERAL:'Geral'};
       const CATC={BNOT:'#2563eb',LCD:'#9333ea',FONTES:'#ea580c',TECL:'#059669',CAM:'#64748b',GERAL:'#475569'};
@@ -2175,7 +2175,7 @@ async function renderAdsCentral(){
           ${st.admin?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">
             ${a.status==='em teste'?btnA('ataSt',a.id,'✔ deu certo','data-st="deu certo"')+btnA('ataSt',a.id,'✖ não deu certo','data-st="não deu certo"')+btnA('ataAdia',a.id,'⏭ checar daqui a 3 dias'):''}
             ${a.status==='proposta'||a.status==='pendente'?btnA('ataSt',a.id,'arquivar','data-st="encerrado"'):''}
-            ${btnA('ataNota',a.id,'📝 anotar')}</div>`:''}
+            ${btnA('ataNota',a.id,'📝 anotar')}${btnA('ataIgn',a.id,'🗑 ignorar')}</div>`:''}
         </div>`;
       const linhaA=(a,info)=>`<details style="border-top:1px solid var(--hair);padding:6px 0"><summary style="cursor:pointer">${chipA(a.categoria)} <b>${esc(a.titulo||'')}</b> <span class="gr" style="font-size:11.5px">${info||''}</span></summary>${detA(a)}</details>`;
       const blocoA=(tit,cor,lista,info)=>lista.length?`<div style="margin-top:8px"><div style="font-size:12px;font-weight:700;margin:2px 0;${cor?'color:'+cor:''}">${tit}</div>${lista.map(a=>linhaA(a,info(a))).join('')}</div>`:'';
@@ -2300,6 +2300,9 @@ async function renderAdsCentral(){
       const it=(Array.isArray(ata)?ata:[]).find(x=>String(x.id)===b.dataset.id)||{};
       const t=prompt('Anotação para este item da ata:', it.anotacao_ceo||''); if(t===null) return;
       b.disabled=true; await sb.from('ads_ata').update({anotacao_ceo:t}).eq('id',b.dataset.id); renderAdsCentral(); });
+    document.querySelectorAll('.ataIgn').forEach(b=>b.onclick=async()=>{
+      if(!confirm('Ignorar este item? Ele sai da ata (fica guardado no banco e dá para recuperar).')) return;
+      b.disabled=true; await sb.from('ads_ata').update({status:'ignorado'}).eq('id',b.dataset.id); renderAdsCentral(); });
     document.querySelectorAll('.acAut').forEach(b=>b.onclick=async()=>{
       let em='?'; try{ em=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e){}
       b.disabled=true;
