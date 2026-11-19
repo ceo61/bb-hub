@@ -305,7 +305,18 @@ const nf  = new Intl.NumberFormat('pt-BR');
 const nf1 = new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1});
 const rf  = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
 const rf2 = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
-const dtBR = iso => { if(!iso) return '—'; const d=new Date(iso); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); };
+// 2ª linha da célula Saldo (CEO 19/11/26, caso BB11-DE3590): o útil soma filiais que o site não
+// enxerga (1030 = seller SP, vende ~só p/ SP). "matriz" = 0101 arm. 01+98 + 1020 arm. 01, crua.
+// Vermelho abaixo de 5 (mesma régua do útil): acabou p/ o site, mesmo com útil alto.
+const mtzTag = (m, e98) => {
+  if(m==null) return '';
+  const crit = m < 5;
+  const tip = `Matriz = 0101 (arm. 01 + 98) + 1020 (arm. 01) — o estoque que abastece o site.`
+    + (e98>0 ? ` Desse total, ${nf.format(Math.round(e98))} estão no 98 (importação): o site só enxerga depois da transferência p/ o 01.` : '')
+    + (crit ? ' Abaixo de 5 = ACABOU p/ o site; o resto do saldo útil está nas filiais (1030 = seller SP, 1040 = seller MG, 0104/0105 = atacado).' : '');
+  return `<br><span style="font-size:10.5px;white-space:nowrap;${crit?'color:var(--crit);font-weight:700':'color:var(--muted)'}" title="${tip}">matriz ${nf.format(Math.round(m))}${e98>0?'*':''}</span>`;
+};
+const dtBR =iso => { if(!iso) return '—'; const d=new Date(iso); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); };
 const d8 = s => (s&&s.length===8) ? `${s.slice(6,8)}/${s.slice(4,6)}/${s.slice(2,4)}` : '—';
 const hojeISO = () => new Date().toLocaleDateString('sv-SE');
 const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -318,7 +329,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261119-111657';
+const BUILD='20261119-150954';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -983,7 +994,7 @@ async function carregaMarkup(){
     const [mkRaw, abcRows, estqRows, convRows, bfRows] = await Promise.all([
       tudo('precos_markup', {eq:[['snapshot',st.snap]]}),
       tudo('abc_produto', {select:'cod,classe,pct_acum', eq:[]}),
-      tudo('fato_estoque', {select:'cod,estoque_util', eq:[['snapshot',st.snap]]}),
+      tudo('fato_estoque', {select:'cod,estoque_util,estoque_matriz,estoque_98', eq:[['snapshot',st.snap]]}),
       tudo('conversao_28d', {select:'cod,views,compras,taxa_conv', eq:[]}),
       tudo('bf_baseline', {eq:[]}).catch(()=>[]),
     ]);
@@ -1025,11 +1036,11 @@ async function carregaMarkup(){
       r[g]={m:mn,s:Math.sqrt(v.reduce((s,x)=>s+(x-mn)**2,0)/v.length)};}}return r;};
     st.mkDist=stats(porG); st.mkDistA=stats(porGA); st.mkDistM=stats(porGM);
     st.abc={}; abcRows.forEach(r=>st.abc[r.cod]=r.classe);
-    const estq={}; estqRows.forEach(e=>estq[e.cod]=e.estoque_util);
+    const estq={}, estqM={}; estqRows.forEach(e=>{ estq[e.cod]=e.estoque_util; estqM[e.cod]=e; });
     const tra={}; (st.transito||[]).forEach(t=>{ tra[t.cod]=(tra[t.cod]||0)+(+t.qtd_pendente||0); });
     const conv={}; convRows.forEach(x=>conv[x.cod]=x);
     const radarMap=new Map(st.radar.map(r=>[r.cod,r]));
-    for(const m of st.markup){ const rr=radarMap.get(m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._transito=tra[m.cod]||0; m._meses=GERORD.indexOf(m.geracao); m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); const cv=conv[m.cod]; m._views=cv?.views||0; m._conv=cv?.taxa_conv??null; }
+    for(const m of st.markup){ const rr=radarMap.get(m.cod); m._flags=flagsDe(m,st.mkMed); m._giro=rr?.media_mes||0; m._saldo=estq[m.cod]??0; m._mtz=estqM[m.cod]?.estoque_matriz??null; m._e98=+estqM[m.cod]?.estoque_98||0; m._transito=tra[m.cod]||0; m._meses=GERORD.indexOf(m.geracao); m._ativo=!!(rr&&((rr.media_90||0)>0||(rr.media_mes||0)>0||(rr.media_30||0)>0)); const cv=conv[m.cod]; m._views=cv?.views||0; m._conv=cv?.taxa_conv??null; }
 }
 async function renderPrecos(){
   $('#conteudo').innerHTML='<div class="carregando">Calculando markups…</div>';
@@ -1095,7 +1106,7 @@ async function renderPrecos(){
       <thead><tr>
         <th class="ord" data-c="cod">Produto<span class="seta"></span></th>
         <th class="ord" data-c="_meses">Geração<span class="seta"></span></th>
-        <th class="ord" data-c="_saldo">Saldo<span class="seta"></span></th>
+        <th class="ord" data-c="_saldo" title="estoque útil (7 locais, inclui filiais); embaixo, matriz = 0101 arm. 01+98 + 1020 — o que abastece o site (vermelho &lt; 5 = acabou p/ o site)">Saldo<span class="seta"></span></th>
         <th class="ord" data-c="custo">Custo<span class="seta"></span></th>
         <th class="ord" data-c="mk_atacado">Mk Atac.<span class="seta"></span></th>
         <th class="ord" data-c="mk_site">Mk Site<span class="seta"></span></th>
@@ -1152,7 +1163,7 @@ function linhasMk(){
     const tr=document.createElement('tr'); tr.className='clicavel'; tr.tabIndex=0;
     tr.innerHTML=`<td><span class="cod" title="${esc(m.descricao||'')}">${esc(m.cod)}</span></td>
       <td><span class="gr" title="últimos 12m: ${nf.format(m.u12||0)} un · pico histórico: ${nf.format(m.pico12||0)} un${m.primeira_venda?' · vende desde '+m.primeira_venda.slice(5,7)+'/'+m.primeira_venda.slice(0,4):''}${m.primeira_imp?' · na casa desde '+m.primeira_imp.slice(4,6)+'/'+m.primeira_imp.slice(0,4)+' ('+(m.origem_idade||'importação')+')':''}">${GERLB[m.geracao]||'—'}</span></td>
-      <td>${nf.format(m._saldo)}</td>
+      <td>${nf.format(m._saldo)}${mtzTag(m._mtz,m._e98)}</td>
       <td>${rf2.format(m.custo)}</td>
       <td>${mk(m.mk_atacado)}</td><td>${mk(m.mk_site)}</td><td>${mk(m.mk_marketplace)}</td>
       <td>${pr(m.p_atacado)}</td><td>${(()=>{const bb=st.bfBase?.[m.cod];return bb&&bb.real_novo?`<span style="white-space:nowrap">${pr(m.p_site)}<br><span style="font-size:11px;font-weight:800;color:var(--accent)" title="o preço acima é o PADRÃO (tabela cheia) — NA LOJA agora vale o BF aplicado em ${bb.aplicado_em?new Date(bb.aplicado_em).toLocaleDateString('pt-BR'):''} com −${(+bb.desconto).toFixed(0)}% (volta ao padrão após 05/12; gerido na página 🖤)">🖤 BF ${rf2.format(bb.real_novo)}</span></span>`:pr(m.p_site);})()}</td><td>${m.p_marketplace?`<span title="líquido ${m.p_ml_liquido!=null?rf2.format(m.p_ml_liquido):'—'} (−16% −R$20)">${rf2.format(m.p_marketplace)}</span>`:'—'}</td>
@@ -1451,7 +1462,7 @@ async function abreExtrato(cod, m, acao){
     sb.from('fato_conversao').select('data,views,compras,receita').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
     sb.from('fato_ads').select('data,custo').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
     tudo('fato_precos',{select:'snapshot,codtab,filial,preco_de,preco_por,preco_real',eq:[['cod',cod]],mod:q=>q.gte('snapshot',ini).order('snapshot')}).catch(e=>{console.warn('fato_precos extrato:',e);return[];}),
-    sb.from('fato_estoque').select('snapshot,estoque_util').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
+    sb.from('fato_estoque').select('snapshot,estoque_util,estoque_matriz,estoque_98').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
     sb.from('fato_custo').select('snapshot,custo').eq('cod',cod).gte('snapshot',ini).order('snapshot').then(r=>r.data||[]),
     sb.from('fato_concorrencia').select('data,cc_avista,cc_b2b').eq('cod',cod).gte('data',ini).order('data').then(r=>r.data||[]),
     sb.from('acoes_preco').select('criado_em,status,aprovado_por,preco_atual,preco_sugerido,de_sugerido,atac_sugerido,ml_sugerido,justificativa,obs').eq('cod',cod).in('status',['triagem','aprovado','executar','executado','erro','revisado']).order('criado_em',{ascending:false}).limit(12).then(r=>r.data||[]),
@@ -1489,7 +1500,7 @@ async function abreExtrato(cod, m, acao){
   adF.forEach(r=>{ const a=W[wk(r.data)]; if(a) a.adsF+=+r.custo||0; });
   cvF.forEach(r=>{ const a=W[wk(r.data)]; if(a) a.grF+=+r.receita||0; });
   vdF.forEach(r=>{ const a=W[wk(r.data)]; if(a) a.l2F+=+r.lucro_b2c||0; });
-  es.forEach(r=>{ const a=W[wk(r.snapshot)]; if(a) a.saldo=+r.estoque_util; });
+  es.forEach(r=>{ const a=W[wk(r.snapshot)]; if(a){ a.saldo=+r.estoque_util; a.mtz=r.estoque_matriz!=null?+r.estoque_matriz:null; a.e98=+r.estoque_98||0; } });
   cu.forEach(r=>{ const a=W[wk(r.snapshot)]; if(a) a.custo=+r.custo; });
   cc.forEach(r=>{ const a=W[wk(r.data)]; if(a){ if(r.cc_avista!=null)a.ccav=+r.cc_avista; if(r.cc_b2b!=null)a.ccbb=+r.cc_b2b; } });
   pr.forEach(r=>{ const a=W[wk(r.snapshot)]; if(!a) return;
@@ -1510,7 +1521,7 @@ async function abreExtrato(cod, m, acao){
   adF.forEach(r=>{ const a=M[mesDe(r.data)]; if(a) a.adsF+=+r.custo||0; });
   cvF.forEach(r=>{ const a=M[mesDe(r.data)]; if(a) a.grF+=+r.receita||0; });
   vdF.forEach(r=>{ const a=M[mesDe(r.data)]; if(a) a.l2F+=+r.lucro_b2c||0; });
-  es.forEach(r=>{ const a=M[mesDe(r.snapshot)]; if(a) pushU(a.saldo,r.estoque_util); });
+  es.forEach(r=>{ const a=M[mesDe(r.snapshot)]; if(a){ pushU(a.saldo,r.estoque_util); a.mtz=r.estoque_matriz!=null?+r.estoque_matriz:null; a.e98=+r.estoque_98||0; } });
   cu.forEach(r=>{ const a=M[mesDe(r.snapshot)]; if(a) pushU(a.custo,r.custo); });
   cc.forEach(r=>{ const a=M[mesDe(r.data)]; if(a){ if(r.cc_avista!=null)pushU(a.ccav,r.cc_avista); if(r.cc_b2b!=null)pushU(a.ccbb,r.cc_b2b); } });
   pr.forEach(r=>{ const a=M[mesDe(r.snapshot)]; if(!a) return; const f=(r.filial||'').trim();
@@ -1540,7 +1551,7 @@ async function abreExtrato(cod, m, acao){
     const roasMc=filhos.length?(adsT>0?l2T/adsT:null):((a.ads>0&&a.l2!=null)?a.l2/a.ads:null);
     const sep='border-left:2px solid var(--hair);';
     return `<tr${emCurso?' class="emcurso"':''}><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1">${emCurso?'<b style="color:var(--accent)">EM CURSO</b> <span class="gr" title="semana aberta — números parciais; saldo/custo/preços de HOJE">*</span>':'<b>'+w.slice(8,10)+'/'+w.slice(5,7)+'</b>'}${abW[w]?` <span title="teste A/B #${abW[w].id} — semana ${abW[w].n} do teste, braço ${abW[w].braco}" style="background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:10px;border-radius:99px;padding:1px 7px">T${abW[w].n}·${abW[w].braco}</span>`:''}</td>
-      <td style="${tdc}">${a.saldo!=null?nf.format(a.saldo):'—'}${(emCurso&&m?._transito>0)?` <span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}</td>
+      <td style="${tdc}">${a.saldo!=null?nf.format(a.saldo):'—'}${(emCurso&&m?._transito>0)?` <span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}${mtzTag(a.mtz,a.e98)}</td>
       <td style="${tdc}${corF(folga)}">${F.d1(folga)}</td>
       <td style="${tdc}">${F.m(a.custo)}</td>
       <td style="${tdc}${sep}">${F.n(a.q1)}</td>
@@ -1588,7 +1599,7 @@ async function abreExtrato(cod, m, acao){
     const sep='border-left:2px solid var(--hair);';
     const dm=new Date(ms+'T12:00:00');
     return `<tr><td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${MESLB[dm.getMonth()]}/${String(dm.getFullYear()).slice(2)}</b>${parcial?' <span class="gr" title="mês em andamento — números parciais">*</span>':''}</td>
-      <td style="${tdc}">${saldoU!=null?nf.format(saldoU):'—'}${(parcial&&m?._transito>0)?` <span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}</td>
+      <td style="${tdc}">${saldoU!=null?nf.format(saldoU):'—'}${(parcial&&m?._transito>0)?` <span class="gr" title="encomendado em importação (POs abertos, qtd pendente)">(+${nf.format(m._transito)})</span>`:''}${mtzTag(a.mtz,a.e98)}</td>
       <td style="${tdc}${corF(folga)}">${F.d1(folga)}</td>
       <td style="${tdc}">${custoU!=null?rf2.format(custoU):'—'}</td>
       <td style="${tdc}${sep}">${F.n(a.q1)}</td>
@@ -1693,7 +1704,7 @@ async function abreExtrato(cod, m, acao){
         <th colspan="13" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair);color:var(--accent)">BBB — SITE (002)</th>
         <th colspan="5" style="padding:5px 8px;text-align:center;letter-spacing:.1em;border-left:2px solid var(--hair)">ML (005)</th></tr>
       <tr>
-        ${th('Saldo','estoque útil no fim da semana (snapshot; histórico desde 15/07/26)')}${th('Folga','saldo ÷ giro 60d÷2 (aprox — total c/ lotões)')}${th('Custo','custo unitário (desde 16/07/26)')}
+        ${th('Saldo','estoque útil no fim da semana (snapshot; histórico desde 15/07/26). Embaixo: matriz = 0101 arm. 01+98 + 1020 — o que abastece o site; vermelho < 5 = acabou p/ o site (desde 19/11/26)')}${th('Folga','saldo ÷ giro 60d÷2 (aprox — total c/ lotões)')}${th('Custo','custo unitário (desde 16/07/26)')}
         ${th('un','unidades atacado no período (semana ou mês)',1)}${th('MC 001','lucro bruto do período no Atacado e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('Tab','preço tabela 001 (real; desde 15/07/26)')}${th('Ticket','ticket médio atacado')}${th('BGT','concorrente B2B cash (desde 13/06/26)')}${th('Mkup','tabela 001 ÷ custo')}
         ${th('un','unidades site no período (semana ou mês)',1)}${th('MC 002','lucro bruto do período no Site e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('DE','preço DE tabela 002 (desde 15/07/26)')}${th('PIX','preço FINAL à vista = POR×0,95 — o que o cliente paga (mesma régua da 1ª página)')}${th('Prat.','preço praticado site')}${th('BGT','concorrente à vista B2C (desde 13/06/26)')}${th('Mkup','PIX (à vista real) ÷ custo — mesmo mk da 1ª página')}${th('Compras','compras GA4 do período (pedido feito no site — independe do faturamento)')}${th('Conv','compras GA4 ÷ views GA4')}${th('Views','acessos GA4')}${th('Ads','investimento Google Ads — produto com filhos 👨‍👦: a célula soma a família (pai + filhos); o mouse mostra a divisão')}${th('ROAS GA4','receita GA4 ÷ Ads — venda do período no site, não o faturamento. Produto com filhos: família somada · filho: → pai')}${th('ROAS MC','MC 002 (lucro bruto BASE BBDI) ÷ Ads do período — régua fixa: <3 vermelho · 3 a 5 laranja · ≥5 verde. Produto com filhos: família somada · filho: → pai')}
         ${th('un','unidades Mercado Livre no período',1)}${th('MC 005','lucro bruto do período no ML e MC% (lucro ÷ receita) — BASE BBDI. Cores: <30% vermelho · 30-40% âmbar · ≥40% verde')}${th('Tab','preço tabela 401')}${th('Ticket','ticket médio ML')}${th('Mkup','tabela 401 ÷ custo')}</tr>
@@ -3345,7 +3356,7 @@ async function renderDiario(){
   ]);
   const snapE=se.data?.[0]?.snapshot, snapP=sp.data?.[0]?.snapshot, snapC=sc.data?.[0]?.data;
   const [est,pr,cc]=await Promise.all([
-    snapE?tudo('fato_estoque',{select:'cod,estoque_util',eq:[['snapshot',snapE]],mod:q=>q.in('cod',cods)}):[],
+    snapE?tudo('fato_estoque',{select:'cod,estoque_util,estoque_matriz,estoque_98',eq:[['snapshot',snapE]],mod:q=>q.in('cod',cods)}):[],
     snapP?tudo('fato_precos',{select:'cod,filial,preco_real',eq:[['snapshot',snapP],['codtab','002']],mod:q=>q.in('cod',cods)}):[],
     snapC?tudo('fato_concorrencia',{select:'cod,cc_avista',eq:[['data',snapC]],mod:q=>q.in('cod',cods)}):[],
   ]);
@@ -3353,7 +3364,7 @@ async function renderDiario(){
   ads7.forEach(r=>A[r.cod]=(A[r.cod]||0)+(+r.custo||0));
   dim.forEach(r=>D[r.cod]=r.descricao||'');
   const G={}; abc.forEach(r=>G[r.cod]=r.grupo_abc||'OUTROS');
-  est.forEach(r=>E[r.cod]=+r.estoque_util);
+  const EM={}; est.forEach(r=>{ E[r.cod]=+r.estoque_util; EM[r.cod]=r; });
   pr.forEach(r=>{ if(String(r.filial).trim()==='10') P[r.cod]=+r.preco_real||null; });
   cc.forEach(r=>C[r.cod]=+r.cc_avista||null);
   for(const p of eleg){
@@ -3361,7 +3372,7 @@ async function renderDiario(){
     p._rmc=p._ads>0?(+p.mc7_b2c||0)/p._ads:null;
     p._pix=P[p.cod]??null; p._bgt=C[p.cod]??null;
     p._gap=(p._pix&&p._bgt)?(p._pix/p._bgt-1)*100:null;
-    p._saldo=E[p.cod]??null;
+    p._saldo=E[p.cod]??null; p._mtz=EM[p.cod]?.estoque_matriz??null; p._e98=+EM[p.cod]?.estoque_98||0;
     p._mcp=(+p.rec7_b2c>0)?(+p.mc7_b2c)/(+p.rec7_b2c)*100:null;
   }
   st.diSort=st.diSort||'un_sem'; st.diDir=st.diDir??true;
@@ -3386,7 +3397,7 @@ async function renderDiario(){
       <th data-k="_pix" title="preço à vista PIX hoje (002/10)" style="cursor:pointer">PIX</th>
       <th data-k="_bgt" title="BGT à vista — último scrape" style="cursor:pointer">BGT</th>
       <th data-k="_gap" title="PIX ÷ BGT − 1" style="cursor:pointer">Gap</th>
-      <th data-k="_saldo" title="estoque útil hoje" style="cursor:pointer">Saldo</th>
+      <th data-k="_saldo" title="estoque útil hoje; embaixo, matriz = 0101 arm. 01+98 + 1020 — o que abastece o site (vermelho &lt; 5 = acabou p/ o site)" style="cursor:pointer">Saldo</th>
     </tr></thead><tbody id="diCorpo"></tbody></table></div></div>`;
   const desenha=()=>{
     const f=($('#diBusca').value||'').toUpperCase();
@@ -3408,7 +3419,7 @@ async function renderDiario(){
       <td>${p._pix!=null?rf2.format(p._pix):'—'}</td>
       <td style="color:var(--muted)">${p._bgt!=null?rf2.format(p._bgt):'—'}</td>
       <td style="${diCorGap(p._gap)}">${p._gap!=null?(p._gap>0?'+':'')+nf1.format(p._gap)+'%':'—'}</td>
-      <td>${p._saldo!=null?nf.format(Math.round(p._saldo)):'—'}</td>
+      <td>${p._saldo!=null?nf.format(Math.round(p._saldo)):'—'}${mtzTag(p._mtz,p._e98)}</td>
     </tr>`).join('');
   };
   desenha();
@@ -3440,7 +3451,7 @@ async function abreDiario(cod, desc){
     sb.from('fato_conversao').select('data,views,compras,receita').eq('cod',cod).gte('data',ini),
     sb.from('fato_precos').select('snapshot,filial,preco_real').eq('cod',cod).eq('codtab','002').gte('snapshot',ini),
     sb.from('fato_concorrencia').select('data,cc_avista').eq('cod',cod).gte('data',ini),
-    sb.from('fato_estoque').select('snapshot,estoque_util').eq('cod',cod).gte('snapshot',ini),
+    sb.from('fato_estoque').select('snapshot,estoque_util,estoque_matriz,estoque_98').eq('cod',cod).gte('snapshot',ini),
   ]);
   const DD={};
   const dd=d=>DD[d]=DD[d]||{un2:0,rec:0,mc:0,un1:0,unm:0,ads:null,clq:null,vw:null,pix:null,bgt:null,saldo:null};
@@ -3449,7 +3460,7 @@ async function abreDiario(cod, desc){
   (cv.data||[]).forEach(r=>{ const a=dd(r.data); a.vw=(a.vw||0)+(+r.views||0); a.gc=(a.gc||0)+(+r.compras||0); a.gr=(a.gr||0)+(+r.receita||0); });
   (pr.data||[]).forEach(r=>{ if(String(r.filial).trim()==='10') dd(r.snapshot).pix=+r.preco_real||null; });
   (cc.data||[]).forEach(r=>{ dd(r.data).bgt=+r.cc_avista||null; });
-  (es.data||[]).forEach(r=>{ dd(r.snapshot).saldo=+r.estoque_util; });
+  (es.data||[]).forEach(r=>{ const a=dd(r.snapshot); a.saldo=+r.estoque_util; a.mtz=r.estoque_matriz!=null?+r.estoque_matriz:null; a.e98=+r.estoque_98||0; });
   const dias=[]; for(let i=14;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); dias.push(d.toLocaleDateString('sv-SE')); }
   const SEM=['dom','seg','ter','qua','qui','sex','sáb'];
   const tdc='padding:6px 8px;text-align:right;white-space:nowrap;';
@@ -3463,7 +3474,7 @@ async function abreDiario(cod, desc){
     if(!hoje){ T.un2+=a.un2; T.rec+=a.rec; T.mc+=a.mc; T.un1+=a.un1; T.unm+=a.unm; T.ads+=a.ads||0; T.clq+=a.clq||0; T.vw+=a.vw||0; T.gc+=a.gc||0; T.gr+=a.gr||0; if(gap!=null)T.gaps.push(gap); nFech++; }
     return `<tr${hoje?' style="opacity:.75"':''}>
       <td style="${tdc}text-align:left;position:sticky;left:0;background:var(--surface);z-index:1"><b>${dt.slice(8,10)}/${dt.slice(5,7)}</b> <span style="font-size:10.5px;color:${fds?'var(--warn)':'var(--muted)'}">${SEM[dow]}</span>${hoje?' <span class="gr" title="hoje — números parciais">*</span>':''}</td>
-      <td style="${tdc}">${a.saldo!=null?nf.format(Math.round(a.saldo)):'—'}</td>
+      <td style="${tdc}">${a.saldo!=null?nf.format(Math.round(a.saldo)):'—'}${mtzTag(a.mtz,a.e98)}</td>
       <td style="${tdc}"><b>${a.un2?nf.format(a.un2):'—'}</b></td>
       <td style="${tdc}">${a.rec?rf.format(a.rec):'—'}</td>
       <td style="${tdc}">${a.rec?`${rf.format(a.mc)} <small style="${diCorMC(mcp)}">${mcp!=null?nf1.format(mcp)+'%':''}</small>`:'—'}</td>
@@ -3511,7 +3522,7 @@ async function abreDiario(cod, desc){
     <div class="tscroll" style="max-height:70vh"><table style="width:100%;min-width:0;font-size:12.5px">
       <thead><tr>
         <th style="padding:6px 8px;text-align:left;position:sticky;left:0;top:0;background:var(--surface);z-index:3">Dia</th>
-        <th title="estoque útil no snapshot do dia">Saldo</th><th title="unidades site (002)">Un 002</th><th title="receita site">Receita</th>
+        <th title="estoque útil no snapshot do dia; embaixo, matriz = 0101 arm. 01+98 + 1020 — o que abastece o site (vermelho &lt; 5 = acabou p/ o site; desde 19/11/26)">Saldo</th><th title="unidades site (002)">Un 002</th><th title="receita site">Receita</th>
         <th title="MC 002 (lucro bruto BASE BBDI) e MC%: <30% vermelho · 30-40% âmbar · ≥40% verde">MC 002</th>
         <th title="receita ÷ unidades do dia">Ticket</th><th title="preço à vista PIX (002/10, snapshot do dia)">PIX</th>
         <th title="BGT à vista (scrape do dia; diário desde 27/08)">BGT</th><th title="PIX ÷ BGT − 1">Gap</th>
