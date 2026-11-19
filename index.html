@@ -318,7 +318,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261116-104556';
+const BUILD='20261118-225703';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -6122,7 +6122,7 @@ async function renderBlackFriday(){
   const hoje = new Date().toLocaleDateString('sv-SE');
   const fAtual = fases.findIndex(f => hoje >= f[0] && hoje <= f[1]);
   const ult = rows.filter(r => r.atualizado_em).sort((a, b) => b.atualizado_em.localeCompare(a.atualizado_em))[0];
-  const grupos = rows.filter(r => r.grupo !== '_global').sort((a, b) => (b.params.rec60||0) - (a.params.rec60||0));
+  const grupos = rows.filter(r => r.grupo !== '_global' && r.grupo !== '_slots').sort((a, b) => (b.params.rec60||0) - (a.params.rec60||0));
   const dBR = s => s ? s.slice(8,10) + '/' + s.slice(5,7) : '—';
   const num = (id, v, step, w, tit) => `<input id="${id}" type="number" step="${step||1}" value="${v}" title="${tit||''}" style="width:${w||54}px;padding:3px 5px;font-size:12.5px;text-align:right">`;
 
@@ -6165,6 +6165,10 @@ async function renderBlackFriday(){
     </table></div></div>
     <p class="gr" style="margin:10px 0 0">Última gravação: ${ult?esc(ult.atualizado_por||'?')+' em '+new Date(ult.atualizado_em).toLocaleString('pt-BR'):'—'}. Grupos = famílias da Visão Global (familia_produto). Grupo sem linha aqui fica SEM desconto.</p>
     <div id="bfMsg"></div>
+    <div class="tablecard" style="padding:10px 14px;margin:14px 0 4px">
+      <b>🧩 Famílias — slots</b> <span class="gr" style="font-size:12px">produto × marca × opção. Slot <b>LIGADO</b> é regra viva: todo 👁/📤 recalcula a família inteira pela opção (o preço segue o BGT do dia, mesmo com a tela filtrada em outro grupo); desligou, a família volta ao plano normal no próximo envio. <b>OPÇÃO 1 — colar no BGT</b>: deixa o à vista alguns centavos abaixo do concorrente (final ,97 ,95 ,90 ,89; concorrente com centavos baixos → real de baixo e ,90). Acima do BGT <b>desce</b> (só com folga ≥ ${G.cob_min}m e MC resultante acima do piso de ${G.piso_mc}%); mais de R$ 5 abaixo, <b>sobe</b> até colar (se passar do padrão, o padrão sobe junto e vira o novo preço cheio).</span>
+      <div id="bfSlots" style="display:grid;gap:6px;margin-top:8px"><span class="gr">carregando slots…</span></div>
+    </div>
     <h3 style="margin:18px 0 6px">Descontos — você no comando, referência a referência</h3>
     <p class="gr" style="margin:0 0 8px"><b>Tudo começa SEM desconto.</b> A coluna do desconto mostra o que o plano prevê para a fase atual (com as travas) — mas só entra na loja a referência que você <b>marcar no ✓</b> e <b>ENVIAR no botão 📤</b>. Desmarcou + enviou, sai (preço original volta). Depois do envio a coluna status mostra "NA LOJA". Nada é aplicado automaticamente. 🔴 = desova. Sem grupo escolhido, mostra os <b>95/5</b>.</p>
     <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
@@ -6191,6 +6195,50 @@ async function renderBlackFriday(){
     // chave 👥: admin sempre opera; os demais só com a liberação ligada (bf_acesso — o banco valida de novo via RLS)
     try{ const {data:ac} = await sb.from('bf_acesso').select('liberado').eq('id',1).maybeSingle(); st.bfLib = !!ac?.liberado; }catch(e){ st.bfLib = false; }
     const podeBF = st.admin || !!st.bfLib;
+    // 🧩 slots de família (CEO 18/11): produto × marca × opção, gravados em bf_params '_slots'
+    {
+      const SLOT_PROD=[['','— produto —'],['bateria','Bateria notebook'],['teclado','Teclado'],['fonte','Fonte']];
+      const SLOT_MARCAS=['','ACER','APPLE','ASUS','DELL','HP','LENOVO','SAMSUNG'];
+      const FAMP={bateria:'BNOT',teclado:'TECL',fonte:'FONTES'};
+      const slotsSaved=(P._slots?.slots)||[];
+      const slotCont=$('#bfSlots');
+      const nRefs=(prod,marca)=>{ if(!prod||!marca) return null;
+        const re=new RegExp('(^|[^A-Z])'+marca+'([^A-Z]|$)');
+        return pl.filter(r=>r.grupo===FAMP[prod]&&re.test((r.descr||'').toUpperCase())).length; };
+      const salvaSlots=async()=>{ const {error}=await sb.from('bf_params').upsert({grupo:'_slots',
+          params:{slots:slotsSaved}, atualizado_por:st.email, atualizado_em:new Date().toISOString()});
+        if(error){ alert('Erro ao salvar slot: '+error.message); return false; } return true; };
+      const desenhaSlots=()=>{
+        slotCont.innerHTML=[1,2,3].map(i=>{ const s=slotsSaved.find(x=>x&&+x.slot===i)||{};
+          const on=!!s.ligado, n=nRefs(s.produto,s.marca);
+          return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 10px;border:1.5px solid ${on?'var(--accent)':'var(--hair)'};border-radius:9px">
+            <b style="font-size:12px;min-width:84px;color:${on?'var(--accent)':'var(--muted)'}">SLOT ${i}${on?' · LIGADO':''}</b>
+            <select data-sl="${i}" data-f="produto" style="padding:4px 8px" ${podeBF?'':'disabled'}>${SLOT_PROD.map(([v,l])=>`<option value="${v}" ${(s.produto||'')===v?'selected':''}>${l}</option>`).join('')}</select>
+            <select data-sl="${i}" data-f="marca" style="padding:4px 8px" ${podeBF?'':'disabled'}>${SLOT_MARCAS.map(m2=>`<option value="${m2}" ${(s.marca||'')===m2?'selected':''}>${m2||'— marca —'}</option>`).join('')}</select>
+            <select data-sl="${i}" data-f="opcao" style="padding:4px 8px" ${podeBF?'':'disabled'}><option value="1">OPÇÃO 1 — colar no BGT</option></select>
+            <span class="gr" style="font-size:11.5px">${n!=null?n+' refs no plano':''}</span>
+            ${podeBF?`<button class="btn" data-slbtn="${i}" style="padding:4px 14px;font-weight:700;${on?'':'background:var(--accent);color:#fff;border-color:var(--accent)'}">${on?'desligar':'ligar'}</button>`:''}
+            <span class="gr" style="font-size:11px">${s.em?esc((s.por||'?').split('@')[0])+' · '+new Date(s.em).toLocaleDateString('pt-BR'):''}</span>
+          </div>`; }).join('')+
+          `<span class="gr" style="font-size:11px">ligou/desligou: a mudança entra na loja no próximo 👁 + 📤 (a prévia mostra cada preço). Mudar produto/marca de um slot ligado o DESLIGA — religue para valer.</span>`;
+        document.querySelectorAll('[data-slbtn]').forEach(b2=>b2.onclick=async()=>{
+          const i=+b2.dataset.slbtn; let s=slotsSaved.find(x=>x&&+x.slot===i);
+          if(!s){ s={slot:i}; slotsSaved.push(s); }
+          if(!s.ligado&&!(s.produto&&s.marca)){ alert('Escolha produto e marca antes de ligar.'); return; }
+          const antes=!!s.ligado; s.ligado=!antes; s.por=st.email; s.em=new Date().toISOString();
+          if(!(await salvaSlots())){ s.ligado=antes; return; }
+          P._slots={slots:slotsSaved}; desenhaSlots();
+        });
+        document.querySelectorAll('#bfSlots select').forEach(sel2=>sel2.onchange=async()=>{
+          const i=+sel2.dataset.sl; let s=slotsSaved.find(x=>x&&+x.slot===i);
+          if(!s){ s={slot:i}; slotsSaved.push(s); }
+          s[sel2.dataset.f]=sel2.dataset.f==='opcao'?+sel2.value:sel2.value;
+          if(s.ligado) s.ligado=false;   // trocar a combinação com regra viva exige religar
+          await salvaSlots(); P._slots={slots:slotsSaved}; desenhaSlots();
+        });
+      };
+      if(slotCont) desenhaSlots();
+    }
     pl.sort((a, b) => (+b.gmv30 || 0) - (+a.gmv30 || 0));
     const totG = pl.reduce((s, r) => s + (+r.gmv30 || 0), 0);
     let acc = 0;
@@ -6383,7 +6431,7 @@ async function renderBlackFriday(){
       if(!prev){ stE.textContent = 'não consegui ler a prévia — chame o Claude'; return; }
       const ms = prev.mudancas || [];
       if(!ms.length){ $('#bfPreview').innerHTML = `<p style="margin:4px 0 12px;color:var(--good);font-weight:600">✅ Nada a mudar nas ${escopo.length} referências do filtro atual — loja igual às marcações e ao plano de hoje.</p>`; return; }
-      const TL = {novo: 'novo desconto', repreco: 're-preço', restaura: '↩ volta ao padrão'};
+      const TL = {novo: 'novo desconto', repreco: 're-preço', restaura: '↩ volta ao padrão', slot: '🧩 slot de família'};
       const nN = ms.filter(m => m.tipo === 'novo').length, nR = ms.filter(m => m.tipo === 'repreco').length, nV = ms.filter(m => m.tipo === 'restaura').length;
       const nOrfa = ms.filter(m => (m.mot || '').includes('saiu do plano')).length;
       $('#bfPreview').innerHTML = `<div class="tablecard" style="padding:14px 18px;margin:0 0 14px;border:2px solid var(--accent)">
