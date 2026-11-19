@@ -318,7 +318,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261118-225703';
+const BUILD='20261119-105459';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -1959,14 +1959,15 @@ async function renderAdsCentral(){
   try{
     const d63=(()=>{const d=new Date(); d.setDate(d.getDate()-63); return d.toLocaleDateString('sv-SE');})();
     const ontem=(()=>{const d=new Date(); d.setDate(d.getDate()-1); return d.toLocaleDateString('sv-SE');})();
-    const [cfg,diario,alvos,ga4o,fato,fx,fxm]=await Promise.all([
+    const [cfg,diario,alvos,ga4o,fato,fx,fxm,ata]=await Promise.all([
       tudo('ads_campanha_cfg',{eq:[]}),
       tudo('fato_ads_campanha',{mod:q=>q.gte('data',d63).order('data',{ascending:true}).order('camp_id',{ascending:true})}),
       tudo('ads_alvos',{mod:q=>q.in('status',['proposto','autorizado','erro']).order('id',{ascending:false})}),
       sb.from('fato_conversao').select('compras').eq('data',ontem).then(r=>(r.data||[]).reduce((s,x)=>s+(+x.compras||0),0)),
       sb.from('fato_vendas_diaria').select('qtd_b2c').eq('data',ontem).then(r=>(r.data||[]).reduce((s,x)=>s+(+x.qtd_b2c||0),0)),
       tudo('ads_fluxo_hora',{mod:q=>q.order('data',{ascending:true}).order('hora',{ascending:true})}),
-      tudo('ads_fluxo_media',{mod:q=>q.order('hora',{ascending:true}).order('camp_id',{ascending:true})})]);
+      tudo('ads_fluxo_media',{mod:q=>q.order('hora',{ascending:true}).order('camp_id',{ascending:true})}),
+      sb.from('ads_ata').select('*').order('checar_em',{ascending:true,nullsFirst:false}).then(r=>r.data||[],()=>[])]);
     const hoje=new Date().toLocaleDateString('sv-SE');
     const d7=(()=>{const d=new Date(); d.setDate(d.getDate()-7); return d.toLocaleDateString('sv-SE');})();
     const d14=(()=>{const d=new Date(); d.setDate(d.getDate()-14); return d.toLocaleDateString('sv-SE');})();
@@ -2146,6 +2147,50 @@ async function renderAdsCentral(){
           <td></td>
           <td style="text-align:left;font-size:12px">faltam <b>R$ ${nf.format(Math.round(gapG))}/dia</b> vs setembro</td></tr>`;
       }).join('');
+    /* ---- 📋 ata de testes e mudanças (19/11/2026, pedido do CEO: o que mudou, o que olhar e quando conferir; tabela ads_ata) ---- */
+    let ataHtml='';
+    try{
+      const A=Array.isArray(ata)?ata:[];
+      const fdA=s=>s?String(s).slice(8,10)+'/'+String(s).slice(5,7):'—';
+      const CATN={BNOT:'Bateria',LCD:'Tela',FONTES:'Fonte',TECL:'Teclado',CAM:'Câmera',GERAL:'Geral'};
+      const CATC={BNOT:'#2563eb',LCD:'#9333ea',FONTES:'#ea580c',TECL:'#059669',CAM:'#64748b',GERAL:'#475569'};
+      const chipA=c=>`<span style="display:inline-block;min-width:54px;text-align:center;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:9px;background:${(CATC[c]||'#475569')}22;color:${CATC[c]||'#475569'}">${CATN[c]||esc(c||'')}</span>`;
+      const diasA=s=>Math.round((new Date(s+'T12:00:00')-new Date(hoje+'T12:00:00'))/864e5);
+      const emTeste=A.filter(a=>a.status==='em teste');
+      const vence=emTeste.filter(a=>a.checar_em&&a.checar_em<=hoje);
+      const andam=emTeste.filter(a=>!a.checar_em||a.checar_em>hoje);
+      const props=A.filter(a=>a.status==='proposta'||a.status==='pendente');
+      const fech=A.filter(a=>['deu certo','não deu certo','encerrado'].includes(a.status)).sort((a,b)=>String(b.atualizado_em||'').localeCompare(String(a.atualizado_em||''))).slice(0,20);
+      const campo=(rot,v,pre)=>v?`<div><b>${rot}:</b> <span${pre?' style="white-space:pre-line"':''}>${esc(v)}</span></div>`:'';
+      const btnA=(cls,id,txt,extra)=>`<button class="btn ${cls}" data-id="${id}" ${extra||''} style="padding:2px 9px;font-size:11px">${txt}</button>`;
+      const detA=a=>`<div style="font-size:12.5px;line-height:1.5;margin:6px 0 4px;padding-left:10px;border-left:3px solid var(--hair);display:grid;gap:4px">
+          ${campo('O que mudou'+(a.data_mudanca?' ('+fdA(a.data_mudanca)+')':''),a.o_que_mudou)}
+          ${campo('Por quê',a.por_que)}
+          ${campo('O que olhar',a.o_que_olhar)}
+          ${campo('Se der certo',a.se_der_certo)}
+          ${campo('Leituras',a.resultado,true)}
+          ${campo('Anotação',a.anotacao_ceo,true)}
+          ${a.rollback?`<div class="gr" style="font-size:11.5px">Como desfazer: ${esc(a.rollback)}</div>`:''}
+          ${a.origem?`<div class="gr" style="font-size:11.5px">Origem: ${esc(a.origem)}</div>`:''}
+          ${st.admin?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">
+            ${a.status==='em teste'?btnA('ataSt',a.id,'✔ deu certo','data-st="deu certo"')+btnA('ataSt',a.id,'✖ não deu certo','data-st="não deu certo"')+btnA('ataAdia',a.id,'⏭ checar daqui a 3 dias'):''}
+            ${a.status==='proposta'||a.status==='pendente'?btnA('ataSt',a.id,'arquivar','data-st="encerrado"'):''}
+            ${btnA('ataNota',a.id,'📝 anotar')}</div>`:''}
+        </div>`;
+      const linhaA=(a,info)=>`<details style="border-top:1px solid var(--hair);padding:6px 0"><summary style="cursor:pointer">${chipA(a.categoria)} <b>${esc(a.titulo||'')}</b> <span class="gr" style="font-size:11.5px">${info||''}</span></summary>${detA(a)}</details>`;
+      const blocoA=(tit,cor,lista,info)=>lista.length?`<div style="margin-top:8px"><div style="font-size:12px;font-weight:700;margin:2px 0;${cor?'color:'+cor:''}">${tit}</div>${lista.map(a=>linhaA(a,info(a))).join('')}</div>`:'';
+      ataHtml=`<div class="tablecard" style="padding:12px 16px;margin-bottom:12px">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <b>📋 Ata de testes e mudanças</b>
+          <span class="gr" style="font-size:11.5px">${vence.length} para checar hoje · ${andam.length} em andamento · ${props.length} propostas e pendências · clique num item para ver o que mudou, o que olhar e o que fazer</span>
+        </div>
+        ${vence.length?'':'<div class="gr" style="font-size:12px;margin-top:6px">✅ Nada vence hoje.</div>'}
+        ${blocoA('🔔 Checar hoje','var(--crit)',vence,a=>'checar desde '+fdA(a.checar_em))}
+        ${blocoA('⏳ Em andamento','',andam,a=>a.checar_em?('checar em '+fdA(a.checar_em)+' · faltam '+diasA(a.checar_em)+'d'):'sem data')}
+        ${blocoA('💡 Propostas e pendências (nada aplicado)','',props,a=>a.status)}
+        ${fech.length?`<details style="margin-top:8px"><summary class="gr" style="cursor:pointer;font-size:12px">Encerrados (${fech.length})</summary>${fech.map(a=>linhaA(a,a.status+(a.resultado_em?' · '+fdA(a.resultado_em):''))).join('')}</details>`:''}
+      </div>`;
+    }catch(e){ ataHtml=''; console.warn('ata', e); }
     out.innerHTML=`
       <div class="banner ${medidorOk?'':'ambar'}" style="${medidorOk?'background:var(--good-soft);color:var(--good)':'background:var(--crit-soft);color:var(--crit)'};font-weight:700">
         ${medidorOk?'🟢 medidor de conversão OK':'🔴 MEDIDOR DE CONVERSÃO QUEBRADO'} — ontem: ${nf.format(ga4o)} compras no GA4 × ${nf.format(fato)} un faturadas no site. ${medidorOk?'':'O purchase do GA4 não está disparando: Smart Bidding às cegas. Não solte orçamento antes de consertar.'}
@@ -2165,6 +2210,7 @@ async function renderAdsCentral(){
         ${fila.map(a=>`<div>⚙️ <b>${esc(a.nome)}</b> autorizado — aplicando em ≤2 min…</div>`).join('')}
         ${erros.map(a=>`<div>⚠ <b>${esc(a.nome)}</b>: <span class="gr">${esc(a.obs||'')}</span> <button class="btn acDesc" data-id="${a.id}" style="padding:2px 10px;font-size:11px">limpar</button></div>`).join('')}
       </div>`:''}
+      ${ataHtml}
       <div class="tablecard" style="padding:12px 16px;margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
           <b>💸 Fluxo do investimento</b>
@@ -2245,6 +2291,15 @@ async function renderAdsCentral(){
       if(error){ alert('Erro: '+error.message); return; }
       renderAdsCentral();
     });
+    document.querySelectorAll('.ataSt').forEach(b=>b.onclick=async()=>{
+      b.disabled=true; await sb.from('ads_ata').update({status:b.dataset.st}).eq('id',b.dataset.id); renderAdsCentral(); });
+    document.querySelectorAll('.ataAdia').forEach(b=>b.onclick=async()=>{
+      b.disabled=true; const d=new Date(); d.setDate(d.getDate()+3);
+      await sb.from('ads_ata').update({checar_em:d.toLocaleDateString('sv-SE')}).eq('id',b.dataset.id); renderAdsCentral(); });
+    document.querySelectorAll('.ataNota').forEach(b=>b.onclick=async()=>{
+      const it=(Array.isArray(ata)?ata:[]).find(x=>String(x.id)===b.dataset.id)||{};
+      const t=prompt('Anotação para este item da ata:', it.anotacao_ceo||''); if(t===null) return;
+      b.disabled=true; await sb.from('ads_ata').update({anotacao_ceo:t}).eq('id',b.dataset.id); renderAdsCentral(); });
     document.querySelectorAll('.acAut').forEach(b=>b.onclick=async()=>{
       let em='?'; try{ em=(await sb.auth.getUser()).data.user?.email||'?'; }catch(e){}
       b.disabled=true;
