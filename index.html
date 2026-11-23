@@ -329,7 +329,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261119-150954';
+const BUILD='20261123-120229';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -4486,7 +4486,7 @@ async function renderAprovacoes(){
   $('#conteudo').innerHTML=`
     <p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Conferência em DUAS etapas (04/11/26): a sugestão do analista passa primeiro pela <b>1ª revisão (${REV1_NOME})</b> e depois pela <b>revisão final (Alessandro)</b> — só então vai pro ERP. Exceções: mudanças do <b>Alessandro</b> e do próprio <b>${REV1_NOME}</b> entram direto na revisão final; as do <b>Wesley</b> (ML), aprovadas na 1ª revisão, vão <b>direto pro ERP</b>. Clique no código do produto para o extrato completo (curvas, MC, concorrente, histórico) antes de decidir. Devolver cancela com motivo — o analista vê no histórico do produto.</p>
     ${st.rev1?secT+secF:secF+secT}
-    ${emExec.length?`<div class="banner ambar" style="margin-top:14px">🔄 <b>${emExec.length} em aplicação no ERP</b> (executor roda a cada 2 min — esta tela atualiza sozinha): ${emExec.map(a=>`<b>${esc(a.cod)}</b>`).join(', ')}</div>`:''}
+    ${emExec.length?`<div class="banner ambar" style="margin-top:14px" id="apExecBox">🔄 <b>${emExec.length} em aplicação no ERP</b> (executor roda a cada 2 min — aviso aqui quando terminar): ${emExec.map(a=>`<b>${esc(a.cod)}</b>`).join(', ')}</div>`:''}
     ${comErro.length?`<div class="banner" style="margin-top:14px;background:var(--crit-soft);color:var(--crit)">⚠️ <b>${comErro.length} com erro:</b> ${comErro.map(a=>`<div style="font-weight:400;font-size:12.5px;margin-top:4px"><b>${esc(a.cod)}</b> <span style="opacity:.8">${esc((a.obs||'').slice(-100))}</span> ${st.admin?`<button data-apre="${a.id}" style="border:1px solid var(--hair);border-radius:6px;padding:2px 10px;margin-left:8px">tentar de novo</button><button data-apnao="${a.id}" style="border:1px solid var(--hair);border-radius:6px;padding:2px 10px;margin-left:6px">cancelar</button>`:''}</div>`).join('')}</div>`:''}
     ${(feitas||[]).length?`<div class="tablecard" style="margin-top:14px;padding:12px 16px"><div class="eyebrow" style="margin-bottom:7px">✅ Aplicadas nas últimas 48h</div>
       <div style="display:grid;gap:5px;font-size:12.5px">${feitas.map(a=>`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:baseline"><span class="gr">${dh(a.executado_em)}</span><b>${esc(a.cod)}</b><span>${mud(a)}</span><span class="gr">${quem(a.aprovado_por)}</span>${a.justificativa?`<span style="flex:1;color:var(--ink2)">“${esc(a.justificativa)}”</span>`:''}</div>`).join('')}</div></div>`:''}`;
@@ -4543,7 +4543,26 @@ async function renderAprovacoes(){
     renderAprovacoes();
   });
   clearTimeout(st._apT);
-  if(emExec.length) st._apT=setTimeout(()=>{ if(st.pg==='aprovacoes') renderAprovacoes(); },30000);
+  // vigia SILENCIOSA (CEO 23/11/26): mesma regra da CTRL — sem re-render automático
+  if(emExec.length){
+    const vigiaAp=async()=>{
+      if(st.pg!=='aprovacoes') return;
+      const box=document.getElementById('apExecBox');
+      if(!box) return;
+      try{
+        const {data:ex2}=await sb.from('acoes_preco').select('cod,status').in('status',['executar','erro']).in('cod',emExec.map(a=>a.cod));
+        const rod=(ex2||[]).filter(a=>a.status==='executar'), err=(ex2||[]).filter(a=>a.status==='erro');
+        if(!rod.length){
+          box.innerHTML='✅ <b>Aplicação no ERP concluída</b>'+(err.length?` — <b style="color:var(--crit)">${err.length} com erro</b>`:'')+' <button class="btn" id="apExecRef" style="padding:3px 14px;margin-left:8px">atualizar a tela</button>';
+          const b=document.getElementById('apExecRef'); if(b) b.onclick=()=>renderAprovacoes();
+          return;
+        }
+        box.innerHTML='🔄 <b>'+rod.length+' em aplicação no ERP</b> (aviso aqui quando terminar): '+rod.map(a=>'<b>'+esc(a.cod)+'</b>').join(', ');
+      }catch(e){}
+      st._apT=setTimeout(vigiaAp,30000);
+    };
+    st._apT=setTimeout(vigiaAp,30000);
+  }
 }
 async function abreMCsemanal(cod, m){
   let ov=document.getElementById('mcModal');
@@ -4653,9 +4672,9 @@ async function renderSugestoes(){
         <span style="color:var(--muted)">${esc(a.diagnostico||'')} · ${new Date(a.criado_em).toLocaleDateString('pt-BR')} · ${a.status==='triagem'?'1ª revisão ('+REV1_NOME+')':'revisão final'}</span>
         <button data-cancela="${a.id}" style="margin-left:auto;color:var(--crit);font-weight:600;border:1px solid var(--hair);border-radius:6px;padding:2px 10px">desfazer</button>
       </div>`).join('')}
-      ${emExec.length?`<div>🔄 <b>${emExec.length} em aplicação no ERP</b> — o executor roda a cada 2 min no Mac; esta tela atualiza sozinha.</div>`:''}
+      ${emExec.length?`<div id="sgExecBox"><div>🔄 <b>${emExec.length} em aplicação no ERP</b> — o executor roda a cada 2 min no Mac; aviso aqui quando terminar (a tela não recarrega sozinha).</div>
       ${emExec.map(a=>`<div style="display:flex;align-items:center;gap:10px;font-weight:400;font-size:12.5px">
-        <b>${esc(a.cod)}</b> ${a.preco_sugerido!=null?`${rf2.format(a.preco_atual)} → <b>${rf2.format(a.preco_sugerido)}</b>`:`<span class="gr">site mantém</span>`} <span style="color:var(--muted)">aplicando…</span></div>`).join('')}
+        <b>${esc(a.cod)}</b> ${a.preco_sugerido!=null?`${rf2.format(a.preco_atual)} → <b>${rf2.format(a.preco_sugerido)}</b>`:`<span class="gr">site mantém</span>`} <span style="color:var(--muted)">aplicando…</span></div>`).join('')}</div>`:''}
       ${comErro.length?`<div>⚠️ <b>${comErro.length} com erro:</b></div>`:''}
       ${comErro.map(a=>`<div style="display:flex;align-items:center;gap:10px;font-weight:400;font-size:12.5px">
         <b>${esc(a.cod)}</b> <span style="color:var(--muted)">${esc((a.obs||'').slice(-110))}</span>
@@ -4818,7 +4837,27 @@ async function renderSugestoes(){
     renderSugestoes();
   });
   clearTimeout(st._sgT);
-  if(emExec.length) st._sgT=setTimeout(()=>{ if(st.pg==='sugestoes') renderSugestoes(); },30000);
+  // vigia SILENCIOSA (CEO 23/11/26): nada de re-renderizar a página a cada 30s — só o banner muda;
+  // terminou a aplicação, aparece um botão "atualizar a lista" e a decisão é do analista.
+  if(emExec.length){
+    const vigiaExec=async()=>{
+      if(st.pg!=='sugestoes') return;
+      const box=document.getElementById('sgExecBox');
+      if(!box) return;
+      try{
+        const {data:ex2}=await sb.from('acoes_preco').select('cod,status').in('status',['executar','erro']).in('cod',emExec.map(a=>a.cod));
+        const rod=(ex2||[]).filter(a=>a.status==='executar'), err=(ex2||[]).filter(a=>a.status==='erro');
+        if(!rod.length){
+          box.innerHTML='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">✅ <b>Aplicação no ERP concluída</b>'+(err.length?` — <b style="color:var(--crit)">${err.length} com erro</b>`:'')+' <button class="btn" id="sgExecRef" style="padding:3px 14px">atualizar a lista</button> <span style="color:var(--muted);font-weight:400">quando você quiser — seu lugar na análise fica preservado</span></div>';
+          const b=document.getElementById('sgExecRef'); if(b) b.onclick=()=>renderSugestoes();
+          return;
+        }
+        const h=box.querySelector('div'); if(h) h.innerHTML='🔄 <b>'+rod.length+' em aplicação no ERP</b> — '+rod.map(a=>'<b>'+esc(a.cod)+'</b>').join(', ')+' <span style="color:var(--muted);font-weight:400">(aviso aqui quando terminar; a tela não recarrega sozinha)</span>';
+      }catch(e){}
+      st._sgT=setTimeout(vigiaExec,30000);
+    };
+    st._sgT=setTimeout(vigiaExec,30000);
+  }
   let sgt; $('#sgQ').oninput=e=>{clearTimeout(sgt);sgt=setTimeout(()=>{st.sgQ=e.target.value.trim().toUpperCase();st.sgShown=150;desenha();},200);};
   $('#sgG').onchange=e=>{st.sgG=e.target.value;st.sgShown=150;desenha();};
   $('#sgGer').onchange=e=>{st.sgGer=e.target.value;st.sgShown=150;desenha();};
