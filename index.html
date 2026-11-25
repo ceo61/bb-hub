@@ -329,7 +329,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261123-120229';
+const BUILD='20261124-204833';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -6220,6 +6220,63 @@ clique: abrir na CTRL (extrato semanal)</title></circle>`; }
       if(st.qdQFoco){ st.qdQFoco=0; qIn.focus(); const fim=qIn.value.length; try{ qIn.setSelectionRange(fim,fim); }catch(e){} } }
   }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
 }
+/* ⌨️ Teclados — fim da promoção pelo Precificador IA (CEO 24/11/26): extrato da rodada, produto a produto */
+async function renderBfTecl(){
+  const box = $('#bfTecl'); if(!box) return;
+  let rows = [];
+  try{ rows = await tudo('precificador_decisoes', {eq: [['grupo','TECL']], mod: q => q.like('rodada','%BFfim').order('cod')}); }
+  catch(e){ box.innerHTML = ''; return; }
+  if(!rows.length){ box.innerHTML = ''; return; }
+  const rod = rows.map(r => r.rodada).sort().pop();
+  rows = rows.filter(r => r.rodada === rod);
+  const f2 = v => v==null ? '—' : Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const mud = (a, b) => a!=null && b!=null && Math.abs(a-b) > 0.005;
+  const cel = (a, b) => !mud(a,b) ? `<span class="gr">${f2(a)}</span>` :
+    `<span class="gr">${f2(a)} →</span> <b style="color:${b>a?'var(--good)':'var(--crit)'}">${f2(b)}</b><br><span style="font-size:11px;color:${b>a?'var(--good)':'var(--crit)'}">${b>a?'+':''}${((b/a-1)*100).toFixed(1).replace('.',',')}%</span>`;
+  const bfTxt = r => !r.bf ? '<span class="gr">sem BF</span>' :
+    `${r.bf_respondeu==='sim'?'✅ respondeu':r.bf_respondeu==='nao'?'❌ não respondeu':'➖ inconclusivo'}<br><span class="gr" style="font-size:11px">${r.bf_decisao==='manter_preco_bf'?'mantém preço BF':r.bf_decisao==='voltar_original'?'volta ao original':esc(r.bf_decisao||'')}</span>`;
+  const nBf = rows.filter(r => r.bf).length, nResp = rows.filter(r => r.bf && r.bf_decisao==='manter_preco_bf').length;
+  const nMud = rows.filter(r => r.status==='aplicado').length;
+  const st = {filtro: 'mud', busca: ''};
+  const desenha = () => {
+    const lista = rows.filter(r => (st.filtro==='todos' || (st.filtro==='mud' && r.status==='aplicado') || (st.filtro==='resp' && r.bf_decisao==='manter_preco_bf') || (st.filtro==='volta' && r.bf && r.bf_decisao!=='manter_preco_bf'))
+      && (!st.busca || (r.cod+' '+(r.descricao||'')).toUpperCase().includes(st.busca.toUpperCase())));
+    $('#btT').innerHTML = lista.map((r, i) => {
+      const an = r.analista || {}, rv = r.revisor || {};
+      return `<tr class="btRow" data-i="${i}" style="cursor:pointer">
+        <td style="padding:6px 8px"><b>${esc(r.cod)}</b><br><span class="gr" style="font-size:11px">${esc((r.descricao||'').slice(0,38))}</span></td>
+        <td style="padding:6px 8px;font-size:12px">${bfTxt(r)}</td>
+        <td style="padding:6px 8px;text-align:right;white-space:nowrap">${r.bf?`<span class="gr" style="font-size:11px">padrão ${f2(r.site_padrao)}</span><br>`:''}${cel(r.site_atual, r.site_novo)}</td>
+        <td style="padding:6px 8px;text-align:right;white-space:nowrap">${cel(r.atac_atual, r.atac_novo)}</td>
+        <td style="padding:6px 8px;text-align:right;white-space:nowrap">${cel(r.ml_atual, r.ml_novo)}</td>
+        <td style="padding:6px 8px;font-size:12px;max-width:420px">${esc(rv.motivo || an.diagnostico || '')}</td>
+      </tr><tr id="btF${i}" hidden><td colspan="6" style="padding:8px 12px 14px;background:var(--soft,rgba(0,0,0,.03));font-size:12.5px">
+        ${r.bf?`<div><b>Black Friday:</b> ${esc((an.black_friday||{}).leitura||'')}</div>`:''}
+        <div style="margin-top:4px"><b>Diagnóstico:</b> ${esc(an.diagnostico||'')}</div>
+        <ul style="margin:4px 0 4px 18px">${(an.evidencias||[]).map(e=>`<li>${esc(e)}</li>`).join('')}</ul>
+        ${['site','atacado','ml'].map(c => an[c] ? `<div><b>${c==='site'?'Site PIX':c==='atacado'?'Atacado':'ML'}</b> (${esc(an[c].acao)}, conf. ${esc(an[c].confianca)}): ${esc(an[c].racional)}</div>` : '').join('')}
+        ${rv.veredito?`<div style="margin-top:4px"><b>Revisor:</b> ${esc(rv.veredito)} — ${esc(rv.motivo||'')}</div>`:''}
+        ${r.notas?`<div style="margin-top:4px;color:var(--lar)"><b>Travas:</b> ${esc(r.notas)}</div>`:''}
+      </td></tr>`; }).join('') || '<tr><td colspan="6" class="gr" style="padding:10px">nada neste filtro</td></tr>';
+    $('#btN').textContent = `${lista.length} produto(s)`;
+    document.querySelectorAll('.btRow').forEach(tr => tr.onclick = () => { const f = $('#btF'+tr.dataset.i); f.hidden = !f.hidden; });
+  };
+  box.innerHTML = `<details class="tablecard" open style="padding:10px 14px;margin:0 0 14px;border:2px solid var(--accent)">
+    <summary style="cursor:pointer;font-weight:800;font-size:14px">⌨️ Teclados — promoção ENCERRADA pelo Precificador IA <span class="gr" style="font-weight:400;font-size:12px">rodada ${esc(rod)}</span></summary>
+    <p class="gr" style="margin:6px 0 8px;font-size:12.5px">Teclado não tem mais promoção: o preço de tabela é o final (PIX ,90/,95 · atacado inteiro · ML ,90). Cada teclado foi analisado individualmente pelo agente analista (Claude Opus 5.5) e revisado por marca pelo agente revisor. Com desconto BF: <b>${nBf}</b> · respondeu e mantém o preço com desconto como preço cheio: <b>${nResp}</b> · voltaram ao original: <b>${nBf-nResp}</b>. Preço alterado em <b>${nMud}</b> produtos; os demais ficaram marcados como vistos na CTRL (voltam com 200 views). Clique na linha para ver o raciocínio.</p>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <select id="btFiltro" style="padding:5px 8px"><option value="mud">só o que mudou</option><option value="resp">BF: mantiveram o preço com desconto</option><option value="volta">BF: voltaram ao original</option><option value="todos">todos os analisados</option></select>
+      <input id="btBusca" placeholder="filtrar por código ou nome…" style="padding:5px 10px;min-width:200px">
+      <span class="gr" id="btN"></span>
+    </div>
+    <div class="tscroll" style="max-height:560px"><table style="width:100%">
+      <thead><tr><th style="text-align:left;padding:6px 8px">produto</th><th style="text-align:left;padding:6px 8px">Black Friday</th><th style="padding:6px 8px">site PIX (loja → final)</th><th style="padding:6px 8px">atacado 001</th><th style="padding:6px 8px">ML 401</th><th style="text-align:left;padding:6px 8px">por quê</th></tr></thead>
+      <tbody id="btT"></tbody></table></div></details>`;
+  $('#btFiltro').onchange = e => { st.filtro = e.target.value; desenha(); };
+  $('#btBusca').oninput = e => { st.busca = e.target.value; desenha(); };
+  desenha();
+}
+
 async function renderBlackFriday(){
   let rows = [];
   try{ rows = await tudo('bf_params', {eq: []}); }
@@ -6235,6 +6292,7 @@ async function renderBlackFriday(){
   const num = (id, v, step, w, tit) => `<input id="${id}" type="number" step="${step||1}" value="${v}" title="${tit||''}" style="width:${w||54}px;padding:3px 5px;font-size:12.5px;text-align:right">`;
 
   $('#conteudo').innerHTML = `
+    <div id="bfTecl"></div>
     <p style="margin:0 0 10px;color:var(--muted);font-size:12.5px"><b>Desconto-alvo por grupo, subindo em fases até a Black Friday (27/11)</b> — aplicado por <b>ALTERAÇÃO DE PREÇO na tabela 002 (site)</b>, com fluxo de aprovação: o motor propõe referência a referência, <b>você aprova aqui embaixo</b>, e só os aprovados vão para a loja (o preço original fica guardado para restaurar depois de 05/12). O alvo da fase é o ponto de partida; por cima dele valem duas travas: <b>folga</b> (cobertura = meses de estoque sobrando: &lt; ${G.cob_min}m = sem desconto · ${G.cob_min}–2m até 5 pp · 2m+ sem trava — ter folga não dá o desconto, só não restringe) e <b>margem</b> (a MC real 60d da referência no site não pode cair abaixo do piso com o desconto). <b>👨‍👦 Pai/filho</b>: a análise é do pai e o % vale para a família toda. <b>Entupido</b> (cobertura ≥ ${G.entupido_meses} meses; <b>teclados ≥ ${G.entupido_meses_tecl ?? 24}</b>, porque giram devagar por natureza) recebe desde já <b>o desconto máximo do grupo — o do dia da Black Friday (F4, respeitado o teto)</b>, com o mesmo piso de margem de todo mundo. É recuperação de investimento, sem botão próprio.</p>
 
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px">
@@ -6292,6 +6350,7 @@ async function renderBlackFriday(){
     </div>
     <div id="bfPreview"></div>
     <div id="bfPlano"><p class="gr">carregando…</p></div>`;
+  renderBfTecl();
 
   (async () => {
     let pl = [], apr = {}, bl = {}, visiveis = [];
