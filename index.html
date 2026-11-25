@@ -330,7 +330,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261125-081059';
+const BUILD='20261125-090311';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -6227,11 +6227,12 @@ clique: abrir na CTRL (extrato semanal)</title></circle>`; }
 async function renderEstrategias(){
   const C = $('#conteudo');
   C.innerHTML = '<p class="gr">carregando…</p>';
-  let E = [], V = [], D = [];
+  let E = [], V = [], D = [], D2 = [];
   try{
     E = await tudo('estrategias', {mod: q => q.order('ordem')});
     V = await tudo('estrategia_itens', {mod: q => q.gte('entrou_em', new Date(Date.now()-35*864e5).toISOString()).order('entrou_em', {ascending:false})});
     D = await tudo('precificador_decisoes', {mod: q => q.like('rodada','%-BGT').gte('criado_em', new Date(Date.now()-14*864e5).toISOString()).order('criado_em', {ascending:false})});
+    D2 = await tudo('precificador_decisoes', {mod: q => q.like('rodada','%-BNOT-MZ').order('cod')});
   }catch(e){ C.innerHTML = '<p class="gr">Erro ao carregar: '+esc(e.message||e)+'</p>'; return; }
   const f2 = v => v==null ? '—' : Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
   const pct = v => v==null ? '—' : (v>0?'+':'')+Number(v).toFixed(1).replace('.',',')+'%';
@@ -6239,7 +6240,7 @@ async function renderEstrategias(){
   const dd = s => s ? new Date(s).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '—';
   const cats = [...new Set(E.map(e => e.categoria))];
   const stCor = {ativa:['var(--good)','var(--good-soft)'], sombra:['var(--warn)','var(--warn-soft)'], pausada:['var(--muted)','var(--surface2)'], planejada:['var(--muted)','var(--surface2)']};
-  const nomeCat = {TECL:'⌨️ Teclados'};
+  const nomeCat = {TECL:'⌨️ Teclados', BNOT:'🔋 Baterias'};
   const par = p => Object.entries(p||{}).map(([k,v]) => `<span class="chip">${esc(k)}: <b>${esc(typeof v==='object'?JSON.stringify(v):String(v))}</b></span>`).join(' ');
   const mud = (a,b) => a!=null && b!=null && Math.abs(a-b) > 0.005;
   const cel = (a,b) => !mud(a,b) ? `<span class="gr">${f2(a)}</span>` : `<span class="gr">${f2(a)} →</span> <b style="color:${b>a?'var(--good)':'var(--crit)'}">${f2(b)}</b>`;
@@ -6287,14 +6288,64 @@ async function renderEstrategias(){
           ${r.notas?`<div style="margin-top:4px;color:var(--lar)"><b>Por que não foi sozinho:</b> ${esc(r.notas)}</div>`:''}
         </td></tr>`; }).join('')}</tbody></table></div>`;
   };
-  const painel = {tecl_vitrine: painelVitrine, tecl_bgt_check: painelBgt,
+  const painelDec = (rows, pre) => {
+    if(!rows.length) return '<p class="gr" style="font-size:12.5px">Análise em andamento — os resultados aparecem aqui ao terminar.</p>';
+    const rod = rows.map(r => r.rodada).sort().pop(); rows = rows.filter(r => r.rodada === rod);
+    const base = r => (r.status||'').replace('sombra:','');
+    const sombra = rows.some(r => (r.status||'').startsWith('sombra:'));
+    const stx = {auto: sombra?'🟢 iria sozinho':'✅ aplicado', humano:'👀 pede você', manter:'➖ mantém', aplicado:'✅ aplicado'};
+    const ord = {humano:0, auto:1, aplicado:1, manter:2};
+    const cnt = k => rows.filter(r => base(r)===k).length;
+    const marca = c => (c.split('-')[1]||'').slice(0,2);
+    const MAR = {SS:'Samsung',SO:'Sony',TS:'Toshiba',NA:'Nacionais',MS:'MSI',NE:'NEC',PA:'Panasonic',MI:'Mitac',PO:'Positivo',SE:'Semp',UN:'Uniwill',WI:'Winbook',PC:'PCChips',NO:'Novadata'};
+    const marcas = [...new Set(rows.map(r => marca(r.cod)))].sort();
+    const L = [...rows].sort((a,b) => (ord[base(a)]??3)-(ord[base(b)]??3) || a.cod.localeCompare(b.cod));
+    const id = pre;
+    setTimeout(() => {
+      const desenha = () => {
+        const fm = $('#'+id+'M').value, fs = $('#'+id+'S').value;
+        let i = 0;
+        document.querySelectorAll('.'+id+'R').forEach(tr => { const ok = (!fm || tr.dataset.m===fm) && (!fs || tr.dataset.s===fs); tr.hidden = !ok; if(!ok) $('#'+id+'F'+tr.dataset.i).hidden = true; else i++; });
+        $('#'+id+'N').textContent = i+' bateria(s)';
+      };
+      ['M','S'].forEach(k => { const el = $('#'+id+k); if(el) el.onchange = desenha; });
+      document.querySelectorAll('.'+id+'R').forEach(tr => tr.onclick = () => { const f = $('#'+id+'F'+tr.dataset.i); f.hidden = !f.hidden; });
+      if($('#'+id+'N')) desenha();
+    }, 0);
+    return `${sombra?'<p style="margin:8px 0 4px;font-size:12.5px;background:var(--warn-soft);padding:6px 9px;border-radius:6px">⚠ <b>Modo sombra</b>: nenhuma bateria mudou de preço ainda. A análise está pronta para você revisar; ao seu ok, as decisões vão para a loja.</p>':''}
+      <p style="font-size:12.5px;margin:6px 0">Rodada <b>${esc(rod)}</b> · ${rows.length} baterias · ${cnt('auto')} ${sombra?'iriam sozinhas':'aplicadas'} · ${cnt('humano')} pedem você · ${cnt('manter')} mantêm.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 6px">
+        <select id="${id}M" style="padding:4px 8px"><option value="">todas as marcas</option>${marcas.map(m => `<option value="${m}">${MAR[m]||m}</option>`).join('')}</select>
+        <select id="${id}S" style="padding:4px 8px"><option value="">todos os resultados</option><option value="auto">${stx.auto}</option><option value="humano">${stx.humano}</option><option value="manter">${stx.manter}</option></select>
+        <span class="gr" id="${id}N" style="font-size:12px"></span></div>
+      <div class="tscroll" style="max-height:620px"><table style="width:100%"><thead><tr>${th('Bateria')}${th('Resultado')}${th('Site PIX padrão')}${th('Atacado')}${th('ML')}${th('Por quê')}</tr></thead>
+      <tbody>${L.map((r,i) => { const an = r.analista||{}, rv = r.revisor||{}, tv = r.travas||{}; const tvt = Object.entries(tv).filter(([k,v]) => v&&v.length).map(([k,v]) => k+': '+v.join(', ')).join(' · ');
+        return `<tr class="${id}R" data-i="${i}" data-m="${marca(r.cod)}" data-s="${base(r)}" style="cursor:pointer">
+        ${td(`<b>${esc(r.cod)}</b><br><span class="gr" style="font-size:11px">${esc((r.descricao||'').slice(0,42))}</span>`)}
+        ${td(stx[base(r)]||esc(r.status),'white-space:nowrap')}
+        ${td(cel(r.site_atual, r.site_novo),'white-space:nowrap')}
+        ${td(cel(r.atac_atual, r.atac_novo),'white-space:nowrap')}
+        ${td(cel(r.ml_atual, r.ml_novo),'white-space:nowrap')}
+        ${td(esc(rv.motivo || an.diagnostico || ''),'max-width:420px')}</tr>
+        <tr id="${id}F${i}" hidden><td colspan="6" style="padding:8px 12px 12px;background:var(--surface2);font-size:12.5px">
+          <div><b>Diagnóstico:</b> ${esc(an.diagnostico||'')}</div>
+          <ul style="margin:4px 0 4px 18px">${(an.evidencias||[]).map(e=>`<li>${esc(e)}</li>`).join('')}</ul>
+          ${['site','atacado','ml'].map(c => an[c] ? `<div><b>${c==='site'?'Site PIX':c==='atacado'?'Atacado':'ML'}</b> (${esc(an[c].acao)}, conf. ${esc(an[c].confianca)}): ${esc(an[c].racional)}</div>` : '').join('')}
+          ${an.efeito_esperado?`<div style="margin-top:4px"><b>Efeito esperado:</b> ${esc(an.efeito_esperado)}</div>`:''}
+          ${an.riscos?`<div><b>Riscos:</b> ${esc(an.riscos)}</div>`:''}
+          ${rv.veredito?`<div style="margin-top:4px"><b>Revisor:</b> ${esc(rv.veredito)} — ${esc(rv.motivo||'')}</div>`:''}
+          ${tvt?`<div style="margin-top:4px;color:var(--lar)"><b>Travas:</b> ${esc(tvt)}</div>`:''}
+          ${r.notas?`<div style="color:var(--lar)"><b>Notas:</b> ${esc(r.notas)}</div>`:''}
+        </td></tr>`; }).join('')}</tbody></table></div>`;
+  };
+  const painel = {tecl_vitrine: painelVitrine, tecl_bgt_check: painelBgt, bnot_ia_marcas_mz: () => painelDec(D2, 'bmz'),
     tecl_sem_promocao: () => '<p style="font-size:12.5px;margin:8px 0 0">Preço pós-BF de cada teclado: card ⌨️ no topo da aba <a href="#blackfriday">🖤 Black Friday</a>.</p>',
     tecl_lenovo_slot: () => '<p style="font-size:12.5px;margin:8px 0 0">Configuração no card 🧩 Famílias — SLOTS da aba <a href="#blackfriday">🖤 Black Friday</a>.</p>'};
 
   C.innerHTML = `<p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Cada estratégia é uma regra de preço do CEO que roda sozinha, por categoria. A decisão de preço é sempre de um agente (Claude Opus 5.5) que lê a história do produto; a regra define <b>quem</b> entra, <b>quando</b> e <b>até onde</b> pode ir. Ordem de prioridade quando duas se cruzam: vitrine trava o site · Lenovo segue o slot · as travas duras (MC mínima, degrau, hierarquia atacado &lt; PIX ≤ ML) valem para todas.</p>
   ${cats.map(cat => `<h3 style="margin:16px 0 8px">${esc(nomeCat[cat]||cat)}</h3>
     ${E.filter(e => e.categoria===cat).map(e => { const [cf, cb] = stCor[e.status]||stCor.pausada; return `
-    <details class="tablecard" ${['tecl_vitrine','tecl_bgt_check'].includes(e.id)?'open':''} style="padding:10px 14px;margin:0 0 12px">
+    <details class="tablecard" ${['tecl_vitrine','tecl_bgt_check','bnot_ia_marcas_mz'].includes(e.id)?'open':''} style="padding:10px 14px;margin:0 0 12px">
       <summary style="cursor:pointer;font-weight:800;font-size:14px">${esc(e.nome)} <span class="pill" style="color:${cf};background:${cb};margin-left:6px">${esc(e.status)}</span>
         <span class="gr" style="font-weight:400;font-size:12px;margin-left:6px">${esc(e.frequencia||'')}</span></summary>
       <p style="margin:8px 0 4px;font-size:13px">${esc(e.resumo||'')}</p>
