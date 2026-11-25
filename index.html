@@ -260,6 +260,7 @@ tr.emcurso td{opacity:.55}
     <a href="#compras" data-pg="compras">🚢 Compras &amp; Trânsito</a>
     <a href="#pedido" data-pg="pedido">🧮 Pedido de Compra</a>
     <a href="#blackfriday" data-pg="blackfriday">🖤 Black Friday</a>
+    <a href="#estrategias" data-pg="estrategias">🤖 Estratégias</a>
     <a href="#quadrantes" data-pg="quadrantes">🎯 Quadrantes da Semana</a>
     <a href="#importacoes" data-pg="importacoes">🚨 Importações urgentes</a>
     <a href="#lotoes" data-pg="lotoes">🏭 Distribuidores</a>
@@ -329,7 +330,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261124-222904';
+const BUILD='20261125-081059';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -603,7 +604,7 @@ $('#semaforo').onclick = async ()=>{
 document.addEventListener('click', e=>{ if(!e.target.closest('#semaforo') && !e.target.closest('#popSem')) $('#popSem').classList.add('hide'); });
 
 /* ---------- navegação ---------- */
-const TITULOS = {midia:'HUB Mídia — campanhas por linha de produto (resultado real SharpSpring)', manha:'Manhã — o dia do seu grupo', radar:'Radar (legado)', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', blackfriday:'Black Friday — descontos por grupo', quadrantes:'Quadrantes da Semana — ROAS × Δ lucro (site 002)', importacoes:'Importações urgentes — 80/20 rompendo antes do lead', lotoes:'Distribuidores — lotões × estoque', logistica:'Logística UF — cobertura % por estado', serial:'Serial — histórico da peça (vendas e devoluções)', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
+const TITULOS = {midia:'HUB Mídia — campanhas por linha de produto (resultado real SharpSpring)', manha:'Manhã — o dia do seu grupo', radar:'Radar (legado)', pressao:'Pressão Ads — 80/20', produtos:'Produtos', compras:'Compras & Trânsito', precos:'Preços — Markup', sugestoes:'CTRL ONLINE', aprovacoes:'Aprovações — revisão final', revisoes:'Revisões — resultado das sugestões', painel:'Painel do produto', skus:'SKUs', global:'Visão Global — semana a semana', adscentral:'Central de Ads — alvos & religação', equipe:'Responsáveis — quem cuida do quê', diario:'Acompanhamento Diário — 20+ un/semana', concorrencia:'Concorrência — preços BGT', pedido:'Pedido de Compra — importação', blackfriday:'Black Friday — descontos por grupo', estrategias:'Estratégias automatizadas — regras de preço que rodam sozinhas', quadrantes:'Quadrantes da Semana — ROAS × Δ lucro (site 002)', importacoes:'Importações urgentes — 80/20 rompendo antes do lead', lotoes:'Distribuidores — lotões × estoque', logistica:'Logística UF — cobertura % por estado', serial:'Serial — histórico da peça (vendas e devoluções)', anuncios:'Anúncios & Conversão', decisoes:'Decisões — Chat IA', config:'Configurações'};
 function navega(pg){
   let param=null;
   if(pg&&pg.includes('/')){ [pg,param]=pg.split('/'); param=decodeURIComponent(param); }
@@ -639,6 +640,7 @@ function navega(pg){
   else if(pg==='serial') renderSerial();
   else if(pg==='pedido') renderPedido();
   else if(pg==='blackfriday') renderBlackFriday();
+  else if(pg==='estrategias') renderEstrategias();
   else if(pg==='quadrantes') renderQuadrantes();
   else if(pg==='pressao') renderPressao();
   else if(pg==='config') renderConfig();
@@ -6221,6 +6223,91 @@ clique: abrir na CTRL (extrato semanal)</title></circle>`; }
   }catch(e){ out.innerHTML='<p class="gr">Erro: '+esc(e.message||e)+'</p>'; }
 }
 /* ⌨️ Teclados — fim da promoção pelo Precificador IA (CEO 24/11/26): extrato da rodada, produto a produto */
+/* ---------- 🤖 Estratégias automatizadas (CEO 25/11/26) ---------- */
+async function renderEstrategias(){
+  const C = $('#conteudo');
+  C.innerHTML = '<p class="gr">carregando…</p>';
+  let E = [], V = [], D = [];
+  try{
+    E = await tudo('estrategias', {mod: q => q.order('ordem')});
+    V = await tudo('estrategia_itens', {mod: q => q.gte('entrou_em', new Date(Date.now()-35*864e5).toISOString()).order('entrou_em', {ascending:false})});
+    D = await tudo('precificador_decisoes', {mod: q => q.like('rodada','%-BGT').gte('criado_em', new Date(Date.now()-14*864e5).toISOString()).order('criado_em', {ascending:false})});
+  }catch(e){ C.innerHTML = '<p class="gr">Erro ao carregar: '+esc(e.message||e)+'</p>'; return; }
+  const f2 = v => v==null ? '—' : Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const pct = v => v==null ? '—' : (v>0?'+':'')+Number(v).toFixed(1).replace('.',',')+'%';
+  const dt = s => s ? new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+  const dd = s => s ? new Date(s).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '—';
+  const cats = [...new Set(E.map(e => e.categoria))];
+  const stCor = {ativa:['var(--good)','var(--good-soft)'], sombra:['var(--warn)','var(--warn-soft)'], pausada:['var(--muted)','var(--surface2)'], planejada:['var(--muted)','var(--surface2)']};
+  const nomeCat = {TECL:'⌨️ Teclados'};
+  const par = p => Object.entries(p||{}).map(([k,v]) => `<span class="chip">${esc(k)}: <b>${esc(typeof v==='object'?JSON.stringify(v):String(v))}</b></span>`).join(' ');
+  const mud = (a,b) => a!=null && b!=null && Math.abs(a-b) > 0.005;
+  const cel = (a,b) => !mud(a,b) ? `<span class="gr">${f2(a)}</span>` : `<span class="gr">${f2(a)} →</span> <b style="color:${b>a?'var(--good)':'var(--crit)'}">${f2(b)}</b>`;
+  const th = t => `<th style="text-align:left;padding:5px 8px;font-size:11.5px;white-space:nowrap">${t}</th>`;
+  const td = (t, st) => `<td style="padding:5px 8px;font-size:12.5px;${st||''}">${t}</td>`;
+
+  const painelVitrine = () => {
+    const at = V.filter(v => v.estrategia==='tecl_vitrine' && v.status==='ativo');
+    const sa = V.filter(v => v.estrategia==='tecl_vitrine' && v.status==='saiu');
+    const linha = v => { const d0 = (v.dados||{}).loja_entrada; return `<tr>
+      ${td(`<b>${esc(v.cod)}</b><br><span class="gr" style="font-size:11px">${esc((v.descricao||'').slice(0,40))}</span>`)}
+      ${td(dd(v.entrou_em))}
+      ${td(`${f2(d0)} → <b>${f2(v.preco_alvo)}</b>${v.na_bf?' <span class="chip" title="na Black Friday: o alvo é teto sobre o preço da BF">🖤 BF</span>':''}`,'white-space:nowrap')}
+      ${td(f2(v.bgt),'text-align:right')}
+      ${td(v.preco_alvo&&v.bgt?pct((v.preco_alvo/v.bgt-1)*100):'—','text-align:right')}
+      ${td(v.mc_pct!=null?Number(v.mc_pct).toFixed(1).replace('.',',')+'%':'—','text-align:right')}
+      ${td(v.cobertura_dias!=null?Math.round(v.cobertura_dias)+' d':'—','text-align:right')}
+      ${td(v.views28??'—','text-align:right')}
+      ${v.status==='saiu'?td(dd(v.saiu_em)+' · '+esc(v.motivo_saida||'')):''}</tr>`; };
+    return `<h4 style="margin:12px 0 6px">Escolhidos desta semana (${at.length})</h4>
+      <div class="tscroll"><table style="width:100%"><thead><tr>${th('Teclado')}${th('Entrou')}${th('PIX: entrada → vitrine')}${th('BGT')}${th('vs BGT')}${th('MC no alvo')}${th('Cobertura')}${th('Views 28d')}</tr></thead>
+      <tbody>${at.map(linha).join('') || '<tr><td colspan="8" class="gr" style="padding:8px">nenhum ativo</td></tr>'}</tbody></table></div>
+      ${sa.length?`<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12.5px">Saíram nas últimas semanas (${sa.length})</summary>
+      <div class="tscroll"><table style="width:100%"><thead><tr>${th('Teclado')}${th('Entrou')}${th('PIX: entrada → vitrine')}${th('BGT')}${th('vs BGT')}${th('MC no alvo')}${th('Cobertura')}${th('Views 28d')}${th('Saiu · motivo')}</tr></thead>
+      <tbody>${sa.map(linha).join('')}</tbody></table></div></details>`:''}`;
+  };
+  const painelBgt = () => {
+    if(!D.length) return '<p class="gr" style="font-size:12.5px">Nenhuma análise nos últimos 14 dias.</p>';
+    const stx = {auto:'✅ aplicado', humano:'👀 revisão humana', manter:'➖ mantido'};
+    const ord = {humano:0, auto:1, manter:2};
+    const L = [...D].sort((a,b) => (ord[a.status]??3)-(ord[b.status]??3) || b.criado_em.localeCompare(a.criado_em));
+    return `<div class="tscroll" style="max-height:520px;margin-top:8px"><table style="width:100%"><thead><tr>${th('Quando')}${th('Teclado')}${th('Resultado')}${th('Site PIX')}${th('Atacado')}${th('Por quê')}</tr></thead>
+      <tbody>${L.map((r,i) => { const an = r.analista||{}, rv = r.revisor||{}; return `<tr class="ebRow" data-i="${i}" style="cursor:pointer">
+        ${td(dt(r.criado_em),'white-space:nowrap')}
+        ${td(`<b>${esc(r.cod)}</b><br><span class="gr" style="font-size:11px">${esc((r.descricao||'').slice(0,36))}</span>`)}
+        ${td(stx[r.status]||esc(r.status),'white-space:nowrap')}
+        ${td(cel(r.site_atual, r.site_novo),'white-space:nowrap')}
+        ${td(cel(r.atac_atual, r.atac_novo),'white-space:nowrap')}
+        ${td(esc(rv.motivo || an.diagnostico || ''),'max-width:420px')}</tr>
+        <tr id="ebF${i}" hidden><td colspan="6" style="padding:8px 12px 12px;background:var(--surface2);font-size:12.5px">
+          <div><b>Diagnóstico:</b> ${esc(an.diagnostico||'')}</div>
+          <ul style="margin:4px 0 4px 18px">${(an.evidencias||[]).map(e=>`<li>${esc(e)}</li>`).join('')}</ul>
+          ${['site','atacado'].map(c => an[c] ? `<div><b>${c==='site'?'Site PIX':'Atacado'}</b> (${esc(an[c].acao)}, conf. ${esc(an[c].confianca)}): ${esc(an[c].racional)}</div>` : '').join('')}
+          ${rv.veredito?`<div style="margin-top:4px"><b>Revisor:</b> ${esc(rv.veredito)} — ${esc(rv.motivo||'')}</div>`:''}
+          ${r.notas?`<div style="margin-top:4px;color:var(--lar)"><b>Por que não foi sozinho:</b> ${esc(r.notas)}</div>`:''}
+        </td></tr>`; }).join('')}</tbody></table></div>`;
+  };
+  const painel = {tecl_vitrine: painelVitrine, tecl_bgt_check: painelBgt,
+    tecl_sem_promocao: () => '<p style="font-size:12.5px;margin:8px 0 0">Preço pós-BF de cada teclado: card ⌨️ no topo da aba <a href="#blackfriday">🖤 Black Friday</a>.</p>',
+    tecl_lenovo_slot: () => '<p style="font-size:12.5px;margin:8px 0 0">Configuração no card 🧩 Famílias — SLOTS da aba <a href="#blackfriday">🖤 Black Friday</a>.</p>'};
+
+  C.innerHTML = `<p style="margin:0 0 12px;color:var(--muted);font-size:12.5px">Cada estratégia é uma regra de preço do CEO que roda sozinha, por categoria. A decisão de preço é sempre de um agente (Claude Opus 5.5) que lê a história do produto; a regra define <b>quem</b> entra, <b>quando</b> e <b>até onde</b> pode ir. Ordem de prioridade quando duas se cruzam: vitrine trava o site · Lenovo segue o slot · as travas duras (MC mínima, degrau, hierarquia atacado &lt; PIX ≤ ML) valem para todas.</p>
+  ${cats.map(cat => `<h3 style="margin:16px 0 8px">${esc(nomeCat[cat]||cat)}</h3>
+    ${E.filter(e => e.categoria===cat).map(e => { const [cf, cb] = stCor[e.status]||stCor.pausada; return `
+    <details class="tablecard" ${['tecl_vitrine','tecl_bgt_check'].includes(e.id)?'open':''} style="padding:10px 14px;margin:0 0 12px">
+      <summary style="cursor:pointer;font-weight:800;font-size:14px">${esc(e.nome)} <span class="pill" style="color:${cf};background:${cb};margin-left:6px">${esc(e.status)}</span>
+        <span class="gr" style="font-weight:400;font-size:12px;margin-left:6px">${esc(e.frequencia||'')}</span></summary>
+      <p style="margin:8px 0 4px;font-size:13px">${esc(e.resumo||'')}</p>
+      <p class="gr" style="margin:0 0 6px;font-size:12px">Última execução: <b>${dt(e.ultima_execucao)}</b>${e.ultimo_resumo?' — '+esc(e.ultimo_resumo):''}</p>
+      <details style="margin:4px 0"><summary style="cursor:pointer;font-size:12.5px">Regras e parâmetros</summary>
+        <div style="white-space:pre-wrap;font-size:12.5px;margin:6px 0">${esc(e.regras||'')}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${par(e.params)}</div>
+        <div class="gr" style="font-size:11px;margin-top:6px">script: ${esc(e.script||'')}</div></details>
+      ${painel[e.id] ? painel[e.id]() : ''}
+    </details>`; }).join('')}`).join('')}`;
+  document.querySelectorAll('.ebRow').forEach(tr => tr.onclick = () => { const f = $('#ebF'+tr.dataset.i); f.hidden = !f.hidden; });
+}
+
 async function renderBfTecl(){
   const box = $('#bfTecl'); if(!box) return;
   let rows = [];
