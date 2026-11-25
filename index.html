@@ -329,7 +329,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>
    então deploy novo demorava a aparecer. O app confere versao.json (sem cache) ao abrir e ao
    voltar para a aba; se mudou, recarrega sozinho — sem loop (guarda em sessionStorage) e
    nunca no meio de um modal aberto. */
-const BUILD='20261124-204833';
+const BUILD='20261124-222904';
 async function checaVersao(){
   try{
     const r=await fetch('versao.json',{cache:'no-store'}); if(!r.ok) return;
@@ -6262,8 +6262,8 @@ async function renderBfTecl(){
     document.querySelectorAll('.btRow').forEach(tr => tr.onclick = () => { const f = $('#btF'+tr.dataset.i); f.hidden = !f.hidden; });
   };
   box.innerHTML = `<details class="tablecard" open style="padding:10px 14px;margin:0 0 14px;border:2px solid var(--accent)">
-    <summary style="cursor:pointer;font-weight:800;font-size:14px">⌨️ Teclados — promoção ENCERRADA pelo Precificador IA <span class="gr" style="font-weight:400;font-size:12px">rodada ${esc(rod)}</span></summary>
-    <p class="gr" style="margin:6px 0 8px;font-size:12.5px">Teclado não tem mais promoção: o preço de tabela é o final (PIX ,90/,95 · atacado inteiro · ML ,90). Cada teclado foi analisado individualmente pelo agente analista (Claude Opus 5.5) e revisado por marca pelo agente revisor. Com desconto BF: <b>${nBf}</b> · respondeu e mantém o preço com desconto como preço cheio: <b>${nResp}</b> · voltaram ao original: <b>${nBf-nResp}</b>. Preço alterado em <b>${nMud}</b> produtos; os demais ficaram marcados como vistos na CTRL (voltam com 200 views). Clique na linha para ver o raciocínio.</p>
+    <summary style="cursor:pointer;font-weight:800;font-size:14px">⌨️ Teclados — preço FINAL pós-BF (Precificador IA) · promoção RETOMADA 24/11 22h <span class="gr" style="font-weight:400;font-size:12px">rodada ${esc(rod)}</span></summary>
+    <p style="margin:6px 0 4px;font-size:12.5px;background:#fff4d6;padding:6px 9px;border-radius:6px">⚠ <b>24/11 22h — teclados VOLTARAM para a Black Friday</b> (CEO: manter o selo de promoção do Google Ads). Grade, slot Lenovo e marcações restaurados; o desconto agora incide sobre o preço final desta análise, guardado no cofre como "original". Quando a BF acabar, cada teclado vai para o preço abaixo. Atacado e ML desta rodada continuam valendo.</p><p class="gr" style="margin:6px 0 8px;font-size:12.5px">Preço final decidido para depois da BF: o preço de tabela é o final (PIX ,90/,95 · atacado inteiro · ML ,90). Cada teclado foi analisado individualmente pelo agente analista (Claude Opus 5.5) e revisado por marca pelo agente revisor. Com desconto BF: <b>${nBf}</b> · respondeu e mantém o preço com desconto como preço cheio: <b>${nResp}</b> · voltaram ao original: <b>${nBf-nResp}</b>. Preço alterado em <b>${nMud}</b> produtos; os demais ficaram marcados como vistos na CTRL (voltam com 200 views). Clique na linha para ver o raciocínio.</p>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
       <select id="btFiltro" style="padding:5px 8px"><option value="mud">só o que mudou</option><option value="resp">BF: mantiveram o preço com desconto</option><option value="volta">BF: voltaram ao original</option><option value="todos">todos os analisados</option></select>
       <input id="btBusca" placeholder="filtrar por código ou nome…" style="padding:5px 10px;min-width:200px">
